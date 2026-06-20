@@ -1,6 +1,6 @@
 # L20 Stack
 
-Private research repo for a single-GPU LLM infrastructure stack on an NVIDIA L20 48 GB machine.
+Single-GPU LLM Infra Reference Stack for an NVIDIA L20 48 GB machine.
 
 This repo starts deliberately small. The near-term target is not to claim a complete replacement for Megatron-LM, vLLM, PEFT, or TRL. The target is to build a reproducible experimental stack that can answer one question at a time:
 
@@ -52,3 +52,5 @@ PYTHONPATH=src /usr/bin/python3 -m l20_stack.cli plan --config configs/qlora_l20
 2. Add vLLM baseline serving benchmarks before any custom kernel work.
 3. Run L20-specific profiling and record memory, throughput, and latency numbers.
 4. Only then decide whether a custom PagedAttention or quantization kernel is justified.
+
+See [docs/roadmap.md](docs/roadmap.md) for the v0.1 to v1.0 release plan and commit-sized task breakdown.
