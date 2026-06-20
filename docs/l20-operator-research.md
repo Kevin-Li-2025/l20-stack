@@ -337,3 +337,68 @@ Sources:
 - https://docs.flashinfer.ai/installation.html
 - https://docs.flashinfer.ai/generated/flashinfer.norm.fused_add_rmsnorm.html
 - https://docs.flashinfer.ai/generated/flashinfer.testing.bench_gpu_time_with_cuda_event.html
+
+## V6 RoPE + KV-Cache Write Fusion
+
+The RMSNorm work showed that single-op normalization gains become small once
+FlashInfer and PyTorch compiled/eager baselines are included. The next L20 target
+therefore moves to a larger memory/launch fusion: apply RoPE to K and write both
+K and V into the KV cache in one kernel.
+
+This matches the direction used by production serving systems: vLLM's
+PagedAttention work centers inference throughput on efficient KV-cache
+management, and FlashInfer/FlashAttention expose serving APIs that keep RoPE,
+KV-cache updates, and attention in the same performance-critical path. This repo
+does not yet implement paged block tables; v6 starts with the simpler contiguous
+cache write because it is enough to validate the traffic and launch argument on
+the L20.
+
+The implemented kernel in `src/l20_stack/ops/triton_rope_kv.py` uses:
+
+- one Triton program per `(token, kv_head)`
+- LLaMA/GPT-NeoX-style half-rotation RoPE on K
+- direct contiguous writes to `k_cache[cache_position]` and
+  `v_cache[cache_position]`
+- head dimensions up to 256, with the benchmark focused on 128
+- `sm_89` launch policy with small blocks for decode occupancy
+
+Traffic model for `[tokens, kv_heads, head_dim]`:
+
+- separate baseline: read K, write rotated K, read rotated K, write K cache,
+  read V, write V cache
+- fused kernel: read K, read V, write K cache, write V cache
+- semantic minimum traffic reduction: 33.33%
+
+Measured on the same L20 host as the RMSNorm work:
+
+- NVIDIA L20, compute capability 8.9
+- PyTorch 2.12.1+cu130
+- Triton 3.7.1
+- FP16, 8 KV heads, 128 head dim, contiguous cache, 256 MB cache flush
+- three complete runs; table reports median p50 across runs
+
+| Tokens | Separate PyTorch p50 | Fused Triton p50 | Speedup |
+| ---: | ---: | ---: | ---: |
+| 1 | 0.0410 ms | 0.0051 ms | 8.039x |
+| 8 | 0.0440 ms | 0.0051 ms | 8.627x |
+| 32 | 0.0461 ms | 0.0061 ms | 7.557x |
+| 128 | 0.0481 ms | 0.0072 ms | 6.681x |
+| 512 | 0.0635 ms | 0.0133 ms | 4.774x |
+| 4096 | 0.2038 ms | 0.0768 ms | 2.654x |
+
+All measured shapes passed correctness. Max absolute error was 0.0 in the raw
+reports because the reference and Triton kernel use the same half-rotation
+formula and store to FP16 cache tensors.
+
+Raw reports:
+
+- `benchmarks/results/l20-rope-kv-v1/run1/`
+- `benchmarks/results/l20-rope-kv-v1/run2/`
+- `benchmarks/results/l20-rope-kv-v1/run3/`
+
+Sources:
+
+- https://arxiv.org/abs/2309.06180
+- https://github.com/vllm-project/vllm
+- https://github.com/Dao-AILab/flash-attention
+- https://docs.flashinfer.ai/

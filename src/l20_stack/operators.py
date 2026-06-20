@@ -10,6 +10,7 @@ from l20_stack.ops.triton_rmsnorm import (
     residual_rmsnorm_launch_config,
     rmsnorm_launch_config,
 )
+from l20_stack.ops.triton_rope_kv import rope_kv_launch_config
 
 
 @dataclass(frozen=True)
@@ -98,6 +99,24 @@ def rope_arithmetic_intensity(shape: OperatorShape) -> float:
     return flops / bytes_moved
 
 
+def rope_kv_minimum_bytes(shape: OperatorShape, fused: bool) -> int:
+    """Return a traffic model for RoPE on K plus K/V cache writes."""
+
+    if shape.rows <= 0 or shape.hidden_size <= 0 or shape.dtype_bytes <= 0:
+        raise ValueError("operator shape dimensions must be positive")
+    elements = shape.rows * shape.hidden_size
+    # Fused: read K and V once, write K-cache and V-cache once. Unfused:
+    # read K, write rotated K, read rotated K, write K-cache, read/write V.
+    tensor_elements = 4 * elements if fused else 6 * elements
+    return tensor_elements * shape.dtype_bytes
+
+
+def rope_kv_arithmetic_intensity(shape: OperatorShape) -> float:
+    # RoPE does two multiplies and one add/sub per rotated element.
+    flops = shape.rows * shape.hidden_size * 3
+    return flops / rope_kv_minimum_bytes(shape, fused=True)
+
+
 def dequant_matvec_arithmetic_intensity(shape: OperatorShape) -> float:
     if shape.rows <= 0 or shape.hidden_size <= 0 or shape.dtype_bytes <= 0:
         raise ValueError("operator shape dimensions must be positive")
@@ -164,6 +183,33 @@ def plan_operator(target: OperatorTarget) -> OperatorPlan:
                 "Fuse RoPE with KV-cache layout writes after RMSNorm benchmark data exists."
             ),
             launch={"strategy": "not_implemented_yet"},
+        )
+
+    if name == "rope_kv_cache_write":
+        intensity = rope_kv_arithmetic_intensity(shape)
+        fused_bytes = rope_kv_minimum_bytes(shape, fused=True)
+        unfused_bytes = rope_kv_minimum_bytes(shape, fused=False)
+        reduction_pct = 100 * (unfused_bytes - fused_bytes) / unfused_bytes
+        launch = rope_kv_launch_config(shape.hidden_size).to_dict()
+        launch.update(
+            {
+                "fused_minimum_bytes": fused_bytes,
+                "unfused_minimum_bytes": unfused_bytes,
+                "minimum_traffic_reduction_pct": round(reduction_pct, 2),
+            }
+        )
+        return OperatorPlan(
+            name=name,
+            shape=shape,
+            arithmetic_intensity_flops_per_byte=intensity,
+            roofline_class=classify_roofline(intensity, "fp16"),
+            priority=2,
+            recommendation=(
+                "Benchmark fused RoPE + KV-cache writes against separate PyTorch "
+                "rotation and cache assignment on the target L20. For this target, "
+                "shape.rows is tokens * kv_heads and shape.hidden_size is head_dim."
+            ),
+            launch=launch,
         )
 
     if name == "dequant_matvec":

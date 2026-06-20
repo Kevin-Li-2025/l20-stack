@@ -1,0 +1,52 @@
+{
+  "all_correct": true,
+  "benchmark_version": 1,
+  "cache_flush_mb": 256,
+  "compute_capability": "8.9",
+  "cuda": "13.0",
+  "fused_minimum_bytes": 262144,
+  "gpu_name": "NVIDIA L20",
+  "measured_iterations": 100,
+  "minimum_traffic_reduction_pct": 33.33,
+  "note": "The fused provider applies RoPE to K and writes K/V cache in one Triton launch. The baseline materializes rotated K before assigning K/V cache.",
+  "providers": {
+    "torch_separate": {
+      "atol": 0.005,
+      "correct": true,
+      "max_abs_error": 0.0,
+      "max_rel_error": 0.0,
+      "minimum_effective_gbps": 8.73,
+      "rtol": 0.001,
+      "speedup_vs_torch_separate": 1.0,
+      "timing_ms": {
+        "mean": 0.0452,
+        "p50": 0.0451,
+        "p95": 0.0461
+      }
+    },
+    "triton_fused": {
+      "atol": 0.005,
+      "correct": true,
+      "max_abs_error": 0.0,
+      "max_rel_error": 0.0,
+      "minimum_effective_gbps": 42.67,
+      "rtol": 0.001,
+      "speedup_vs_torch_separate": 7.393,
+      "timing_ms": {
+        "mean": 0.0066,
+        "p50": 0.0061,
+        "p95": 0.0072
+      }
+    }
+  },
+  "shape": {
+    "dtype": "float16",
+    "head_dim": 128,
+    "kv_heads": 8,
+    "tokens": 32
+  },
+  "torch": "2.12.1+cu130",
+  "triton": "3.7.1",
+  "unfused_minimum_bytes": 393216,
+  "warmup_iterations": 25
+}

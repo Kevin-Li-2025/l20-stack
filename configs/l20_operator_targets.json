@@ -27,9 +27,9 @@
       }
     },
     {
-      "name": "rope",
+      "name": "rope_kv_cache_write",
       "shape": {
-        "rows": 8192,
+        "rows": 256,
         "hidden_size": 128,
         "dtype_bytes": 2
       }

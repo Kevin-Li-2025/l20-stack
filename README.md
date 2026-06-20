@@ -31,6 +31,8 @@ Implemented:
   rows against FlashInfer.
 - A benchmark-policy analyzer that rebuilds L20 dispatch decisions from repeated
   JSON reports and fails when a stable measured winner disagrees with the code.
+- A fused RoPE + contiguous KV-cache write Triton kernel for L20 decode and
+  prefill cache updates.
 
 Not implemented yet:
 
@@ -72,6 +74,12 @@ For production inference, install the optional `production-kernels` extra and
 use `residual_rmsnorm_l20_inplace`. On the measured L20, its speedup over
 PyTorch eager ranges from 1.62x-2.28x for decode batches and 1.01x-1.18x for
 4096-row prefill, depending on hidden size.
+
+The larger fusion target is now RoPE + KV-cache write. On the measured L20,
+`scripts/benchmark_rope_kv.py` shows the fused Triton path is 8.0x-8.6x faster
+than a separate PyTorch rotation plus cache assignment in decode-sized batches,
+and 2.65x faster at 4096 tokens for the tested `[tokens, 8 kv_heads, 128
+head_dim]` layout.
 
 To regenerate the measured residual RMSNorm policy from the checked-in L20
 reports:
