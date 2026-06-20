@@ -64,7 +64,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "plans": [plan.to_dict() for plan in plans],
                     "note": (
                         "This is an optimization plan, not a measured result. "
-                        "Run the RMSNorm benchmark on real L20 hardware before claiming speedup."
+                        "Run the v2 RMSNorm benchmark on real L20 hardware before claiming speedup."
                     ),
                 },
                 indent=2,

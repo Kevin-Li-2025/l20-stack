@@ -1,4 +1,4 @@
-"""Triton RMSNorm baseline tuned for L20-style Ada GPUs.
+"""Triton RMSNorm kernels tuned for L20-style Ada GPUs.
 
 The module is importable without Triton. Calling `rmsnorm_triton` requires
 PyTorch and Triton on a CUDA machine.
@@ -50,24 +50,35 @@ def rmsnorm_launch_config(hidden_size: int) -> RmsNormLaunchConfig:
     if block_size > 16384:
         raise ValueError("single-pass RMSNorm baseline supports hidden_size <= 16384")
 
-    if block_size <= 1024:
+    if block_size <= 512:
+        num_warps = 2
+    elif block_size <= 1024:
         num_warps = 4
-    elif block_size <= 8192:
-        num_warps = 8
     else:
-        num_warps = 16
+        num_warps = 8
 
     return RmsNormLaunchConfig(
         hidden_size=hidden_size,
         block_size=block_size,
         num_warps=num_warps,
-        num_stages=4,
+        num_stages=1,
         sm_target="sm_89",
         rationale=(
             "one Triton program per row, FP32 reduction, power-of-two block, "
-            "warps chosen to balance occupancy and register pressure on Ada"
+            "and at most 8 warps to limit register pressure on SM89"
         ),
     )
+
+
+def rmsnorm_warp_candidates(hidden_size: int):
+    """Return the small launch sweep worth measuring on the target L20."""
+
+    config = rmsnorm_launch_config(hidden_size)
+    if config.block_size <= 512:
+        return (2, 4)
+    if config.block_size <= 1024:
+        return (4, 8)
+    return (4, 8)
 
 
 if triton is not None:  # pragma: no cover - requires Triton
@@ -84,6 +95,30 @@ if triton is not None:  # pragma: no cover - requires Triton
         y_row = x_row * inv_rms * weight_row
         tl.store(y + row * n_cols + offsets, y_row, mask=mask)
 
+    @triton.jit
+    def _residual_rmsnorm_kernel(
+        x,
+        residual,
+        weight,
+        y,
+        residual_out,
+        n_cols: tl.constexpr,
+        eps: tl.constexpr,
+        block: tl.constexpr,
+    ):
+        row = tl.program_id(0)
+        offsets = tl.arange(0, block)
+        mask = offsets < n_cols
+        row_offsets = row * n_cols + offsets
+        x_row = tl.load(x + row_offsets, mask=mask, other=0.0).to(tl.float32)
+        residual_row = tl.load(residual + row_offsets, mask=mask, other=0.0).to(tl.float32)
+        merged = x_row + residual_row
+        weight_row = tl.load(weight + offsets, mask=mask, other=0.0).to(tl.float32)
+        mean_square = tl.sum(merged * merged, axis=0) / n_cols
+        inv_rms = tl.rsqrt(mean_square + eps)
+        tl.store(residual_out + row_offsets, merged, mask=mask)
+        tl.store(y + row_offsets, merged * inv_rms * weight_row, mask=mask)
+
 
 def rmsnorm_reference(x, weight, eps: float = 1e-6):
     """PyTorch reference implementation for correctness checks."""
@@ -94,7 +129,18 @@ def rmsnorm_reference(x, weight, eps: float = 1e-6):
     return (x.float() * torch.rsqrt(variance + eps) * weight.float()).to(x.dtype)
 
 
-def rmsnorm_triton(x, weight, eps: float = 1e-6):
+def residual_rmsnorm_reference(x, residual, weight, eps: float = 1e-6):
+    """PyTorch reference for residual add followed by RMSNorm."""
+
+    if torch is None:
+        raise RuntimeError("residual_rmsnorm_reference requires torch")
+    merged = x.float() + residual.float()
+    variance = merged.pow(2).mean(dim=-1, keepdim=True)
+    normalized = merged * torch.rsqrt(variance + eps) * weight.float()
+    return normalized.to(x.dtype), merged.to(x.dtype)
+
+
+def rmsnorm_triton(x, weight, eps: float = 1e-6, num_warps=None):
     """Run the Triton RMSNorm baseline.
 
     `x` must be a 2D CUDA tensor with a contiguous hidden dimension.
@@ -114,6 +160,9 @@ def rmsnorm_triton(x, weight, eps: float = 1e-6):
 
     rows, hidden_size = x.shape
     config = rmsnorm_launch_config(int(hidden_size))
+    launch_warps = config.num_warps if num_warps is None else int(num_warps)
+    if launch_warps not in rmsnorm_warp_candidates(int(hidden_size)):
+        raise ValueError("num_warps is not an L20 launch candidate for this hidden size")
     y = torch.empty_like(x)
     _rmsnorm_kernel[(rows,)](
         x,
@@ -122,7 +171,53 @@ def rmsnorm_triton(x, weight, eps: float = 1e-6):
         hidden_size,
         eps,
         config.block_size,
-        num_warps=config.num_warps,
+        num_warps=launch_warps,
         num_stages=config.num_stages,
     )
     return y
+
+
+def residual_rmsnorm_triton(x, residual, weight, eps: float = 1e-6, num_warps=None):
+    """Fuse residual addition with RMSNorm and return ``(normalized, residual_out)``.
+
+    The fused path avoids reading the materialized residual sum back from device
+    memory. It is an inference-forward kernel and does not provide autograd.
+    """
+
+    if torch is None or triton is None:
+        raise RuntimeError("residual_rmsnorm_triton requires torch and triton")
+    if x.dim() != 2:
+        raise ValueError("x must be 2D [rows, hidden_size]")
+    if residual.shape != x.shape:
+        raise ValueError("residual must match x shape")
+    if weight.dim() != 1 or weight.numel() != x.shape[1]:
+        raise ValueError("weight must be 1D and match hidden_size")
+    if not x.is_cuda or not residual.is_cuda or not weight.is_cuda:
+        raise ValueError("x, residual, and weight must be CUDA tensors")
+    if x.dtype != residual.dtype:
+        raise ValueError("x and residual must have the same dtype")
+    if not x.is_contiguous():
+        x = x.contiguous()
+    if not residual.is_contiguous():
+        residual = residual.contiguous()
+
+    rows, hidden_size = x.shape
+    config = rmsnorm_launch_config(int(hidden_size))
+    launch_warps = config.num_warps if num_warps is None else int(num_warps)
+    if launch_warps not in rmsnorm_warp_candidates(int(hidden_size)):
+        raise ValueError("num_warps is not an L20 launch candidate for this hidden size")
+    y = torch.empty_like(x)
+    residual_out = torch.empty_like(x)
+    _residual_rmsnorm_kernel[(rows,)](
+        x,
+        residual,
+        weight,
+        y,
+        residual_out,
+        hidden_size,
+        eps,
+        config.block_size,
+        num_warps=launch_warps,
+        num_stages=config.num_stages,
+    )
+    return y, residual_out

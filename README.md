@@ -22,14 +22,15 @@ Implemented:
 - JSON experiment config loader.
 - CLI entry point for producing a machine-readable plan.
 - Unit tests that run without CUDA, PyTorch, or model downloads.
+- SM89 Triton RMSNorm and fused residual RMSNorm forward kernels.
+- CUDA Event benchmark matrix for PyTorch eager, `torch.compile`, and Triton.
 
 Not implemented yet:
 
 - Real training loop.
 - vLLM integration.
-- CUDA kernels.
 - Published model weights.
-- Benchmark claims.
+- L20-verified benchmark claims.
 
 ## Quick Check
 

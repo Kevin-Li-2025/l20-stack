@@ -3,6 +3,14 @@
   "workload": "llm-inference-and-qlora",
   "operators": [
     {
+      "name": "residual_rmsnorm",
+      "shape": {
+        "rows": 4096,
+        "hidden_size": 4096,
+        "dtype_bytes": 2
+      }
+    },
+    {
       "name": "rmsnorm",
       "shape": {
         "rows": 4096,

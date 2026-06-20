@@ -17,6 +17,10 @@ class GpuSpec:
     bf16_tflops: float
     fp8_tflops: float
     int8_tops: float
+    fp16_sparse_tflops: float
+    bf16_sparse_tflops: float
+    fp8_sparse_tflops: float
+    int8_sparse_tops: float
     tdp_w: int
     interconnect: str
     pcie_generation: int
@@ -31,10 +35,14 @@ L20_SPEC = GpuSpec(
     compute_capability="8.9",
     vram_gb=48.0,
     memory_bandwidth_gbps=864.0,
-    fp16_tflops=239.0,
-    bf16_tflops=239.0,
-    fp8_tflops=478.0,
-    int8_tops=478.0,
+    fp16_tflops=59.8,
+    bf16_tflops=59.8,
+    fp8_tflops=119.5,
+    int8_tops=119.5,
+    fp16_sparse_tflops=119.5,
+    bf16_sparse_tflops=119.5,
+    fp8_sparse_tflops=239.0,
+    int8_sparse_tops=239.0,
     tdp_w=275,
     interconnect="PCIe",
     pcie_generation=4,

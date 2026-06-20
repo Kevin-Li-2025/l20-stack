@@ -53,14 +53,37 @@ class OperatorPlan:
 
 
 def rmsnorm_arithmetic_intensity(shape: OperatorShape) -> float:
-    """Approximate RMSNorm arithmetic intensity for one read, weight read, and output write."""
+    """Approximate RMSNorm intensity using minimum device-memory traffic."""
 
     if shape.rows <= 0 or shape.hidden_size <= 0 or shape.dtype_bytes <= 0:
         raise ValueError("operator shape dimensions must be positive")
     # Square + reduction add + scale multiply + weight multiply.
     flops = shape.rows * shape.hidden_size * 4
-    bytes_moved = shape.rows * shape.hidden_size * shape.dtype_bytes * 3
+    bytes_moved = rmsnorm_minimum_bytes(shape)
     return flops / bytes_moved
+
+
+def rmsnorm_minimum_bytes(shape: OperatorShape) -> int:
+    if shape.rows <= 0 or shape.hidden_size <= 0 or shape.dtype_bytes <= 0:
+        raise ValueError("operator shape dimensions must be positive")
+    elements = shape.rows * shape.hidden_size
+    return (2 * elements + shape.hidden_size) * shape.dtype_bytes
+
+
+def residual_rmsnorm_minimum_bytes(shape: OperatorShape, fused: bool) -> int:
+    """Return the semantic traffic lower bound, including required residual output."""
+
+    if shape.rows <= 0 or shape.hidden_size <= 0 or shape.dtype_bytes <= 0:
+        raise ValueError("operator shape dimensions must be positive")
+    elements = shape.rows * shape.hidden_size
+    tensor_elements = 4 * elements if fused else 5 * elements
+    return (tensor_elements + shape.hidden_size) * shape.dtype_bytes
+
+
+def residual_rmsnorm_arithmetic_intensity(shape: OperatorShape) -> float:
+    # Residual add plus RMSNorm square, reduction, and two scaling multiplies.
+    flops = shape.rows * shape.hidden_size * 5
+    return flops / residual_rmsnorm_minimum_bytes(shape, fused=True)
 
 
 def rope_arithmetic_intensity(shape: OperatorShape) -> float:
@@ -85,8 +108,19 @@ def plan_operator(target: OperatorTarget) -> OperatorPlan:
     name = target.name.lower()
     shape = target.shape
 
-    if name == "rmsnorm":
-        intensity = rmsnorm_arithmetic_intensity(shape)
+    if name == "residual_rmsnorm":
+        intensity = residual_rmsnorm_arithmetic_intensity(shape)
+        fused_bytes = residual_rmsnorm_minimum_bytes(shape, fused=True)
+        unfused_bytes = residual_rmsnorm_minimum_bytes(shape, fused=False)
+        reduction_pct = 100 * (unfused_bytes - fused_bytes) / unfused_bytes
+        launch = rmsnorm_launch_config(shape.hidden_size).to_dict()
+        launch.update(
+            {
+                "fused_minimum_bytes": fused_bytes,
+                "unfused_minimum_bytes": unfused_bytes,
+                "minimum_traffic_reduction_pct": round(reduction_pct, 2),
+            }
+        )
         return OperatorPlan(
             name=name,
             shape=shape,
@@ -94,8 +128,23 @@ def plan_operator(target: OperatorTarget) -> OperatorPlan:
             roofline_class=classify_roofline(intensity, "fp16"),
             priority=1,
             recommendation=(
-                "Use the L20 Triton RMSNorm baseline first; benchmark against PyTorch eager "
-                "and torch.compile before adding residual fusion."
+                "Benchmark fused residual add + RMSNorm against PyTorch eager and "
+                "torch.compile on the target L20."
+            ),
+            launch=launch,
+        )
+
+    if name == "rmsnorm":
+        intensity = rmsnorm_arithmetic_intensity(shape)
+        return OperatorPlan(
+            name=name,
+            shape=shape,
+            arithmetic_intensity_flops_per_byte=intensity,
+            roofline_class=classify_roofline(intensity, "fp16"),
+            priority=2,
+            recommendation=(
+                "Keep standalone RMSNorm as a control for the fused residual path and compare "
+                "against PyTorch eager and torch.compile."
             ),
             launch=rmsnorm_launch_config(shape.hidden_size).to_dict(),
         )
@@ -107,7 +156,7 @@ def plan_operator(target: OperatorTarget) -> OperatorPlan:
             shape=shape,
             arithmetic_intensity_flops_per_byte=intensity,
             roofline_class=classify_roofline(intensity, "fp16"),
-            priority=2,
+            priority=3,
             recommendation=(
                 "Fuse RoPE with KV-cache layout writes after RMSNorm benchmark data exists."
             ),
@@ -121,7 +170,7 @@ def plan_operator(target: OperatorTarget) -> OperatorPlan:
             shape=shape,
             arithmetic_intensity_flops_per_byte=intensity,
             roofline_class=classify_roofline(intensity, "fp16"),
-            priority=3,
+            priority=5,
             recommendation=(
                 "Fuse dequantization with the consumer matvec/matmul staging path; do not "
                 "benchmark dequant as an isolated final target."
@@ -140,6 +189,6 @@ def l20_operator_summary() -> Dict[str, object]:
     return {
         "hardware": L20_SPEC.to_dict(),
         "compile_target": "sm_89",
-        "first_kernel_target": "rmsnorm",
+        "first_kernel_target": "residual_rmsnorm",
         "baseline_rule": "measure PyTorch eager and torch.compile before claiming custom speedup",
     }
