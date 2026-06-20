@@ -1,0 +1,26 @@
+{
+  "task": "qlora-smoke-plan",
+  "dataset": "placeholder/local-jsonl",
+  "output_dir": "outputs/qlora-smoke-plan",
+  "model": {
+    "name": "Qwen/Qwen2.5-7B-Instruct",
+    "params_b": 7.6,
+    "hidden_size": 3584,
+    "layers": 28,
+    "target_modules_per_layer": 4
+  },
+  "training": {
+    "seq_len": 4096,
+    "micro_batch_size": 1,
+    "grad_accum_steps": 16,
+    "lora_rank": 64,
+    "quant_bits": 4,
+    "activation_checkpointing": true,
+    "activation_bytes": 2,
+    "activation_multiplier": 3.0,
+    "optimizer_bytes_per_param": 10,
+    "device_memory_gib": 48.0,
+    "reserved_memory_gib": 4.0,
+    "safety_margin_gib": 2.0
+  }
+}

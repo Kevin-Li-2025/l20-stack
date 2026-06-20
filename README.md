@@ -1,0 +1,54 @@
+# L20 Stack
+
+Private research repo for a single-GPU LLM infrastructure stack on an NVIDIA L20 48 GB machine.
+
+This repo starts deliberately small. The near-term target is not to claim a complete replacement for Megatron-LM, vLLM, PEFT, or TRL. The target is to build a reproducible experimental stack that can answer one question at a time:
+
+> What can a single L20 actually train, fine-tune, serve, and benchmark without hand-wavy claims?
+
+## Initial Scope
+
+- QLoRA planning and smoke tests for single-card fine-tuning.
+- Memory budgeting before launching expensive jobs.
+- Reproducible experiment manifests.
+- Inference benchmark harness design before custom kernels.
+- Clear research notes that separate implemented results from hypotheses.
+
+## Current State
+
+Implemented:
+
+- Standard-library memory estimator for LoRA and QLoRA training plans.
+- JSON experiment config loader.
+- CLI entry point for producing a machine-readable plan.
+- Unit tests that run without CUDA, PyTorch, or model downloads.
+
+Not implemented yet:
+
+- Real training loop.
+- vLLM integration.
+- CUDA kernels.
+- Published model weights.
+- Benchmark claims.
+
+## Quick Check
+
+Use the system Python on this machine if the default `python3` shim is broken:
+
+```bash
+PYTHONPATH=src /usr/bin/python3 -m unittest discover -s tests
+PYTHONPATH=src /usr/bin/python3 -m l20_stack.cli plan --config configs/qlora_l20.json
+```
+
+## Repo Policy
+
+- Do not commit API keys, Hugging Face tokens, wandb tokens, SSH keys, or local credential files.
+- Do not commit raw datasets, checkpoints, model weights, or generated benchmark output.
+- Keep every performance claim tied to a config, hardware note, and command that reproduced it.
+
+## First Milestones
+
+1. Add a real QLoRA fine-tuning runner with a tiny local fixture and a real dataset switch.
+2. Add vLLM baseline serving benchmarks before any custom kernel work.
+3. Run L20-specific profiling and record memory, throughput, and latency numbers.
+4. Only then decide whether a custom PagedAttention or quantization kernel is justified.

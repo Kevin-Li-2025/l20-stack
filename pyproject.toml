@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "l20-stack"
+version = "0.1.0"
+description = "Single-GPU L20 LLM infrastructure experiments."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Kevin Li" }]
+dependencies = []
+
+[project.optional-dependencies]
+train = [
+  "accelerate>=0.34",
+  "bitsandbytes>=0.43",
+  "datasets>=2.20",
+  "peft>=0.12",
+  "torch>=2.4",
+  "transformers>=4.44",
+  "trl>=0.9",
+]
+serve = [
+  "vllm>=0.6",
+]
+dev = [
+  "pytest>=8",
+  "ruff>=0.6",
+]
+
+[project.scripts]
+l20-stack = "l20_stack.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
