@@ -119,9 +119,9 @@ if triton is not None:  # pragma: no cover - requires Triton
         offsets = tl.arange(0, block)
         mask = offsets < n_cols
         x_row = tl.load(x + row * n_cols + offsets, mask=mask, other=0.0).to(tl.float32)
-        weight_row = tl.load(weight + offsets, mask=mask, other=0.0).to(tl.float32)
         mean_square = tl.sum(x_row * x_row, axis=0) / n_cols
         inv_rms = tl.rsqrt(mean_square + eps)
+        weight_row = tl.load(weight + offsets, mask=mask, other=0.0).to(tl.float32)
         y_row = x_row * inv_rms * weight_row
         tl.store(y + row * n_cols + offsets, y_row, mask=mask)
 
@@ -140,15 +140,15 @@ if triton is not None:  # pragma: no cover - requires Triton
         offsets = tl.arange(0, block)
         mask = offsets < n_cols
         row_offsets = row * n_cols + offsets
-        x_row = tl.load(x + row_offsets, mask=mask, other=0.0).to(tl.float32)
-        residual_row = tl.load(residual + row_offsets, mask=mask, other=0.0).to(tl.float32)
-        merged = x_row + residual_row
-        weight_row = tl.load(weight + offsets, mask=mask, other=0.0).to(tl.float32)
-        mean_square = tl.sum(merged * merged, axis=0) / n_cols
-        inv_rms = tl.rsqrt(mean_square + eps)
+        x_row = tl.load(x + row_offsets, mask=mask, other=0.0)
+        residual_row = tl.load(residual + row_offsets, mask=mask, other=0.0)
+        merged = (x_row + residual_row).to(x_row.dtype)
         tl.store(residual_out + row_offsets, merged, mask=mask)
-        tl.store(y + row_offsets, merged * inv_rms * weight_row, mask=mask)
-
+        merged_float = merged.to(tl.float32)
+        mean_square = tl.sum(merged_float * merged_float, axis=0) / n_cols
+        inv_rms = tl.rsqrt(mean_square + eps)
+        weight_row = tl.load(weight + offsets, mask=mask, other=0.0).to(tl.float32)
+        tl.store(y + row_offsets, merged_float * inv_rms * weight_row, mask=mask)
 
 def rmsnorm_reference(x, weight, eps: float = 1e-6):
     """PyTorch reference implementation for correctness checks."""
@@ -164,10 +164,11 @@ def residual_rmsnorm_reference(x, residual, weight, eps: float = 1e-6):
 
     if torch is None:
         raise RuntimeError("residual_rmsnorm_reference requires torch")
-    merged = x.float() + residual.float()
-    variance = merged.pow(2).mean(dim=-1, keepdim=True)
-    normalized = merged * torch.rsqrt(variance + eps) * weight.float()
-    return normalized.to(x.dtype), merged.to(x.dtype)
+    merged = x + residual
+    merged_float = merged.float()
+    variance = merged_float.pow(2).mean(dim=-1, keepdim=True)
+    normalized = merged_float * torch.rsqrt(variance + eps) * weight.float()
+    return normalized.to(x.dtype), merged
 
 
 def rmsnorm_triton(x, weight, eps: float = 1e-6, num_warps=None):
@@ -189,7 +190,7 @@ def rmsnorm_triton(x, weight, eps: float = 1e-6, num_warps=None):
         x = x.contiguous()
 
     rows, hidden_size = x.shape
-    config = residual_rmsnorm_launch_config(int(hidden_size))
+    config = rmsnorm_launch_config(int(hidden_size))
     launch_warps = config.num_warps if num_warps is None else int(num_warps)
     if launch_warps not in rmsnorm_warp_candidates(int(hidden_size)):
         raise ValueError("num_warps is not an L20 launch candidate for this hidden size")
@@ -232,7 +233,7 @@ def residual_rmsnorm_triton(x, residual, weight, eps: float = 1e-6, num_warps=No
         residual = residual.contiguous()
 
     rows, hidden_size = x.shape
-    config = rmsnorm_launch_config(int(hidden_size))
+    config = residual_rmsnorm_launch_config(int(hidden_size))
     launch_warps = config.num_warps if num_warps is None else int(num_warps)
     if launch_warps not in rmsnorm_warp_candidates(int(hidden_size)):
         raise ValueError("num_warps is not an L20 launch candidate for this hidden size")
@@ -251,3 +252,30 @@ def residual_rmsnorm_triton(x, residual, weight, eps: float = 1e-6, num_warps=No
         num_stages=config.num_stages,
     )
     return y, residual_out
+
+
+def residual_rmsnorm_backend(hidden_size: int) -> str:
+    """Return the measured L20 backend for a hidden size."""
+
+    return "triton" if hidden_size == 8192 else "torch_eager"
+
+
+def residual_rmsnorm_l20(x, residual, weight, eps: float = 1e-6):
+    """Dispatch to the fastest measured residual RMSNorm path on L20."""
+
+    if torch is None:
+        raise RuntimeError("residual_rmsnorm_l20 requires torch")
+    if x.dim() != 2 or residual.shape != x.shape:
+        raise ValueError("x and residual must be matching 2D tensors")
+    if weight.dim() != 1 or weight.numel() != x.shape[1]:
+        raise ValueError("weight must be 1D and match hidden_size")
+
+    hidden_size = int(x.shape[1])
+    if residual_rmsnorm_backend(hidden_size) == "triton":
+        return residual_rmsnorm_triton(x, residual, weight, eps)
+
+    residual_out = x + residual
+    normalized = torch.nn.functional.rms_norm(
+        residual_out, (hidden_size,), weight, eps
+    )
+    return normalized, residual_out

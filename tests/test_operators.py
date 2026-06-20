@@ -8,6 +8,7 @@ from l20_stack.operators import (
 )
 from l20_stack.ops.triton_rmsnorm import (
     next_power_of_2,
+    residual_rmsnorm_backend,
     residual_rmsnorm_launch_config,
     rmsnorm_launch_config,
     rmsnorm_warp_candidates,
@@ -47,6 +48,12 @@ class OperatorPlanTest(unittest.TestCase):
         self.assertEqual(plan.priority, 1)
         self.assertEqual(plan.roofline_class, "memory_bound")
         self.assertAlmostEqual(plan.launch["minimum_traffic_reduction_pct"], 20.0, places=2)
+
+    def test_l20_residual_rmsnorm_dispatch_uses_measured_crossover(self):
+        self.assertEqual(residual_rmsnorm_backend(4096), "torch_eager")
+        self.assertEqual(residual_rmsnorm_backend(5120), "torch_eager")
+        self.assertEqual(residual_rmsnorm_backend(6144), "torch_eager")
+        self.assertEqual(residual_rmsnorm_backend(8192), "triton")
 
     def test_oversized_single_pass_rmsnorm_is_rejected(self):
         with self.assertRaises(ValueError):

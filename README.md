@@ -25,6 +25,8 @@ Implemented:
 - SM89 Triton RMSNorm and fused residual RMSNorm forward kernels.
 - CUDA Event benchmark matrix for PyTorch eager, `torch.compile`, and Triton.
 - Three cold-cache L20 benchmark runs with shape-specific 4/8-warp launch choices.
+- A measured residual RMSNorm dispatcher that avoids slower custom paths below
+  the 8192 hidden-size crossover.
 
 Not implemented yet:
 

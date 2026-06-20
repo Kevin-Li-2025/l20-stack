@@ -204,3 +204,66 @@ Raw reports:
 - `benchmarks/results/l20-rmsnorm-v2-cold-run1.json`
 - `benchmarks/results/l20-rmsnorm-v2-cold-run2.json`
 - `benchmarks/results/l20-rmsnorm-v2-cold-run3.json`
+
+## V3 Register and Dispatch Study
+
+The v3 pass focused on the fused residual kernel at hidden sizes 4096, 5120, and
+6144. Triton 3.7.1 compiled the original 4-warp kernels without spills, but the
+register footprint limited theoretical SM89 occupancy:
+
+| Hidden | Original registers/thread | Original theoretical occupancy |
+| ---: | ---: | ---: |
+| 4096 | 72 | 58.3% |
+| 5120 | 90 | 41.7% |
+| 6144 | 104 | 33.3% |
+
+Moving the weight load after the reduction prevents the full weight row from
+remaining live across the reduction. Computing the residual sum in the input
+dtype before converting it to FP32 for accumulation reduces the final register
+footprint:
+
+| Hidden | Warps | Registers/thread | Spills | Theoretical occupancy |
+| ---: | ---: | ---: | ---: | ---: |
+| 4096 | 4 | 60 | 0 | 66.7% |
+| 4096 | 8 | 40 | 0 | 100.0% |
+| 5120 | 4 | 66 | 0 | 58.3% |
+| 5120 | 8 | 40 | 0 | 100.0% |
+| 6144 | 4 | 77 | 0 | 50.0% |
+| 6144 | 8 | 48 | 0 | 83.3% |
+
+Higher occupancy did not translate directly into lower latency. The following
+experiments were measured and rejected:
+
+- 16-warp blocks reached full theoretical occupancy but were slower.
+- `.cg` activation loads and `.cs` streaming stores were slower on all three sizes.
+- 512/1024/2048-element two-pass chunks reduced registers to 22-40 per thread,
+  but the extra residual read outweighed the occupancy improvement.
+- `tl.assume(n_cols % 16 == 0)` did not materially change latency.
+
+Three final cold-cache runs show that 4096 and 5120 remain 4-6% slower with the
+custom fused kernel. At 6144, eager, compiled, and Triton paths are within about
+1%, which is below the threshold for a stable custom-kernel claim. The measured
+L20 dispatcher therefore uses PyTorch eager for 4096, 5120, and 6144, and the
+Triton fused kernel only at the proven 8192 crossover.
+
+Median p50 across the three final runs:
+
+| Hidden | Eager p50 | Dispatch p50 | Dispatch vs eager | Selected backend |
+| ---: | ---: | ---: | ---: | --- |
+| 4096 | 0.2048 ms | 0.2058 ms | 0.995x | PyTorch eager |
+| 5120 | 0.2570 ms | 0.2570 ms | 1.000x | PyTorch eager |
+| 6144 | 0.3246 ms | 0.3215 ms | 1.010x | PyTorch eager |
+| 8192 | 0.4844 ms | 0.4198 ms | 1.154x | Triton fused |
+
+Raw v3 reports are under
+`benchmarks/results/l20-residual-rmsnorm-v3/`. The dispatch decision is
+intentionally conservative: a sub-2% microbenchmark lead is not enough to add
+a custom production path.
+
+Implementation references for this pass:
+
+- https://triton-lang.org/main/python-api/generated/triton.language.load.html
+- https://triton-lang.org/main/python-api/generated/triton.language.store.html
+- https://triton-lang.org/main/python-api/generated/triton.language.multiple_of.html
+- https://triton-lang.org/main/python-api/generated/triton.language.max_contiguous.html
+- https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#cache-operators

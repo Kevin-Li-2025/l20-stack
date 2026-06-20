@@ -15,6 +15,7 @@ from l20_stack.operators import (
 )
 from l20_stack.ops.triton_rmsnorm import (
     residual_rmsnorm_reference,
+    residual_rmsnorm_l20,
     residual_rmsnorm_triton,
     rmsnorm_reference,
     rmsnorm_triton,
@@ -234,6 +235,9 @@ def benchmark_shape(torch, args, hidden_size):
             return normalized, merged
 
         providers = {"torch_eager": lambda: torch_residual_rmsnorm(x, residual, weight)}
+        providers["l20_dispatch"] = lambda: residual_rmsnorm_l20(
+            x, residual, weight, args.eps
+        )
         for num_warps in rmsnorm_warp_candidates(hidden_size):
             providers[f"triton_w{num_warps}"] = (
                 lambda warps=num_warps: residual_rmsnorm_triton(
