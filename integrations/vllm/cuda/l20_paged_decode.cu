@@ -330,7 +330,7 @@ torch::Tensor l20_paged_decode_cuda(
   const at::cuda::CUDAGuard guard(query.device());
   auto output = torch::empty_like(query);
   const dim3 grid(query.size(1), query.size(0));
-  paged_decode_kernel<<<grid, 256, 0, at::cuda::getDefaultCUDAStream()>>>(
+  paged_decode_kernel<<<grid, 256, 0, at::cuda::getCurrentCUDAStream()>>>(
       reinterpret_cast<const half*>(query.data_ptr<at::Half>()),
       reinterpret_cast<const half*>(key_cache.data_ptr<at::Half>()),
       reinterpret_cast<const half*>(value_cache.data_ptr<at::Half>()),
@@ -414,7 +414,7 @@ void l20_paged_decode_split_out_cuda(
       partial_output.size(2) >= num_splits &&
           partial_output.size(3) == kHeadDim,
       "partial output workspace has wrong shape");
-  const auto stream = at::cuda::getDefaultCUDAStream();
+  const auto stream = at::cuda::getCurrentCUDAStream();
   const dim3 partial_grid(query.size(1), num_splits, query.size(0));
   paged_decode_partial_kernel<<<partial_grid, 256, 0, stream>>>(
       reinterpret_cast<const half*>(query.data_ptr<at::Half>()),
@@ -462,7 +462,7 @@ void l20_paged_decode_split_indices_out_cuda(
     int64_t split_size) {
   const at::cuda::CUDAGuard guard(query.device());
   const int num_splits = (max_seq_len + split_size - 1) / split_size;
-  const auto stream = at::cuda::getDefaultCUDAStream();
+  const auto stream = at::cuda::getCurrentCUDAStream();
   paged_decode_partial_kernel<<<
       dim3(query.size(1), num_splits, query.size(0)),
       256,

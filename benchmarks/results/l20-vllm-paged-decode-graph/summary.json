@@ -1,0 +1,85 @@
+{
+  "cuda_graph": true,
+  "gpu": "NVIDIA L20",
+  "gpu_memory_utilization": 0.85,
+  "model": "Qwen3-0.6B FP16",
+  "reports": [
+    {
+      "baseline": {
+        "median_itl_ms": 2.6992439525201917,
+        "median_ttft_ms": 27.47779997298494,
+        "output_throughput": 345.2142346630171,
+        "p95_itl_ms": 2.8876246651634574,
+        "p95_ttft_ms": 34.98117522685789
+      },
+      "concurrency": 1,
+      "delta_pct": {
+        "median_itl_ms": 0.4815445342813973,
+        "median_ttft_ms": 20.87253368105493,
+        "output_throughput": -1.1146266395364313,
+        "p95_itl_ms": -1.3877504197120416,
+        "p95_ttft_ms": 6.661252612008672
+      },
+      "input_tokens": 512,
+      "optimized": {
+        "median_itl_ms": 2.7122420142404735,
+        "median_ttft_ms": 33.213113027159125,
+        "output_throughput": 341.3663848399913,
+        "p95_itl_ms": 2.847551641752943,
+        "p95_ttft_ms": 37.311359675368294
+      }
+    },
+    {
+      "baseline": {
+        "median_itl_ms": 2.9952084878459573,
+        "median_ttft_ms": 52.12918599136174,
+        "output_throughput": 299.21093924875447,
+        "p95_itl_ms": 3.1939698208589107,
+        "p95_ttft_ms": 61.05077655520291
+      },
+      "concurrency": 1,
+      "delta_pct": {
+        "median_itl_ms": -0.0368732982246045,
+        "median_ttft_ms": -9.555374559495789,
+        "output_throughput": 0.47178113469450444,
+        "p95_itl_ms": 0.15003667527331288,
+        "p95_ttft_ms": -3.080655204190086
+      },
+      "input_tokens": 2048,
+      "optimized": {
+        "median_itl_ms": 2.994104055687785,
+        "median_ttft_ms": 47.148047015070915,
+        "output_throughput": 300.62256001307236,
+        "p95_itl_ms": 3.1987619469873607,
+        "p95_ttft_ms": 59.17001263005659
+      }
+    },
+    {
+      "baseline": {
+        "median_itl_ms": 3.1617999775335193,
+        "median_ttft_ms": 40.2054080623202,
+        "output_throughput": 1149.6783043071882,
+        "p95_itl_ms": 3.401484520873055,
+        "p95_ttft_ms": 58.88187543605454
+      },
+      "concurrency": 4,
+      "delta_pct": {
+        "median_itl_ms": 0.21359623308911946,
+        "median_ttft_ms": 13.005663099843678,
+        "output_throughput": -0.3032464328023621,
+        "p95_itl_ms": -1.3820808446536104,
+        "p95_ttft_ms": 3.5251339944706306
+      },
+      "input_tokens": 512,
+      "optimized": {
+        "median_itl_ms": 3.1685534631833434,
+        "median_ttft_ms": 45.434387982822955,
+        "output_throughput": 1146.191945860674,
+        "p95_itl_ms": 3.354473254876211,
+        "p95_ttft_ms": 60.95754044363275
+      }
+    }
+  ],
+  "schema_version": 1,
+  "vllm": "0.23.0"
+}

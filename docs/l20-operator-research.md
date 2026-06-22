@@ -447,6 +447,27 @@ TTFT is not consistently improved and is not claimed. The concurrency-4,
 input-2048 fallback control also shows service-level drift despite not using
 the custom kernel, so it is excluded from kernel benefit claims. These results
 demonstrate real ITL conversion, but only inside the conservative L20 gate.
+
+### V27 CUDA Graph And Randomized Stress
+
+The extension now launches on PyTorch's current CUDA stream rather than the
+default stream. This is required for graph capture. A randomized stress suite
+passes 100 cases covering batch 1/2/4, random physical page order, variable
+sequence lengths, non-page-aligned lengths, and contexts through 2304 tokens.
+Maximum absolute error versus FlashInfer is `0.001953125`. A fixed-address
+boundary shape captures successfully and replays 1000 times.
+
+Graph-enabled vLLM uses the same `gpu_memory_utilization=0.85` for baseline and
+optimized servers. Across concurrency 1/input 512, concurrency 1/input 2048,
+and concurrency 4/input 512, median ITL changes range from -0.04% to +0.48%
+and throughput from -1.12% to +0.47%. These values are service noise, not a
+production win. CUDA Graph removes enough launch and scheduling overhead that
+the eager-mode ITL improvement does not survive end to end.
+
+The current claim is therefore deliberately split: the kernel is graph-safe
+and correct, eager vLLM shows a small gated ITL gain, but graph-enabled vLLM
+does not show a repeatable advantage. The graph path remains experimental and
+disabled by default.
 5. FP8 through NVIDIA Transformer Engine before writing a custom FP8 GEMM.
 6. FlashAttention/vLLM production baselines before any custom attention kernel.
 

@@ -1,0 +1,10 @@
+{
+  "cases": 100,
+  "failed": 0,
+  "failures": [],
+  "gpu": "NVIDIA L20",
+  "graph_capture": true,
+  "graph_replays": 1000,
+  "max_abs_error": 0.001953125,
+  "schema_version": 1
+}
