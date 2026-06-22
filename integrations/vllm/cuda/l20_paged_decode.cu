@@ -28,63 +28,111 @@ __global__ void paged_decode_kernel(
   const int batch = blockIdx.y;
   const int q_head = blockIdx.x;
   const int kv_head = q_head / (num_q_heads / num_kv_heads);
-  const int dim = threadIdx.x;
-  const int lane = dim & 31;
-  const int warp = dim >> 5;
-  __shared__ float warp_sums[4];
-  __shared__ float score_shared;
+  const int thread = threadIdx.x;
+  const int lane = thread & 31;
+  const int warp = thread >> 5;
+  __shared__ float scores[16];
+  __shared__ float probabilities[16];
   __shared__ float alpha_shared;
-  __shared__ float beta_shared;
   __shared__ float running_max_shared;
   __shared__ float running_sum_shared;
 
-  const float q = __half2float(
-      query[(batch * num_q_heads + q_head) * 128 + dim]);
-  float accumulator = 0.0f;
+  const int q_base = (batch * num_q_heads + q_head) * 128;
+  const int pair0 = lane * 2;
+  const int pair1 = pair0 + 64;
+  const half2 q01 = *reinterpret_cast<const half2*>(query + q_base + pair0);
+  const half2 q23 = *reinterpret_cast<const half2*>(query + q_base + pair1);
+  const float2 q01f = __half22float2(q01);
+  const float2 q23f = __half22float2(q23);
+  float2 accumulator = make_float2(0.0f, 0.0f);
   const int seq_len = seq_lens[batch];
-  if (dim == 0) {
+  if (thread == 0) {
     running_max_shared = -INFINITY;
     running_sum_shared = 0.0f;
   }
   __syncthreads();
 
-  for (int token = 0; token < seq_len; ++token) {
-    const int logical_page = token / page_size;
-    const int page_offset = token - logical_page * page_size;
-    const int physical_page = block_table[batch * max_pages + logical_page];
-    const int cache_offset =
-        ((physical_page * page_size + page_offset) * num_kv_heads + kv_head) *
-            128 +
-        dim;
-    float dot = q * __half2float(key_cache[cache_offset]);
-    dot = warp_sum(dot);
-    if (lane == 0) {
-      warp_sums[warp] = dot;
-    }
-    __syncthreads();
-    if (warp == 0) {
-      float block_sum = lane < 4 ? warp_sums[lane] : 0.0f;
-      block_sum = warp_sum(block_sum);
+  for (int tile_start = 0; tile_start < seq_len; tile_start += 16) {
+#pragma unroll
+    for (int warp_token = 0; warp_token < 2; ++warp_token) {
+      const int token_index = warp + warp_token * 8;
+      const int token = tile_start + token_index;
+      float dot = 0.0f;
+      if (token < seq_len) {
+        const int logical_page = token / page_size;
+        const int page_offset = token - logical_page * page_size;
+        const int physical_page = block_table[batch * max_pages + logical_page];
+        const int cache_base =
+            ((physical_page * page_size + page_offset) * num_kv_heads + kv_head) *
+            128;
+        const half2 k01 =
+            *reinterpret_cast<const half2*>(key_cache + cache_base + pair0);
+        const half2 k23 =
+            *reinterpret_cast<const half2*>(key_cache + cache_base + pair1);
+        const float2 k01f = __half22float2(k01);
+        const float2 k23f = __half22float2(k23);
+        dot = q01f.x * k01f.x + q01f.y * k01f.y +
+              q23f.x * k23f.x + q23f.y * k23f.y;
+      }
+      dot = warp_sum(dot);
       if (lane == 0) {
-        score_shared = block_sum * 0.08838834764831845f;
+        scores[token_index] = token < seq_len
+            ? dot * 0.08838834764831845f
+            : -INFINITY;
       }
     }
     __syncthreads();
-    if (dim == 0) {
-      const float next_max = fmaxf(running_max_shared, score_shared);
+    if (thread == 0) {
+      float tile_max = scores[0];
+#pragma unroll
+      for (int index = 1; index < 16; ++index) {
+        tile_max = fmaxf(tile_max, scores[index]);
+      }
+      const float next_max = fmaxf(running_max_shared, tile_max);
       alpha_shared = expf(running_max_shared - next_max);
-      beta_shared = expf(score_shared - next_max);
-      running_sum_shared =
-          running_sum_shared * alpha_shared + beta_shared;
+      float tile_sum = 0.0f;
+#pragma unroll
+      for (int index = 0; index < 16; ++index) {
+        probabilities[index] = expf(scores[index] - next_max);
+        tile_sum += probabilities[index];
+      }
+      running_sum_shared = running_sum_shared * alpha_shared + tile_sum;
       running_max_shared = next_max;
     }
     __syncthreads();
-    accumulator = accumulator * alpha_shared +
-                  beta_shared * __half2float(value_cache[cache_offset]);
+    if (thread < 64) {
+      accumulator.x *= alpha_shared;
+      accumulator.y *= alpha_shared;
+#pragma unroll
+      for (int index = 0; index < 16; ++index) {
+        const int value_token = tile_start + index;
+        if (value_token < seq_len) {
+          const int logical_page = value_token / page_size;
+          const int page_offset = value_token - logical_page * page_size;
+          const int physical_page =
+              block_table[batch * max_pages + logical_page];
+          const int cache_offset =
+              ((physical_page * page_size + page_offset) * num_kv_heads +
+               kv_head) *
+                  128 +
+              thread * 2;
+          const half2 value =
+              *reinterpret_cast<const half2*>(value_cache + cache_offset);
+          const float2 value_float = __half22float2(value);
+          accumulator.x += probabilities[index] * value_float.x;
+          accumulator.y += probabilities[index] * value_float.y;
+        }
+      }
+    }
     __syncthreads();
   }
-  output[(batch * num_q_heads + q_head) * 128 + dim] =
-      __float2half(accumulator / running_sum_shared);
+  if (thread < 64) {
+    const half2 result = __floats2half2_rn(
+        accumulator.x / running_sum_shared,
+        accumulator.y / running_sum_shared);
+    *reinterpret_cast<half2*>(
+        output + (batch * num_q_heads + q_head) * 128 + thread * 2) = result;
+  }
 }
 
 }  // namespace
@@ -105,7 +153,7 @@ torch::Tensor l20_paged_decode_cuda(
   const at::cuda::CUDAGuard guard(query.device());
   auto output = torch::empty_like(query);
   const dim3 grid(query.size(1), query.size(0));
-  paged_decode_kernel<<<grid, 128, 0, at::cuda::getDefaultCUDAStream()>>>(
+  paged_decode_kernel<<<grid, 256, 0, at::cuda::getDefaultCUDAStream()>>>(
       reinterpret_cast<const half*>(query.data_ptr<at::Half>()),
       reinterpret_cast<const half*>(key_cache.data_ptr<at::Half>()),
       reinterpret_cast<const half*>(value_cache.data_ptr<at::Half>()),

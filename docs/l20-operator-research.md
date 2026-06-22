@@ -274,6 +274,30 @@ This establishes a useful lower bound and rejects a direct scalar
 online-softmax translation. A competitive CUDA version needs token tiles,
 warp-specialized QK/softmax/PV stages, asynchronous or vectorized cache loads,
 and no full-block synchronization inside the per-token loop.
+
+### V19 Tiled And Warp-Specialized CUDA Decode
+
+The CUDA control was reworked from one token per synchronization step to a
+warp-specialized tiled pipeline:
+
+- eight warps compute QK scores for a token tile;
+- Q/K and V use aligned `half2` vector loads;
+- one control thread updates tile-level online-softmax state;
+- 64 threads maintain two PV output dimensions each;
+- the block synchronizes twice per tile rather than several times per token.
+
+An 8-token tile improves the original CUDA control by approximately 2.08x.
+Increasing to a 16-token tile gives a smaller additional 1 to 2 percent
+improvement. The final measured latency is 0.139 ms at context 512 and 0.550 ms
+at context 2048, with correctness unchanged and maximum error `2.44e-4`.
+
+The implementation still reaches only 0.18x to 0.19x of FlashInfer at context
+512 and approximately 0.046x at context 2048. The weak scaling after increasing
+tile size shows that synchronization is no longer the only dominant cost.
+Remaining structural gaps include serial tile traversal per Q head, repeated KV
+scans across GQA heads, no asynchronous copy pipeline, and no tensor-core
+score computation. This version is retained as the CUDA optimization baseline,
+but remains ineligible for vLLM service dispatch.
 5. FP8 through NVIDIA Transformer Engine before writing a custom FP8 GEMM.
 6. FlashAttention/vLLM production baselines before any custom attention kernel.
 
