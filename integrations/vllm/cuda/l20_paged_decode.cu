@@ -284,7 +284,7 @@ __global__ void paged_decode_merge_kernel(
   const int base = (batch * num_q_heads + q_head) * num_splits;
   __shared__ float global_max;
   __shared__ float denominator;
-  __shared__ float corrections[32];
+  __shared__ float corrections[64];
   if (pair == 0) {
     float max_value = partial_max[base];
     for (int split = 1; split < num_splits; ++split) {
@@ -370,9 +370,8 @@ torch::Tensor l20_paged_decode_split_cuda(
   TORCH_CHECK(query.scalar_type() == torch::kFloat16, "FP16 only");
   TORCH_CHECK(query.dim() == 3 && query.size(2) == kHeadDim, "invalid query");
   TORCH_CHECK(
-      split_size == 128 || split_size == 256 || split_size == 512 ||
-          split_size == 1024,
-      "split_size must be 128, 256, 512, or 1024");
+      split_size >= 64 && split_size <= 1024 && split_size % 16 == 0,
+      "split_size must be a multiple of 16 from 64 through 1024");
   const int num_splits = (max_seq_len + split_size - 1) / split_size;
   auto partial_output = torch::empty(
       {query.size(0), query.size(1), num_splits, kHeadDim},
@@ -412,7 +411,7 @@ void l20_paged_decode_split_out_cuda(
   const at::cuda::CUDAGuard guard(query.device());
   const int num_splits = (max_seq_len + split_size - 1) / split_size;
   TORCH_CHECK(
-      partial_output.size(2) == num_splits &&
+      partial_output.size(2) >= num_splits &&
           partial_output.size(3) == kHeadDim,
       "partial output workspace has wrong shape");
   const auto stream = at::cuda::getDefaultCUDAStream();

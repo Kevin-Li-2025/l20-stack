@@ -1,0 +1,128 @@
+{
+  "gpu": "NVIDIA L20",
+  "model": "Qwen3-0.6B FP16",
+  "reports": [
+    {
+      "baseline": {
+        "median_itl_ms": 13.125062105245888,
+        "median_ttft_ms": 47.368436396936886,
+        "output_throughput": 75.09514947197746,
+        "p95_itl_ms": 13.492974202381447,
+        "p95_ttft_ms": 51.481708395294845,
+        "request_throughput": 0.5866808552498239
+      },
+      "concurrency": 1,
+      "custom_kernel_gated": true,
+      "delta_pct": {
+        "median_itl_ms": -1.945243148325504,
+        "median_ttft_ms": -4.159322111480046,
+        "output_throughput": 2.111849283230338,
+        "p95_itl_ms": -2.440185316032162,
+        "p95_ttft_ms": -2.610242195174872,
+        "request_throughput": 2.111849283230338
+      },
+      "input_tokens": 512,
+      "optimized": {
+        "median_itl_ms": 12.869747733930126,
+        "median_ttft_ms": 45.39823054801673,
+        "output_throughput": 76.68104584784217,
+        "p95_itl_ms": 13.163720627198927,
+        "p95_ttft_ms": 50.137911119963974,
+        "request_throughput": 0.599070670686267
+      }
+    },
+    {
+      "baseline": {
+        "median_itl_ms": 13.147967401891947,
+        "median_ttft_ms": 57.16414273774717,
+        "output_throughput": 74.69132603085136,
+        "p95_itl_ms": 13.507623779878486,
+        "p95_ttft_ms": 63.23789542511805,
+        "request_throughput": 0.5835259846160262
+      },
+      "concurrency": 1,
+      "custom_kernel_gated": true,
+      "delta_pct": {
+        "median_itl_ms": -1.0745799236374531,
+        "median_ttft_ms": 12.526477217341125,
+        "output_throughput": 0.47527278874919254,
+        "p95_itl_ms": -0.9172972403711843,
+        "p95_ttft_ms": 12.679076656974363,
+        "request_throughput": 0.47527278874919254
+      },
+      "input_tokens": 2048,
+      "optimized": {
+        "median_itl_ms": 13.00668198382482,
+        "median_ttft_ms": 64.32479605427943,
+        "output_throughput": 75.04631357903193,
+        "p95_itl_ms": 13.38371871970594,
+        "p95_ttft_ms": 71.25587666232605,
+        "request_throughput": 0.586299324836187
+      }
+    },
+    {
+      "baseline": {
+        "median_itl_ms": 13.553232740378007,
+        "median_ttft_ms": 65.26730590849183,
+        "output_throughput": 286.74311885663,
+        "p95_itl_ms": 14.102400864067022,
+        "p95_ttft_ms": 78.74642063688952,
+        "request_throughput": 2.240180616067422
+      },
+      "concurrency": 4,
+      "custom_kernel_gated": true,
+      "delta_pct": {
+        "median_itl_ms": -1.7003450768583117,
+        "median_ttft_ms": 4.673516513084475,
+        "output_throughput": 1.5556974376569555,
+        "p95_itl_ms": -2.201885124411862,
+        "p95_ttft_ms": 11.978476967872776,
+        "request_throughput": 1.5556974376569555
+      },
+      "input_tokens": 512,
+      "optimized": {
+        "median_itl_ms": 13.32278101472184,
+        "median_ttft_ms": 68.31758422777057,
+        "output_throughput": 291.20397420934023,
+        "p95_itl_ms": 13.7918821972562,
+        "p95_ttft_ms": 88.17904249590356,
+        "request_throughput": 2.2750310485104706
+      }
+    },
+    {
+      "baseline": {
+        "median_itl_ms": 13.529368981835432,
+        "median_ttft_ms": 91.21164427779149,
+        "output_throughput": 284.5444729582957,
+        "p95_itl_ms": 13.965270634798799,
+        "p95_ttft_ms": 109.64930708287284,
+        "request_throughput": 2.2230036949866854
+      },
+      "concurrency": 4,
+      "custom_kernel_gated": false,
+      "delta_pct": {
+        "median_itl_ms": 4.316230847795488,
+        "median_ttft_ms": 5.201710026075457,
+        "output_throughput": -4.277020358347173,
+        "p95_itl_ms": 5.188881113620769,
+        "p95_ttft_ms": 4.162605353417259,
+        "request_throughput": -4.277020358347173
+      },
+      "input_tokens": 2048,
+      "optimized": {
+        "median_itl_ms": 14.113327779341489,
+        "median_ttft_ms": 95.95620952313766,
+        "output_throughput": 272.37444792131777,
+        "p95_itl_ms": 14.6899119252339,
+        "p95_ttft_ms": 114.21357500948943,
+        "request_throughput": 2.127925374385295
+      }
+    }
+  ],
+  "runs": {
+    "baseline": 4,
+    "optimized": 2
+  },
+  "schema_version": 1,
+  "vllm": "0.23.0"
+}

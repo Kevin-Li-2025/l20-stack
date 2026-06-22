@@ -412,17 +412,41 @@ The 128-token split aligns exactly with eight 16-token KV pages. V25 loads one
 physical page index per 16-token tile into shared memory and reuses the page
 base for all QK and PV address calculations.
 
-This produces the first stable win over FlashInfer on core paged attention:
+Using FlashInfer's preallocated `out=` interface gives the fair core paged
+attention comparison:
 
-- batch 1, context 512: 0.0150 ms, 1.72x-1.74x faster;
-- batch 1, context 2048: 0.0166-0.0167 ms, 1.47x-1.49x faster;
-- batch 1, context 4096: 0.0210-0.0211 ms, 1.18x-1.19x faster.
+- batch 1, context 512: approximately 1.39x faster;
+- batch 1, context 2048: approximately 1.16x faster;
+- batch 1, context 4096: approximately 0.93x, so it remains disabled.
 
-Two additional full runs reproduce the result within about one percent. Batch
-four wins at context 512 by 1.53x-1.56x, but regresses at 2048 and 4096. The
-production gate is therefore batch one, plus batch up to four only at context
-512 or shorter. The win comes from intra-CTA page-index reuse, not from changing
-the external metadata format.
+The earlier 1.18x-1.74x figures included FlashInfer output allocation and are
+superseded by this comparison. Boundary measurements remain positive at batch
+1/context 2304 (1.10x) and batch 4/context 640 (1.14x). The production gate is
+therefore batch one through 2304 tokens, plus batch up to four through 640
+tokens. The win comes from intra-CTA page-index reuse.
+
+### V26 First End-To-End vLLM ITL Result
+
+The CUDA extension is integrated into vLLM 0.23's native FlashInfer NHD decode
+path. The experiment uses Qwen3-0.6B cast to FP16, eager execution, page size
+16, 16 Q heads, 8 KV heads, head dimension 128, 128 generated tokens, and a
+strict fallback to FlashInfer outside the measured gate.
+
+To control service drift, optimized results are compared with four baseline
+runs bracketing the optimized campaign. Two optimized runs are averaged per
+shape. The first valid attention-kernel end-to-end results are:
+
+- concurrency 1, input 512: median/p95 ITL -1.95%/-2.44%, output throughput
+  +2.11%;
+- concurrency 1, input 2048: median/p95 ITL -1.08%/-0.92%, output throughput
+  +0.48%;
+- concurrency 4, input 512: median/p95 ITL -1.70%/-2.20%, output throughput
+  +1.56%.
+
+TTFT is not consistently improved and is not claimed. The concurrency-4,
+input-2048 fallback control also shows service-level drift despite not using
+the custom kernel, so it is excluded from kernel benefit claims. These results
+demonstrate real ITL conversion, but only inside the conservative L20 gate.
 5. FP8 through NVIDIA Transformer Engine before writing a custom FP8 GEMM.
 6. FlashAttention/vLLM production baselines before any custom attention kernel.
 

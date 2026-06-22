@@ -32,7 +32,9 @@ def l20_split_policy(batch, context):
 
 
 def should_use_l20_cuda_paged_decode(batch, context):
-    return batch == 1 or (batch <= 4 and context <= 512)
+    return (batch == 1 and context <= 2304) or (
+        batch <= 4 and context <= 640
+    )
 
 
 def main():
@@ -86,6 +88,7 @@ def main():
                 128 * 1024 * 1024, device="cuda", dtype=torch.uint8
             )
             wrappers = {}
+            flashinfer_outputs = {}
             for tensor_cores in (False, True):
                 wrapper = flashinfer.BatchDecodeWithPagedKVCacheWrapper(
                     workspace, "NHD", use_tensor_cores=tensor_cores
@@ -103,14 +106,22 @@ def main():
                     kv_data_type=query.dtype,
                 )
                 wrappers[tensor_cores] = wrapper
-            expected = wrappers[False].run(query, cache)
+                flashinfer_outputs[tensor_cores] = torch.empty_like(query)
+            wrappers[False].run(query, cache, out=flashinfer_outputs[False])
+            expected = flashinfer_outputs[False]
             actual = extension.paged_decode(
                 query, cache[0], cache[1], block_table, seq_lens
             )
             split_available = hasattr(extension, "paged_decode_split")
-            flashinfer_ms = latency_ms(lambda: wrappers[False].run(query, cache))
+            flashinfer_ms = latency_ms(
+                lambda: wrappers[False].run(
+                    query, cache, out=flashinfer_outputs[False]
+                )
+            )
             flashinfer_tensor_core_ms = latency_ms(
-                lambda: wrappers[True].run(query, cache)
+                lambda: wrappers[True].run(
+                    query, cache, out=flashinfer_outputs[True]
+                )
             )
             cuda_ms = latency_ms(
                 lambda: extension.paged_decode(
@@ -118,7 +129,7 @@ def main():
                 )
             )
             split_reports = []
-            for split_size in (128, 256, 512, 1024):
+            for split_size in (64, 80, 96, 112, 128, 256, 512, 1024):
                 num_splits = (context + split_size - 1) // split_size
                 partial_output = torch.empty(
                     batch,
