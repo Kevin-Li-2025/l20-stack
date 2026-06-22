@@ -1,0 +1,96 @@
+{
+  "gpu": "NVIDIA L20",
+  "reports": [
+    {
+      "awq_gemm_ms": 0.029363200664520264,
+      "correct": true,
+      "k": 1024,
+      "l20_gemv_ms": 0.0389683198928833,
+      "max_abs_error": 0.0078125,
+      "n": 3072,
+      "speedup": 0.7535146689730085,
+      "tokens": 1
+    },
+    {
+      "awq_gemm_ms": 0.039070720672607424,
+      "correct": true,
+      "k": 3072,
+      "l20_gemv_ms": 0.038384640216827394,
+      "max_abs_error": 0.0078125,
+      "n": 1024,
+      "speedup": 1.0178738279661994,
+      "tokens": 1
+    },
+    {
+      "awq_gemm_ms": 0.02298367977142334,
+      "correct": true,
+      "k": 4096,
+      "l20_gemv_ms": 0.20999168395996093,
+      "max_abs_error": 0.0078125,
+      "n": 4096,
+      "speedup": 0.10945042840746795,
+      "tokens": 1
+    },
+    {
+      "awq_gemm_ms": 0.021637120246887208,
+      "correct": true,
+      "k": 1024,
+      "l20_gemv_ms": 0.1529036808013916,
+      "max_abs_error": 0.00390625,
+      "n": 3072,
+      "speedup": 0.14150817124534706,
+      "tokens": 4
+    },
+    {
+      "awq_gemm_ms": 0.021529600620269776,
+      "correct": true,
+      "k": 3072,
+      "l20_gemv_ms": 0.14535679817199706,
+      "max_abs_error": 0.0078125,
+      "n": 1024,
+      "speedup": 0.14811553976852418,
+      "tokens": 4
+    },
+    {
+      "awq_gemm_ms": 0.02150399923324585,
+      "correct": true,
+      "k": 4096,
+      "l20_gemv_ms": 0.8206694030761719,
+      "max_abs_error": 0.015625,
+      "n": 4096,
+      "speedup": 0.026202998616301428,
+      "tokens": 4
+    },
+    {
+      "awq_gemm_ms": 0.02156543970108032,
+      "correct": true,
+      "k": 1024,
+      "l20_gemv_ms": 0.298158073425293,
+      "max_abs_error": 0.0078125,
+      "n": 3072,
+      "speedup": 0.0723288806280934,
+      "tokens": 8
+    },
+    {
+      "awq_gemm_ms": 0.02140671968460083,
+      "correct": true,
+      "k": 3072,
+      "l20_gemv_ms": 0.2883839988708496,
+      "max_abs_error": 0.0078125,
+      "n": 1024,
+      "speedup": 0.07422991486496328,
+      "tokens": 8
+    },
+    {
+      "awq_gemm_ms": 0.021437439918518066,
+      "correct": true,
+      "k": 4096,
+      "l20_gemv_ms": 1.6490701293945313,
+      "max_abs_error": 0.015625,
+      "n": 4096,
+      "speedup": 0.01299971392143825,
+      "tokens": 8
+    }
+  ],
+  "schema_version": 1
+}

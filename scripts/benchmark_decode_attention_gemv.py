@@ -9,7 +9,10 @@ from pathlib import Path
 
 import torch
 
-from l20_stack.ops.triton_decode_attention import gqa_decode_attention
+from l20_stack.ops.triton_decode_attention import (
+    gqa_decode_attention,
+    gqa_decode_attention_split_kv,
+)
 
 
 def reference(query, key, value):
@@ -43,8 +46,8 @@ def main():
     args = parser.parse_args()
     torch.manual_seed(7)
     reports = []
-    for batch in (1, 8):
-        for context in (128, 512, 2048, 4096):
+    for batch in (1, 4, 8):
+        for context in (128, 512, 1024, 2048, 4096):
             query = torch.randn(
                 batch, 16, 128, device="cuda", dtype=torch.bfloat16
             )
@@ -54,6 +57,7 @@ def main():
             value = torch.randn_like(key)
             expected = reference(query, key, value)
             actual = gqa_decode_attention(query, key, value)
+            split_actual = gqa_decode_attention_split_kv(query, key, value)
             baseline_ms = latency_ms(lambda: reference(query, key, value))
             fused_ms = latency_ms(
                 lambda: gqa_decode_attention(query, key, value)
@@ -71,7 +75,21 @@ def main():
                     "baseline_ms": baseline_ms,
                     "fused_ms": fused_ms,
                     "speedup": baseline_ms / fused_ms,
+                    "split_correct": bool(
+                        torch.allclose(
+                            split_actual, expected, rtol=2e-2, atol=2e-2
+                        )
+                    ),
+                    "split_max_abs_error": float(
+                        (split_actual.float() - expected.float()).abs().max()
+                    ),
+                    "split_ms": latency_ms(
+                        lambda: gqa_decode_attention_split_kv(query, key, value)
+                    ),
                 }
+            )
+            reports[-1]["split_speedup"] = (
+                baseline_ms / reports[-1]["split_ms"]
             )
     result = {
         "schema_version": 1,

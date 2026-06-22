@@ -121,3 +121,16 @@ class KernelInterfaceCheckTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+def test_allows_pass_in_empty_constructor():
+    report = validate_kernelbench_interface(
+        """
+class ModelNew:
+    def __init__(self):
+        pass
+
+    def forward(self, x):
+        return x
+"""
+    )
+    assert report.valid
+

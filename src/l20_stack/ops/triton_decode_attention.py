@@ -96,6 +96,117 @@ if triton is not None:  # pragma: no cover - requires CUDA
             accumulator / normalizer,
         )
 
+    @triton.jit
+    def _gqa_decode_attention_partial_kernel(
+        query,
+        key,
+        value,
+        partial_output,
+        partial_max,
+        partial_sum,
+        q_stride_b,
+        q_stride_h,
+        k_stride_b,
+        k_stride_t,
+        k_stride_h,
+        v_stride_b,
+        v_stride_t,
+        v_stride_h,
+        context_length: tl.constexpr,
+        num_q_heads: tl.constexpr,
+        num_kv_heads: tl.constexpr,
+        head_dim: tl.constexpr,
+        SPLIT_SIZE: tl.constexpr,
+        BLOCK_T: tl.constexpr,
+    ):
+        split = tl.program_id(0)
+        head_program = tl.program_id(1)
+        batch = head_program // num_q_heads
+        q_head = head_program % num_q_heads
+        kv_head = q_head // (num_q_heads // num_kv_heads)
+        dim = tl.arange(0, head_dim)
+        query_values = tl.load(
+            query + batch * q_stride_b + q_head * q_stride_h + dim
+        ).to(tl.float32)
+        scale = 1.0 / tl.sqrt(float(head_dim))
+        max_score = -float("inf")
+        normalizer = 0.0
+        accumulator = tl.zeros((head_dim,), tl.float32)
+        split_start = split * SPLIT_SIZE
+
+        for offset in range(0, SPLIT_SIZE, BLOCK_T):
+            token = split_start + offset + tl.arange(0, BLOCK_T)
+            token_mask = token < tl.minimum(split_start + SPLIT_SIZE, context_length)
+            keys = tl.load(
+                key
+                + batch * k_stride_b
+                + token[:, None] * k_stride_t
+                + kv_head * k_stride_h
+                + dim[None, :],
+                mask=token_mask[:, None],
+                other=0.0,
+            ).to(tl.float32)
+            scores = tl.sum(keys * query_values[None, :], axis=1) * scale
+            scores = tl.where(token_mask, scores, -float("inf"))
+            tile_max = tl.max(scores, axis=0)
+            next_max = tl.maximum(max_score, tile_max)
+            old_scale = tl.exp(max_score - next_max)
+            probabilities = tl.exp(scores - next_max)
+            values = tl.load(
+                value
+                + batch * v_stride_b
+                + token[:, None] * v_stride_t
+                + kv_head * v_stride_h
+                + dim[None, :],
+                mask=token_mask[:, None],
+                other=0.0,
+            ).to(tl.float32)
+            accumulator = (
+                accumulator * old_scale
+                + tl.sum(probabilities[:, None] * values, axis=0)
+            )
+            normalizer = normalizer * old_scale + tl.sum(probabilities, axis=0)
+            max_score = next_max
+
+        partial_index = head_program * tl.num_programs(0) + split
+        tl.store(partial_output + partial_index * head_dim + dim, accumulator)
+        tl.store(partial_max + partial_index, max_score)
+        tl.store(partial_sum + partial_index, normalizer)
+
+    @triton.jit
+    def _gqa_decode_attention_reduce_kernel(
+        partial_output,
+        partial_max,
+        partial_sum,
+        output,
+        out_stride_b,
+        out_stride_h,
+        num_q_heads: tl.constexpr,
+        head_dim: tl.constexpr,
+        NUM_SPLITS: tl.constexpr,
+    ):
+        head_program = tl.program_id(0)
+        batch = head_program // num_q_heads
+        q_head = head_program % num_q_heads
+        dim = tl.arange(0, head_dim)
+        splits = tl.arange(0, NUM_SPLITS)
+        base = head_program * NUM_SPLITS
+        maxima = tl.load(partial_max + base + splits)
+        global_max = tl.max(maxima, axis=0)
+        correction = tl.exp(maxima - global_max)
+        sums = tl.load(partial_sum + base + splits)
+        denominator = tl.sum(sums * correction, axis=0)
+        partials = tl.load(
+            partial_output
+            + (base + splits[:, None]) * head_dim
+            + dim[None, :]
+        )
+        numerator = tl.sum(partials * correction[:, None], axis=0)
+        tl.store(
+            output + batch * out_stride_b + q_head * out_stride_h + dim,
+            numerator / denominator,
+        )
+
 
 def gqa_decode_attention(query, key, value):
     """Run single-token contiguous-cache GQA attention.
@@ -140,6 +251,75 @@ def gqa_decode_attention(query, key, value):
     return output
 
 
+def gqa_decode_attention_split_kv(query, key, value, split_size: int = 512):
+    if torch is None or triton is None:
+        raise RuntimeError("requires PyTorch and Triton")
+    batch, num_q_heads, head_dim = query.shape
+    key_batch, context_length, num_kv_heads, key_dim = key.shape
+    if (
+        query.ndim != 3
+        or key.ndim != 4
+        or value.shape != key.shape
+        or key_batch != batch
+        or key_dim != head_dim
+        or head_dim != 128
+        or num_q_heads % num_kv_heads
+    ):
+        raise ValueError("requires compatible GQA tensors with head_dim=128")
+    num_splits = triton.cdiv(context_length, split_size)
+    if num_splits > 16:
+        raise ValueError("split-KV path supports at most 16 splits")
+    partial_shape = (batch, num_q_heads, num_splits)
+    partial_output = torch.empty(
+        (*partial_shape, head_dim), device=query.device, dtype=torch.float32
+    )
+    partial_max = torch.empty(partial_shape, device=query.device, dtype=torch.float32)
+    partial_sum = torch.empty_like(partial_max)
+    output = torch.empty_like(query)
+    _gqa_decode_attention_partial_kernel[(num_splits, batch * num_q_heads)](
+        query,
+        key,
+        value,
+        partial_output,
+        partial_max,
+        partial_sum,
+        query.stride(0),
+        query.stride(1),
+        key.stride(0),
+        key.stride(1),
+        key.stride(2),
+        value.stride(0),
+        value.stride(1),
+        value.stride(2),
+        context_length=context_length,
+        num_q_heads=num_q_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+        SPLIT_SIZE=split_size,
+        BLOCK_T=32,
+        num_warps=4,
+        num_stages=1,
+    )
+    _gqa_decode_attention_reduce_kernel[(batch * num_q_heads,)](
+        partial_output,
+        partial_max,
+        partial_sum,
+        output,
+        output.stride(0),
+        output.stride(1),
+        num_q_heads=num_q_heads,
+        head_dim=head_dim,
+        NUM_SPLITS=num_splits,
+        num_warps=4,
+        num_stages=1,
+    )
+    return output
+
+
 def should_use_l20_gqa_decode_attention(batch: int, context_length: int) -> bool:
     """Conservative gate derived from L20 BF16 head_dim=128 measurements."""
-    return batch >= 2 or context_length <= 512
+    return batch >= 4 or context_length <= 1024
+
+
+def should_use_l20_split_kv_attention(context_length: int) -> bool:
+    return context_length >= 2048

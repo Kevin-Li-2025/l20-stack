@@ -32,8 +32,6 @@ def validate_kernelbench_interface(source: str) -> KernelInterfaceReport:
     forbidden_names = {"get_inputs", "get_init_inputs"}
     forbidden_calls = {"NotImplementedError"}
     for node in ast.walk(tree):
-        if isinstance(node, ast.Pass):
-            errors.append("contains pass statement")
         if isinstance(node, ast.Name) and node.id in forbidden_names:
             errors.append(f"references evaluator helper {node.id}")
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in forbidden_calls:

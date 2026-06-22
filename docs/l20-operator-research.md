@@ -167,6 +167,31 @@ attention head regresses at batch one for context 2048 and 4096, reaching only
 0.41x and 0.24x of the SDPA baseline. The dispatch gate therefore rejects that
 regime. A long-context batch-one path requires split-KV work partitioning and a
 second reduction stage before it can be enabled.
+
+### V14 Production-Baseline And Split-KV Results
+
+The first dequant GEMV result used explicit dequantization plus `torch.mv` as
+its baseline. A second implementation now consumes vLLM's real AWQ layout,
+including its output-dimension packing order and zero points, and compares
+directly with `ops.awq_gemm`. Correctness passes for all nine measured shapes,
+but performance does not: only the one-token 3072-by-1024 case is approximately
+equal at 1.02x, while the other cases range from 0.01x to 0.75x. The production
+dispatch is therefore intentionally disabled. This negative result prevents
+the earlier 7.88x to 27.78x number from being misrepresented as a win over
+vLLM's fused AWQ kernel.
+
+The two-stage split-KV attention path partitions context into 512-token tiles,
+writes partial online-softmax state `(m, l, o)`, and merges those states in a
+second kernel. It removes the long-context batch-one regression:
+
+- batch 1, context 2048/4096: 1.28x/1.18x versus PyTorch SDPA;
+- batch 4, context 2048/4096: 2.65x/5.88x;
+- batch 8, context 2048/4096: 5.70x/4.62x.
+
+All measured split-KV outputs pass the BF16 correctness tolerance. These remain
+contiguous-cache results. vLLM serving uses block-table paged KV storage, so an
+end-to-end ITL claim requires a paged version and backend integration; directly
+patching the contiguous kernel into serving would not be semantically valid.
 5. FP8 through NVIDIA Transformer Engine before writing a custom FP8 GEMM.
 6. FlashAttention/vLLM production baselines before any custom attention kernel.
 
