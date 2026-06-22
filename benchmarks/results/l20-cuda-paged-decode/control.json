@@ -7,95 +7,99 @@
       "context": 512,
       "correct": true,
       "cuda_ms": 0.13895680427551269,
-      "flashinfer_ms": 0.02613248109817505,
+      "flashinfer_ms": 0.02580480098724365,
+      "flashinfer_tensor_core_ms": 0.027135999202728273,
+      "flashinfer_tensor_core_vs_cuda_core": 0.950943460547022,
       "max_abs_error": 0.0001220703125,
       "policy_split_size": 128,
-      "speedup": 0.1880619033693493,
+      "speedup": 0.18570375968117336,
       "split_correct": true,
       "split_cuda_ms": 0.038502399921417234,
       "split_reports": [
         {
           "correct": true,
           "cuda_ms": 0.038502399921417234,
-          "speedup": 0.6787234341628318,
+          "speedup": 0.6702127929664339,
           "split_size": 128,
-          "workspace_ms": 0.03856384038925171,
-          "workspace_speedup": 0.6776420821785826
+          "workspace_ms": 0.03848191976547241,
+          "workspace_speedup": 0.6705694815776004
         },
         {
           "correct": true,
-          "cuda_ms": 0.07303167819976807,
-          "speedup": 0.35782391617365356,
+          "cuda_ms": 0.07286784172058106,
+          "speedup": 0.35413153975651857,
           "split_size": 256,
           "workspace_ms": 0.07292928218841553,
-          "workspace_speedup": 0.3583263171391267
-        },
-        {
-          "correct": true,
-          "cuda_ms": 0.1415167999267578,
-          "speedup": 0.18465992102492387,
-          "split_size": 512,
-          "workspace_ms": 0.14137344360351561,
-          "workspace_speedup": 0.1848471709542852
+          "workspace_speedup": 0.3538331958427341
         },
         {
           "correct": true,
           "cuda_ms": 0.14149632453918456,
-          "speedup": 0.18468664245012376,
+          "speedup": 0.18237082179542782,
+          "split_size": 512,
+          "workspace_ms": 0.14141440391540527,
+          "workspace_speedup": 0.1824764682576479
+        },
+        {
+          "correct": true,
+          "cuda_ms": 0.14155776023864747,
+          "speedup": 0.18229167333348736,
           "split_size": 1024,
-          "workspace_ms": 0.14135295867919923,
-          "workspace_speedup": 0.18487395907632015
+          "workspace_ms": 0.14141440391540527,
+          "workspace_speedup": 0.1824764682576479
         }
       ],
-      "split_speedup": 0.6787234341628318
+      "split_speedup": 0.6702127929664339
     },
     {
       "batch": 1,
       "best_split_size": 128,
       "context": 2048,
       "correct": true,
-      "cuda_ms": 0.5493145751953125,
-      "flashinfer_ms": 0.025866239070892333,
-      "max_abs_error": 0.0001220703125,
+      "cuda_ms": 0.5494579315185547,
+      "flashinfer_ms": 0.02574336051940918,
+      "flashinfer_tensor_core_ms": 0.02707456111907959,
+      "flashinfer_tensor_core_vs_cuda_core": 0.9508320525006662,
+      "max_abs_error": 6.103515625e-05,
       "policy_split_size": 128,
-      "speedup": 0.0470882081759717,
+      "speedup": 0.046852286667809884,
       "split_correct": true,
-      "split_cuda_ms": 0.04069375991821289,
+      "split_cuda_ms": 0.04048895835876465,
       "split_reports": [
         {
           "correct": true,
-          "cuda_ms": 0.04069375991821289,
-          "speedup": 0.6356315838811356,
+          "cuda_ms": 0.04048895835876465,
+          "speedup": 0.6358118747166167,
           "split_size": 128,
-          "workspace_ms": 0.04067327976226807,
-          "workspace_speedup": 0.6359516425053092
+          "workspace_ms": 0.04038656234741211,
+          "workspace_speedup": 0.6374239109028492
         },
         {
           "correct": true,
-          "cuda_ms": 0.07477248191833497,
-          "speedup": 0.34593259989875597,
+          "cuda_ms": 0.07471104145050049,
+          "speedup": 0.3445723686834876,
           "split_size": 256,
-          "workspace_ms": 0.0745472002029419,
-          "workspace_speedup": 0.3469780085700866
+          "workspace_ms": 0.07456768035888672,
+          "workspace_speedup": 0.3452348309013903
         },
         {
           "correct": true,
-          "cuda_ms": 0.1417420768737793,
-          "speedup": 0.182488077227245,
+          "cuda_ms": 0.14170111656188966,
+          "speedup": 0.18167366033538246,
           "split_size": 512,
-          "workspace_ms": 0.14166015625,
-          "workspace_speedup": 0.18259360822138251
+          "workspace_ms": 0.14155776023864747,
+          "workspace_speedup": 0.18185764225153966
         },
         {
           "correct": true,
-          "cuda_ms": 0.2793062400817871,
-          "speedup": 0.09260888357996627,
+          "cuda_ms": 0.27936767578125,
+          "speedup": 0.0921486727031609,
           "split_size": 1024,
-          "workspace_ms": 0.2791833686828613,
-          "workspace_speedup": 0.09264964167788634
+          "workspace_ms": 0.2792243194580078,
+          "workspace_speedup": 0.09219598267578799
         }
       ],
-      "split_speedup": 0.6356315838811356
+      "split_speedup": 0.6358118747166167
     },
     {
       "batch": 1,
@@ -103,143 +107,149 @@
       "context": 4096,
       "correct": true,
       "cuda_ms": 1.096847381591797,
-      "flashinfer_ms": 0.025866239070892333,
+      "flashinfer_ms": 0.02580480098724365,
+      "flashinfer_tensor_core_ms": 0.026705920696258545,
+      "flashinfer_tensor_core_vs_cuda_core": 0.9662576804872659,
       "max_abs_error": 6.103515625e-05,
       "policy_split_size": 128,
-      "speedup": 0.023582350202043623,
+      "speedup": 0.023526336863561183,
       "split_correct": true,
-      "split_cuda_ms": 0.04612095832824707,
+      "split_cuda_ms": 0.04601856231689453,
       "split_reports": [
         {
           "correct": true,
-          "cuda_ms": 0.04612095832824707,
-          "speedup": 0.5608348136827502,
+          "cuda_ms": 0.04601856231689453,
+          "speedup": 0.5607476567726255,
           "split_size": 128,
-          "workspace_ms": 0.04585472106933594,
-          "workspace_speedup": 0.5640910786869807
+          "workspace_ms": 0.045793280601501465,
+          "workspace_speedup": 0.5635062753376434
         },
         {
           "correct": true,
-          "cuda_ms": 0.07639039993286133,
-          "speedup": 0.33860588625829796,
+          "cuda_ms": 0.07632895946502685,
+          "speedup": 0.3380735328780048,
           "split_size": 256,
-          "workspace_ms": 0.07612415790557861,
-          "workspace_speedup": 0.33979015049303785
+          "workspace_ms": 0.07589888095855712,
+          "workspace_speedup": 0.33998921540534677
         },
         {
           "correct": true,
-          "cuda_ms": 0.1449779224395752,
-          "speedup": 0.17841502096067782,
+          "cuda_ms": 0.14508031845092773,
+          "speedup": 0.17786562135216102,
           "split_size": 512,
-          "workspace_ms": 0.14477312088012695,
-          "workspace_speedup": 0.17866741363066796
+          "workspace_ms": 0.14493696212768556,
+          "workspace_speedup": 0.1780415472245811
         },
         {
           "correct": true,
-          "cuda_ms": 0.2793062400817871,
-          "speedup": 0.09260888357996627,
+          "cuda_ms": 0.2793471908569336,
+          "speedup": 0.09237537312648139,
           "split_size": 1024,
-          "workspace_ms": 0.27914239883422853,
-          "workspace_speedup": 0.09266323990521144
+          "workspace_ms": 0.2791833686828613,
+          "workspace_speedup": 0.09242957812632688
         }
       ],
-      "split_speedup": 0.5608348136827502
+      "split_speedup": 0.5607476567726255
     },
     {
       "batch": 4,
       "best_split_size": 128,
       "context": 512,
       "correct": true,
-      "cuda_ms": 0.13899776458740234,
-      "flashinfer_ms": 0.025681920051574707,
+      "cuda_ms": 0.1389363193511963,
+      "flashinfer_ms": 0.02543616056442261,
+      "flashinfer_tensor_core_ms": 0.02643968105316162,
+      "flashinfer_tensor_core_vs_cuda_core": 0.9620449094404256,
       "max_abs_error": 0.000244140625,
       "policy_split_size": 128,
-      "speedup": 0.1847649861694417,
+      "speedup": 0.18307783510607006,
       "split_correct": true,
-      "split_cuda_ms": 0.04038656234741211,
+      "split_cuda_ms": 0.040181760787963865,
       "split_reports": [
         {
           "correct": true,
-          "cuda_ms": 0.04038656234741211,
-          "speedup": 0.6359026012329162,
+          "cuda_ms": 0.040181760787963865,
+          "speedup": 0.633027524568854,
           "split_size": 128,
-          "workspace_ms": 0.040120320320129396,
-          "workspace_speedup": 0.6401225076632657
+          "workspace_ms": 0.04005887985229492,
+          "workspace_speedup": 0.6349693415844578
         },
         {
           "correct": true,
-          "cuda_ms": 0.07469056129455566,
-          "speedup": 0.3438442502834252,
+          "cuda_ms": 0.07456768035888672,
+          "speedup": 0.3411150842027127,
           "split_size": 256,
-          "workspace_ms": 0.07448575973510742,
-          "workspace_speedup": 0.34478966372776393
+          "workspace_ms": 0.07458816051483154,
+          "workspace_speedup": 0.34102142201730173
         },
         {
           "correct": true,
-          "cuda_ms": 0.14153727531433105,
-          "speedup": 0.18144986890936948,
+          "cuda_ms": 0.1415167999267578,
+          "speedup": 0.17973951204088223,
           "split_size": 512,
-          "workspace_ms": 0.14137344360351561,
-          "workspace_speedup": 0.18166014349625745
+          "workspace_ms": 0.14141440391540527,
+          "workspace_speedup": 0.17986965867804128
         },
         {
           "correct": true,
           "cuda_ms": 0.14153727531433105,
-          "speedup": 0.18144986890936948,
+          "speedup": 0.1797135101543609,
           "split_size": 1024,
-          "workspace_ms": 0.14137344360351561,
-          "workspace_speedup": 0.18166014349625745
+          "workspace_ms": 0.14141440391540527,
+          "workspace_speedup": 0.17986965867804128
         }
       ],
-      "split_speedup": 0.6359026012329162
+      "split_speedup": 0.633027524568854
     },
     {
       "batch": 4,
       "best_split_size": 128,
       "context": 2048,
       "correct": true,
-      "cuda_ms": 0.5495398330688477,
-      "flashinfer_ms": 0.025026559829711914,
-      "max_abs_error": 0.0001220703125,
+      "cuda_ms": 0.5497241592407227,
+      "flashinfer_ms": 0.02521087884902954,
+      "flashinfer_tensor_core_ms": 0.026071040630340575,
+      "flashinfer_tensor_core_vs_cuda_core": 0.9670070023860111,
+      "max_abs_error": 6.103515625e-05,
       "policy_split_size": 256,
-      "speedup": 0.04554093866126812,
+      "speedup": 0.04586096213026316,
       "split_correct": true,
-      "split_cuda_ms": 0.08112128257751465,
+      "split_cuda_ms": 0.0809984016418457,
       "split_reports": [
         {
           "correct": true,
-          "cuda_ms": 0.08112128257751465,
-          "speedup": 0.3085079406356529,
+          "cuda_ms": 0.0809984016418457,
+          "speedup": 0.3112515597592361,
           "split_size": 128,
-          "workspace_ms": 0.08103936195373534,
-          "workspace_speedup": 0.3088198034431633
+          "workspace_ms": 0.08091648101806641,
+          "workspace_speedup": 0.3115666738324996
         },
         {
           "correct": true,
-          "cuda_ms": 0.08423423767089844,
-          "speedup": 0.29710674093698347,
+          "cuda_ms": 0.08425472259521484,
+          "speedup": 0.29922214532887637,
           "split_size": 256,
-          "workspace_ms": 0.08398847579956055,
-          "workspace_speedup": 0.2979761162643085
+          "workspace_ms": 0.08423423767089844,
+          "workspace_speedup": 0.29929491316260215
         },
         {
           "correct": true,
-          "cuda_ms": 0.14815232276916504,
-          "speedup": 0.1689245187785925,
+          "cuda_ms": 0.1475379180908203,
+          "speedup": 0.17087728480423867,
           "split_size": 512,
-          "workspace_ms": 0.14817279815673828,
-          "workspace_speedup": 0.16890117579637415
+          "workspace_ms": 0.14723072052001954,
+          "workspace_speedup": 0.17123382103941764
         },
         {
           "correct": true,
-          "cuda_ms": 0.2850815963745117,
-          "speedup": 0.08778735684093239,
+          "cuda_ms": 0.2852864074707031,
+          "speedup": 0.0883704171977367,
           "split_size": 1024,
-          "workspace_ms": 0.28499967575073243,
-          "workspace_speedup": 0.08781259053642133
+          "workspace_ms": 0.2851430320739746,
+          "workspace_speedup": 0.08841485154190647
         }
       ],
-      "split_speedup": 0.3085079406356529
+      "split_speedup": 0.3112515597592361
     },
     {
       "batch": 4,
@@ -247,47 +257,49 @@
       "context": 4096,
       "correct": true,
       "cuda_ms": 1.097543716430664,
-      "flashinfer_ms": 0.025907199382781982,
+      "flashinfer_ms": 0.02643968105316162,
+      "flashinfer_tensor_core_ms": 0.027217919826507567,
+      "flashinfer_tensor_core_vs_cuda_core": 0.9714071178728354,
       "max_abs_error": 6.103515625e-05,
       "policy_split_size": 256,
-      "speedup": 0.023604708400167526,
+      "speedup": 0.024089865995631086,
       "split_correct": true,
-      "split_cuda_ms": 0.1547878360748291,
+      "split_cuda_ms": 0.1548902416229248,
       "split_reports": [
         {
           "correct": true,
-          "cuda_ms": 0.1547878360748291,
-          "speedup": 0.16737232097655053,
+          "cuda_ms": 0.1548902416229248,
+          "speedup": 0.17069946289791552,
           "split_size": 128,
-          "workspace_ms": 0.15460351943969727,
-          "workspace_speedup": 0.16757186043806088
+          "workspace_ms": 0.15458304405212403,
+          "workspace_speedup": 0.17103868807400632
         },
         {
           "correct": true,
-          "cuda_ms": 0.15671296119689943,
-          "speedup": 0.16531625198653038,
+          "cuda_ms": 0.15661055564880372,
+          "speedup": 0.16882438698737598,
           "split_size": 256,
-          "workspace_ms": 0.15667200088500977,
-          "workspace_speedup": 0.16535947225054404
+          "workspace_ms": 0.15652864456176757,
+          "workspace_speedup": 0.16891273240872082
         },
         {
           "correct": true,
-          "cuda_ms": 0.16291839599609376,
-          "speedup": 0.1590194847204557,
+          "cuda_ms": 0.16308223724365234,
+          "speedup": 0.16212483652440654,
           "split_size": 512,
-          "workspace_ms": 0.16283647537231447,
-          "workspace_speedup": 0.1590994850726592
+          "workspace_ms": 0.16289791107177734,
+          "workspace_speedup": 0.16230828792833055
         },
         {
           "correct": true,
-          "cuda_ms": 0.29239295959472655,
-          "speedup": 0.08860404648145717,
+          "cuda_ms": 0.29095935821533203,
+          "speedup": 0.09087070172045901,
           "split_size": 1024,
-          "workspace_ms": 0.29210624694824217,
-          "workspace_speedup": 0.08869101449710672
+          "workspace_ms": 0.2908774375915527,
+          "workspace_speedup": 0.09089629388955209
         }
       ],
-      "split_speedup": 0.16737232097655053
+      "split_speedup": 0.17069946289791552
     }
   ],
   "schema_version": 1

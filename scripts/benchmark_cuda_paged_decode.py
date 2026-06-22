@@ -26,12 +26,8 @@ def latency_ms(function, warmup=10, iterations=50):
 
 
 def l20_split_policy(batch, context):
-    if batch == 1:
-        return 128
-    if batch <= 4 and context <= 512:
-        return 128
     if batch <= 4:
-        return 256
+        return 128
     return 512
 
 
@@ -85,27 +81,33 @@ def main():
             workspace = torch.empty(
                 128 * 1024 * 1024, device="cuda", dtype=torch.uint8
             )
-            wrapper = flashinfer.BatchDecodeWithPagedKVCacheWrapper(
-                workspace, "NHD"
-            )
-            wrapper.plan(
-                indptr,
-                block_table.flatten(),
-                last_page_len,
-                16,
-                8,
-                128,
-                page_size,
-                pos_encoding_mode="NONE",
-                q_data_type=query.dtype,
-                kv_data_type=query.dtype,
-            )
-            expected = wrapper.run(query, cache)
+            wrappers = {}
+            for tensor_cores in (False, True):
+                wrapper = flashinfer.BatchDecodeWithPagedKVCacheWrapper(
+                    workspace, "NHD", use_tensor_cores=tensor_cores
+                )
+                wrapper.plan(
+                    indptr,
+                    block_table.flatten(),
+                    last_page_len,
+                    16,
+                    8,
+                    128,
+                    page_size,
+                    pos_encoding_mode="NONE",
+                    q_data_type=query.dtype,
+                    kv_data_type=query.dtype,
+                )
+                wrappers[tensor_cores] = wrapper
+            expected = wrappers[False].run(query, cache)
             actual = extension.paged_decode(
                 query, cache[0], cache[1], block_table, seq_lens
             )
             split_available = hasattr(extension, "paged_decode_split")
-            flashinfer_ms = latency_ms(lambda: wrapper.run(query, cache))
+            flashinfer_ms = latency_ms(lambda: wrappers[False].run(query, cache))
+            flashinfer_tensor_core_ms = latency_ms(
+                lambda: wrappers[True].run(query, cache)
+            )
             cuda_ms = latency_ms(
                 lambda: extension.paged_decode(
                     query, cache[0], cache[1], block_table, seq_lens
@@ -192,6 +194,10 @@ def main():
                         (actual.float() - expected.float()).abs().max()
                     ),
                     "flashinfer_ms": flashinfer_ms,
+                    "flashinfer_tensor_core_ms": flashinfer_tensor_core_ms,
+                    "flashinfer_tensor_core_vs_cuda_core": (
+                        flashinfer_ms / flashinfer_tensor_core_ms
+                    ),
                     "cuda_ms": cuda_ms,
                     "speedup": flashinfer_ms / cuda_ms,
                     "split_reports": split_reports,

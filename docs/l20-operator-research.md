@@ -361,6 +361,26 @@ Nsight Compute 2025.3.1 is installed, but hardware-counter collection is
 blocked by `ERR_NVGPUCTRPERM` for the remote user. DRAM, L2, occupancy, register,
 and warp-stall counters cannot be reported until the host enables non-admin
 performance-counter access. Benchmark timing and correctness remain available.
+
+### V23 Tensor-Core Hypothesis Check
+
+FlashInfer exposes both CUDA-core decode and a tensor-core path. The wrapper
+defaults to `use_tensor_cores=False`; vLLM explicitly requests `True`.
+FlashInfer's own API notes that tensor cores are expected to help when the GQA
+group size is large.
+
+For the measured Qwen3 shape, 16 Q heads and 8 KV heads give a group size of
+only two. Same-process measurements show the tensor-core FlashInfer path is
+approximately 3 to 5 percent slower than its CUDA-core path across batch 1 and
+4 at context 512, 2048, and 4096. This rejects the hypothesis that missing MMA
+instructions explain 40 to 50 percent of the remaining gap for this workload.
+
+Padding one or two decode queries to an MMA M-dimension of 16 would perform
+substantial unused work. A `tl.dot` or CuTe MMA path should therefore not be
+the next default optimization for Qwen3 2:1 GQA. Tensor cores remain relevant
+for larger GQA ratios or larger effective query batches, but the current
+priority is page metadata handling and the K/V load-to-PV pipeline inside each
+128-token partial CTA.
 5. FP8 through NVIDIA Transformer Engine before writing a custom FP8 GEMM.
 6. FlashAttention/vLLM production baselines before any custom attention kernel.
 
