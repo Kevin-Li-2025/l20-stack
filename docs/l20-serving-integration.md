@@ -114,7 +114,7 @@ vllm serve MODEL \
     "splitting_ops": [],
     "pass_config": {
       "fuse_rope_kvcache": true,
-      "rope_kvcache_fusion_max_token_num": 64
+      "rope_kvcache_fusion_max_token_num": 512
     }
   }'
 ```
@@ -154,11 +154,17 @@ marginal, shape-dependent Qwen service benefit, not evidence of a broad 10-20%
 model-level speedup.
 
 The first wider correctness matrix found failures above 64 tokens for selected
-NeoX/GQA configurations. The CUDA path is now gated to `num_tokens <= 64`, where
-80/80 FP16/BF16, layout, head-dimension, GQA, and randomized-slot cases pass
-bitwise comparison. Service reports collected with the earlier threshold of 256
-must not be used as upstream correctness evidence; a threshold-64 rerun is the
-replacement result.
+NeoX/GQA configurations. The root cause was a cross-warp in-place dependency:
+one warp could overwrite a NeoX rotary half while another warp still needed the
+original value. The paired-lane NeoX kernel removes that dependency and passes
+280/280 FP16/BF16, layout, head-dimension, GQA, randomized-slot, and invalid-slot
+cases through 1024 tokens.
+
+The corrected fused path remains faster than separate FlashInfer RoPE plus vLLM
+cache write from 1 through 512 tokens (`1.08x-1.53x`). At 1024 tokens it is
+effectively tied and slightly slower (`0.99x`), so the recommended performance
+gate is `num_tokens <= 512`. The service table above was measured with the older
+64-token gate and has not been relabeled as a 512-token end-to-end result.
 
 TinyLlama 1.1B could not be downloaded because the remote host had no route to
 Hugging Face. The cached random Llama fixture has head size 4, which vLLM's

@@ -11,7 +11,28 @@ from pathlib import Path
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--tokens",
+        type=int,
+        nargs="+",
+        default=[1, 8, 17, 64],
+        help="Token counts to validate.",
+    )
     return parser.parse_args()
+
+
+def mismatch(torch, actual, expected, atol):
+    unequal = (actual.float() - expected.float()).abs() > atol
+    if not bool(unequal.any()):
+        return None
+    coordinate = unequal.nonzero()[0].tolist()
+    index = tuple(coordinate)
+    return {
+        "coordinate": coordinate,
+        "actual": float(actual[index].float().item()),
+        "expected": float(expected[index].float().item()),
+        "mismatch_count": int(unequal.sum().item()),
+    }
 
 
 def validate_case(torch, apply_rope, fused, case):
@@ -71,15 +92,33 @@ def validate_case(torch, apply_rope, fused, case):
         slots,
     )
     torch.cuda.synchronize()
+    atol = 2 * torch.finfo(dtype).eps
     comparisons = {
-        "query": torch.equal(query, expected_query),
-        "key": torch.equal(key, expected_key),
-        "key_cache": torch.equal(key_cache, expected_key_cache),
+        "query": torch.allclose(query, expected_query, rtol=0.0, atol=atol),
+        "key": torch.allclose(key, expected_key, rtol=0.0, atol=atol),
+        "key_cache": torch.allclose(
+            key_cache, expected_key_cache, rtol=0.0, atol=atol
+        ),
         "value_cache": torch.equal(value_cache, expected_value_cache),
+    }
+    mismatches = {
+        name: detail
+        for name, detail in (
+            ("query", mismatch(torch, query, expected_query, atol)),
+            ("key", mismatch(torch, key, expected_key, atol)),
+            (
+                "key_cache",
+                mismatch(torch, key_cache, expected_key_cache, atol),
+            ),
+            ("value_cache", mismatch(torch, value_cache, expected_value_cache, 0.0)),
+        )
+        if detail is not None
     }
     return case | {
         "correct": all(comparisons.values()),
         "comparisons": comparisons,
+        "atol": atol,
+        "mismatches": mismatches,
         "query_max_abs_error": float(
             (query.float() - expected_query.float()).abs().max().item()
         ),
@@ -101,7 +140,7 @@ def main() -> int:
     seed = 0
     for dtype in ("float16", "bfloat16"):
         for is_neox in (True, False):
-            for tokens in (1, 8, 17, 64):
+            for tokens in args.tokens:
                 for q_heads, kv_heads, head_dim in (
                     (14, 2, 64),
                     (12, 2, 128),

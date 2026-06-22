@@ -118,6 +118,123 @@ def _l20_rope_kv_kernel(
             value_cache + v_cache_base + offsets,
             v,
             mask=dim_mask & valid_slot,
+    )
+
+
+@triton.jit
+def _l20_neox_rope_kv_kernel(
+    query,
+    key,
+    value,
+    positions,
+    cos_sin_cache,
+    slot_mapping,
+    key_cache,
+    value_cache,
+    q_stride_t,
+    q_stride_h,
+    k_stride_t,
+    k_stride_h,
+    v_stride_t,
+    v_stride_h,
+    kc_stride_b,
+    kc_stride_s,
+    kc_stride_h,
+    vc_stride_b,
+    vc_stride_s,
+    vc_stride_h,
+    cos_stride_t,
+    num_tokens: tl.constexpr,
+    num_q_heads: tl.constexpr,
+    num_kv_heads: tl.constexpr,
+    head_dim: tl.constexpr,
+    rotary_dim: tl.constexpr,
+    cache_block_size: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    token = tl.program_id(0)
+    head = tl.program_id(1)
+    offsets = tl.arange(0, BLOCK_SIZE)
+    half = rotary_dim // 2
+    pair_mask = offsets < half
+    tail_mask = (offsets >= rotary_dim) & (offsets < head_dim)
+    position = tl.load(positions + token)
+    cos = tl.load(
+        cos_sin_cache + position * cos_stride_t + offsets,
+        mask=pair_mask,
+        other=1.0,
+    ).to(tl.float32)
+    sin = tl.load(
+        cos_sin_cache + position * cos_stride_t + half + offsets,
+        mask=pair_mask,
+        other=0.0,
+    ).to(tl.float32)
+
+    q_base = token * q_stride_t + head * q_stride_h
+    q_left = tl.load(query + q_base + offsets, mask=pair_mask, other=0.0)
+    q_right = tl.load(query + q_base + half + offsets, mask=pair_mask, other=0.0)
+    q_left_out = (
+        q_left.to(tl.float32) * cos + q_right.to(tl.float32) * sin * -1.0
+    )
+    q_right_out = (
+        q_right.to(tl.float32) * cos + q_left.to(tl.float32) * sin * 1.0
+    )
+    tl.store(query + q_base + offsets, q_left_out, mask=pair_mask)
+    tl.store(query + q_base + half + offsets, q_right_out, mask=pair_mask)
+
+    if head < num_kv_heads:
+        k_base = token * k_stride_t + head * k_stride_h
+        k_left = tl.load(key + k_base + offsets, mask=pair_mask, other=0.0)
+        k_right = tl.load(key + k_base + half + offsets, mask=pair_mask, other=0.0)
+        k_tail = tl.load(key + k_base + offsets, mask=tail_mask, other=0.0)
+        k_left_out = (
+            k_left.to(tl.float32) * cos + k_right.to(tl.float32) * sin * -1.0
+        )
+        k_right_out = (
+            k_right.to(tl.float32) * cos + k_left.to(tl.float32) * sin * 1.0
+        )
+        tl.store(key + k_base + offsets, k_left_out, mask=pair_mask)
+        tl.store(key + k_base + half + offsets, k_right_out, mask=pair_mask)
+
+        slot = tl.load(slot_mapping + token)
+        valid_slot = slot >= 0
+        safe_slot = tl.where(valid_slot, slot, 0)
+        physical_block = safe_slot // cache_block_size
+        block_offset = safe_slot % cache_block_size
+        k_cache_base = (
+            physical_block * kc_stride_b
+            + block_offset * kc_stride_s
+            + head * kc_stride_h
+        )
+        v_cache_base = (
+            physical_block * vc_stride_b
+            + block_offset * vc_stride_s
+            + head * vc_stride_h
+        )
+        v = tl.load(
+            value + token * v_stride_t + head * v_stride_h + offsets,
+            mask=offsets < head_dim,
+            other=0.0,
+        )
+        tl.store(
+            key_cache + k_cache_base + offsets,
+            k_left_out,
+            mask=pair_mask & valid_slot,
+        )
+        tl.store(
+            key_cache + k_cache_base + half + offsets,
+            k_right_out,
+            mask=pair_mask & valid_slot,
+        )
+        tl.store(
+            key_cache + k_cache_base + offsets,
+            k_tail,
+            mask=tail_mask & valid_slot,
+        )
+        tl.store(
+            value_cache + v_cache_base + offsets,
+            v,
+            mask=(offsets < head_dim) & valid_slot,
         )
 
 
@@ -138,8 +255,6 @@ def l20_rope_and_cache(
         raise RuntimeError("l20_rope_and_cache supports FP16 and BF16")
     if key.dtype != query.dtype or value.dtype != query.dtype:
         raise RuntimeError("Q, K, and V must use the same dtype")
-    if query.shape[0] > 64:
-        raise RuntimeError("l20_rope_and_cache is restricted to at most 64 tokens")
     if key_cache.dtype != query.dtype or value_cache.dtype != query.dtype:
         raise RuntimeError("quantized KV cache is not supported")
     if query.ndim != 3 or key.ndim != 3 or value.ndim != 3:
@@ -162,7 +277,8 @@ def l20_rope_and_cache(
     if block_size > 256:
         raise RuntimeError("head_dim above 256 is not supported")
 
-    _l20_rope_kv_kernel[(num_tokens, num_q_heads)](
+    kernel = _l20_neox_rope_kv_kernel if is_neox else _l20_rope_kv_kernel
+    kernel[(num_tokens, num_q_heads)](
         query,
         key,
         value,
@@ -190,8 +306,8 @@ def l20_rope_and_cache(
         head_dim,
         rotary_dim,
         key_cache.shape[1],
-        is_neox,
         BLOCK_SIZE=block_size,
         num_warps=4 if head_dim >= 128 else 2,
         num_stages=1,
+        **({} if is_neox else {"is_neox": False}),
     )

@@ -10,8 +10,8 @@ The custom SM89 Triton path is substantially faster at its intended boundary:
 up to 7.82x against separate vLLM/FlashInfer update paths. When the same work is
 composed with paged decode attention, the gain ranges from 59.1% at batch one to
 1.4% at batch 128 and 4K context. After integration into vLLM 0.23 and all 28
-layers of Qwen2.5-Coder-1.5B, the safe upstream-shaped path is correctness-gated
-to at most 64 tokens. Under that gate, service throughput is mixed but small:
+layers of Qwen2.5-Coder-1.5B, the initial upstream-shaped path was gated to 64
+tokens. Under that gate, service throughput is mixed but small:
 five of six shapes improve by 0.39%-1.12%, while one shape regresses by 1.36%.
 
 The result is not a failed kernel optimization. It is a measured demonstration
@@ -181,7 +181,7 @@ vllm serve MODEL \
     "splitting_ops": [],
     "pass_config": {
       "fuse_rope_kvcache": true,
-      "rope_kvcache_fusion_max_token_num": 64
+      "rope_kvcache_fusion_max_token_num": 512
     }
   }'
 ```
@@ -215,9 +215,14 @@ NeoX/GQA shapes produced incorrect K values even though Q remained bitwise
 correct. Invalid cache slots were also sanitized before address calculation so
 that a predicated store never receives an out-of-range pointer.
 
-The production gate is therefore restricted to at most 64 tokens until the
-larger-grid NeoX issue is explained. Within that range, 80/80 L20 cases pass
-bitwise comparison against FlashInfer across:
+The larger-grid NeoX issue was a cross-warp in-place race. NeoX pairs values
+from opposite rotary halves; the original program allowed one warp to store a
+rotated half before another warp had loaded the original paired value. The
+replacement assigns both values in a pair to one lane, removing the dependency.
+
+The corrected kernel passes 280/280 L20 cases against FlashInfer through 1024
+tokens, using a strict two-epsilon absolute tolerance for FP16/BF16 rotation
+outputs and exact comparison for V cache writes, across:
 
 - FP16 and BF16;
 - NeoX and interleaved rotary layouts;
@@ -225,8 +230,9 @@ bitwise comparison against FlashInfer across:
 - Q/KV head configurations 14/2, 12/2, 32/4, 32/8, and 16/4;
 - random positions, random physical slots, and invalid `-1` slots.
 
-Static cubin inspection reports 24 registers per thread at head dimensions
-64/128 and 28 at head dimension 256. All measured variants use zero stack,
+Static cubin inspection reports 24 registers per thread for the interleaved
+path. The race-free NeoX path uses 26-28 registers per thread. All measured
+variants use zero stack,
 local, and shared memory, and the SM89 architectural occupancy upper bound is
 100%. This rules out register pressure, spills, and shared-memory conflicts as
 the obvious next optimization target. It does not measure active occupancy,
@@ -253,8 +259,10 @@ that it can execute across a real model. The end-to-end result also establishes
 the stopping condition: paged RoPE/KV update is no longer the dominant L20
 serving bottleneck on this stack. The broader validation pass also moved this
 from a performance-only demo to an upstream-shaped engineering result: the
-current safe gate is `num_tokens <= 64`, and larger-token NeoX/GQA grids remain
-unresolved.
+NeoX race is resolved through 1024 tokens. The recommended performance gate
+is `num_tokens <= 512`: the fused path is `1.08x-1.53x` faster through 512
+tokens, then reaches `0.99x` at 1024 tokens. The existing full-service table
+still reflects the earlier 64-token gate.
 
 The next optimization target should be selected from a full decode profile. The
 highest-probability candidates are attention scheduling at long context,
@@ -270,6 +278,9 @@ RoPE tuning is unlikely to produce a material service improvement.
 - `scripts/analyze_vllm_serving.py`
 - `benchmarks/results/l20-decode-layer-v1/summary.json`
 - `benchmarks/results/l20-vllm-e2e/qwen-safe64-summary.json`
+- `benchmarks/results/l20-vllm-rope-kv-profile/validation-wide.json`
+- `benchmarks/results/l20-vllm-rope-kv-profile/resources-v2.json`
+- `benchmarks/results/l20-vllm-rope-kv-profile/neox-race-free-benchmark.json`
 
 Upstream references:
 

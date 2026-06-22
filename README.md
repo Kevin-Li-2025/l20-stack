@@ -137,10 +137,13 @@ full-model tokens/s claims.
 
 The kernel is now wired into vLLM 0.23's existing
 `fuse_rope_kvcache` post-grad pass for CUDA SM89. On
-Qwen2.5-Coder-1.5B-Instruct, all 28 layers matched the fusion. The wider
-correctness matrix found failures above 64 tokens for selected NeoX/GQA shapes,
-so the vLLM path is now gated to `num_tokens <= 64`. With prefix caching
-disabled, five of six tested service shapes improve throughput by
+Qwen2.5-Coder-1.5B-Instruct, all 28 layers matched the fusion. A wider
+correctness matrix exposed a cross-warp in-place race in the NeoX layout. The
+race-free paired-lane kernel now passes 280/280 L20 cases through 1024 tokens.
+Microbenchmarks keep the fused path ahead through 512 tokens, so the recommended
+vLLM performance gate is `num_tokens <= 512`. The existing service comparison
+used the earlier 64-token gate; with prefix caching disabled, five of six tested
+shapes improve throughput by
 `+0.39%` to `+1.12%`, while concurrency 16/input 3072 regresses by `1.36%`.
 Tail latency remains mixed. This is a small, shape-dependent end-to-end result
 despite the much larger append microbenchmark win; see

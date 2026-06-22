@@ -62,7 +62,7 @@ def cubin_resource_usage(compiled):
     return values
 
 
-def compile_shape(torch, triton, kernel, shape):
+def compile_shape(torch, triton, kernel, shape, *, is_neox=False):
     tokens = shape["tokens"]
     q_heads = shape["q_heads"]
     kv_heads = shape["kv_heads"]
@@ -77,7 +77,7 @@ def compile_shape(torch, triton, kernel, shape):
     cos_sin = torch.empty(4096, head_dim, device="cuda", dtype=torch.float32)
     slots = torch.arange(tokens, device="cuda", dtype=torch.int64)
     cache = torch.empty(16, 16, kv_heads, head_dim, device="cuda", dtype=dtype)
-    compiled = kernel.warmup(
+    arguments = [
         query,
         key,
         value,
@@ -105,7 +105,11 @@ def compile_shape(torch, triton, kernel, shape):
         head_dim,
         head_dim,
         cache.shape[1],
-        True,
+    ]
+    if not is_neox:
+        arguments.append(False)
+    compiled = kernel.warmup(
+        *arguments,
         BLOCK_SIZE=block,
         num_warps=num_warps,
         num_stages=1,
@@ -117,6 +121,7 @@ def compile_shape(torch, triton, kernel, shape):
     shared = resources.get("shared") or metadata_value(metadata, "shared", "shared_memory") or 0
     spills = metadata_value(metadata, "num_spills", "n_spills")
     return shape | {
+        "kernel": "neox" if is_neox else "interleaved",
         "block_size": block,
         "num_warps": num_warps,
         "num_stages": 1,
@@ -133,7 +138,10 @@ def main() -> int:
     args = parse_args()
     import torch
     import triton
-    from vllm.v1.attention.ops.l20_rope_kv import _l20_rope_kv_kernel
+    from vllm.v1.attention.ops.l20_rope_kv import (
+        _l20_neox_rope_kv_kernel,
+        _l20_rope_kv_kernel,
+    )
 
     if torch.cuda.get_device_name() != "NVIDIA L20":
         raise SystemExit("profile requires NVIDIA L20")
@@ -152,7 +160,14 @@ def main() -> int:
             "Occupancy is an architectural upper-bound estimate, not measured active warps.",
             "DRAM, L2, coalescing, and stall metrics require Nsight Compute and are not inferred here.",
         ],
-        "shapes": [compile_shape(torch, triton, _l20_rope_kv_kernel, shape) for shape in shapes],
+        "shapes": [
+            compile_shape(torch, triton, kernel, shape, is_neox=is_neox)
+            for kernel, is_neox in (
+                (_l20_rope_kv_kernel, False),
+                (_l20_neox_rope_kv_kernel, True),
+            )
+            for shape in shapes
+        ],
     }
     serialized = json.dumps(result, indent=2, sort_keys=True)
     print(serialized)
