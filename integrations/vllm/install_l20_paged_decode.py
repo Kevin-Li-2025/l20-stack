@@ -46,14 +46,23 @@ def main() -> int:
         extra_cuda_cflags=["-O3", "-gencode=arch=compute_89,code=sm_89"],
         build_directory=build_dir,
     )
-    shutil.copy2(extension.__file__, package.parent / "l20_paged_decode_cuda.so")
+    op_dir = package / "v1" / "attention" / "ops"
+    shutil.copy2(extension.__file__, op_dir / "l20_paged_decode_ops.so")
+    shutil.copy2(
+        root / "integrations/vllm/l20_paged_decode.py",
+        op_dir / "l20_paged_decode.py",
+    )
 
     source = backend.read_text(encoding="utf-8")
     source = replace_once(
         source,
         "import torch\n",
-        "import torch\nimport l20_paged_decode_cuda\n",
-        "extension import",
+        (
+            "import torch\n"
+            "from vllm.v1.attention.ops.l20_paged_decode import "
+            "paged_decode_split_out as l20_paged_decode_split_out\n"
+        ),
+        "operator import",
     )
     source = replace_once(
         source,
@@ -135,7 +144,7 @@ def main() -> int:
                             )
                             self._l20_workspace_shape = l20_shape
                         key_cache, value_cache = kv_cache_permute.unbind(1)
-                        l20_paged_decode_cuda.paged_decode_split_out(
+                        l20_paged_decode_split_out(
                             decode_query,
                             key_cache,
                             value_cache,

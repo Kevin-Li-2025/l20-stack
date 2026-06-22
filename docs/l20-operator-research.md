@@ -864,3 +864,38 @@ TTFT is not improved and is not claimed. Under CUDA Graphs, median ITL changes
 are between -0.004% and +0.046%, while throughput regresses 0.28% to 1.30%.
 The installer therefore captures FlashInfer during CUDA Graph creation and
 enables the L20 kernel only in eager execution.
+
+## Upstream-Oriented Dispatcher Integration
+
+The production experiment no longer imports and invokes a raw pybind symbol
+from the vLLM backend. The extension registers
+`l20_stack::paged_decode_split_out` through `TORCH_LIBRARY`, supplies a CUDA
+dispatch implementation, and exposes a Python wrapper with a FakeTensor
+implementation. The vLLM patch imports this wrapper from its attention-ops
+package. This keeps the conservative L20-only gate unchanged while making the
+operator visible to PyTorch dispatch, tracing, and compilation tooling.
+
+The pybind exports remain temporarily available to preserve the existing
+microbenchmark and stress-test interfaces. They are not used by the vLLM
+service path. Before proposing an upstream change, run
+`scripts/smoke_cuda_paged_decode_op.py` under `compute-sanitizer --tool
+memcheck`, then rerun the randomized stress suite and an eager vLLM smoke test.
+
+The dispatcher integration was validated on the L20 host with PyTorch
+2.11.0+cu130:
+
+- the registered CUDA and Meta dispatch kernels are both visible;
+- a 12Q/2KV, batch-one, context-129 reference comparison has maximum absolute
+  error 0.000244140625;
+- 100 randomized cases pass with maximum absolute error 0.001953125;
+- CUDA Graph capture plus 1000 replays still passes;
+- FakeTensor propagation returns the expected `[1, 12, 128]` FP16 CUDA tensor;
+- Qwen2.5-Coder-1.5B starts through the patched FlashInfer backend in eager
+  mode and completes a real eight-token HTTP request.
+
+The host's `compute-sanitizer` is version 2022.4.1. It exits before the first
+instrumented CUDA API call even for `torch.ones(1, device="cuda")`, while the
+runtime is PyTorch CUDA 13 with driver 580.159.04. Memcheck is therefore
+blocked by a host-tool mismatch, not recorded as a kernel pass. A sanitizer
+version compatible with the installed CUDA runtime remains an upstream
+submission gate.

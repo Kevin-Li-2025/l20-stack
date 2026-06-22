@@ -11,3 +11,6 @@ def test_cuda_prototype_is_l20_specialized_and_checked():
     assert "paged_decode_partial_kernel" in source
     assert "paged_decode_merge_kernel" in source
     assert "split_size must be a multiple of 16 from 64 through 1024" in source
+    smoke = Path("scripts/smoke_cuda_paged_decode_op.py").read_text()
+    assert "torch.ops.l20_stack.paged_decode_split_out" in smoke
+    assert "torch.testing.assert_close" in smoke

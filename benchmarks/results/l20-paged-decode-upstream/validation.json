@@ -1,0 +1,46 @@
+{
+  "cuda_dispatch_registered": true,
+  "fake_tensor": {
+    "device": "cuda:0",
+    "dtype": "torch.float16",
+    "shape": [
+      1,
+      12,
+      128
+    ]
+  },
+  "gpu": "NVIDIA L20",
+  "graph_capture": {
+    "passed": true,
+    "replays": 1000
+  },
+  "operator_smoke": {
+    "batch": 1,
+    "context": 129,
+    "max_abs_error": 0.000244140625,
+    "passed": true,
+    "q_heads": 12,
+    "kv_heads": 2
+  },
+  "pytorch": "2.11.0+cu130",
+  "sanitizer": {
+    "passed": false,
+    "reason": "Host compute-sanitizer 2022.4.1 exits before the first instrumented CUDA API call, including for a one-tensor PyTorch control.",
+    "status": "blocked_by_host_tool_mismatch",
+    "version": "2022.4.1"
+  },
+  "schema_version": 1,
+  "stress": {
+    "cases": 100,
+    "failed": 0,
+    "max_abs_error": 0.001953125
+  },
+  "vllm_smoke": {
+    "attention_backend": "FLASHINFER",
+    "completion_tokens": 8,
+    "enforce_eager": true,
+    "http_status": 200,
+    "model": "Qwen2.5-Coder-1.5B-Instruct",
+    "passed": true
+  }
+}
