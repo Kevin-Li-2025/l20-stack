@@ -1,0 +1,50 @@
+{
+  "512": {
+    "duration_us": 16.768,
+    "dram_gbyte_per_s": 448.610687,
+    "dram_peak_pct": 52.232651,
+    "l2_sector_hit_rate_pct": 69.679851,
+    "active_warps_pct": 29.947158,
+    "top_warp_stalls": [
+      {
+        "long_scoreboard": 11.566192
+      },
+      {
+        "selected": 0.999837
+      },
+      {
+        "wait": 0.788032
+      },
+      {
+        "short_scoreboard": 0.426491
+      },
+      {
+        "not_selected": 0.287489
+      }
+    ]
+  },
+  "1024": {
+    "duration_us": 29.792,
+    "dram_gbyte_per_s": 508.799141,
+    "dram_peak_pct": 59.154711,
+    "l2_sector_hit_rate_pct": 70.595136,
+    "active_warps_pct": 30.023266,
+    "top_warp_stalls": [
+      {
+        "long_scoreboard": 11.644134
+      },
+      {
+        "selected": 0.999977
+      },
+      {
+        "wait": 0.789536
+      },
+      {
+        "short_scoreboard": 0.431397
+      },
+      {
+        "drain": 0.281857
+      }
+    ]
+  }
+}

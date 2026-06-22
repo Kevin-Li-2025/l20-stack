@@ -259,15 +259,86 @@ that it can execute across a real model. The end-to-end result also establishes
 the stopping condition: paged RoPE/KV update is no longer the dominant L20
 serving bottleneck on this stack. The broader validation pass also moved this
 from a performance-only demo to an upstream-shaped engineering result: the
-NeoX race is resolved through 1024 tokens. The recommended performance gate
-is `num_tokens <= 512`: the fused path is `1.08x-1.53x` faster through 512
-tokens, then reaches `0.99x` at 1024 tokens. The existing full-service table
-still reflects the earlier 64-token gate.
+NeoX race is resolved through 1024 tokens. The policy-v3 fused path reaches
+1.51x at 128 tokens, 1.38x at 256, 1.18x at 512, and 1.09x at 1024.
 
 The next optimization target should be selected from a full decode profile. The
 highest-probability candidates are attention scheduling at long context,
 decode GEMV/dequant fusion, and scheduler/batcher overhead at small batch. More
 RoPE tuning is unlikely to produce a material service improvement.
+
+## L20 Policy V3: Measured Warp Dispatch
+
+Nsight Compute 2025.3.1 changed the optimization decision. The original
+head-dimension-128 path used four warps for every token count. A multi-round
+policy sweep found that more active warps did not imply lower latency:
+
+| Tokens | Selected warps | Speedup vs 4 warps |
+| ---: | ---: | ---: |
+| 32 | 2 | 1.06x |
+| 64 | 2 | 1.06x |
+| 96 | 2 | 1.23x |
+| 128 | 1 | 1.20x |
+| 256 | 1 | 1.25x |
+| 512 | 1 | 1.09x |
+
+The dispatcher now uses token count and head dimension. For `head_dim=64`, one
+warp starts at 96 tokens. For `head_dim=128`, two warps cover 32-127 tokens and
+one warp covers 128 and above. The 256-dimensional path retains four warps
+except at one token.
+
+The updated kernel passes the full 280-case correctness matrix. Nine repeated
+rounds were positive at both 512 and 1024 tokens. Results became noisy above
+1024, so 1024 is the kernel-level boundary rather than an automatically enabled
+serving boundary.
+
+### Nsight Compute
+
+| Tokens | Duration | DRAM | DRAM peak | L2 sector hit | Active warps |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 3.68 us | 5.6 GB/s | 0.66% | 70.25% | 7.15% |
+| 512, old 4-warp | 18.69 us | 427.3 GB/s | 49.63% | 69.51% | 65.25% |
+| 512, policy 1-warp | 16.77 us | 448.6 GB/s | 52.23% | 69.68% | 29.95% |
+| 1024, policy 1-warp | 29.79 us | 508.8 GB/s | 59.15% | 70.60% | 30.02% |
+
+The dominant stall at 512 and 1024 is long scoreboard. Reducing warps lowered
+active occupancy but improved latency and achieved DRAM throughput, so
+occupancy was not a valid standalone target. PTX inspection showed ordinary
+`ld.global` loads; PTX defines the default load cache operation as `.ca`, so an
+explicit `.ca` hint would not change the generated cache policy.
+
+### Service Gate Result
+
+The faster kernel did not justify a wider service gate. With full CUDA Graphs,
+raising the threshold to 1024 caused short-input throughput regressions up to
+5.33% at concurrency 64. Restricting fusion to 64 tokens made inter-token
+latency consistently better by 0.46%-0.72%, but request throughput remained
+mixed from -0.86% to +0.58% and TTFT was usually worse.
+
+The production conclusion is narrower than the microbenchmark: keep the vLLM
+gate at 64 for decode-oriented experimentation. The 1024 boundary describes
+where the kernel itself wins, not where the complete compiler and scheduler
+stack wins.
+
+### Qwen3 Cross-Model Check
+
+Qwen3-0.6B was downloaded locally, transferred to the L20 host through a
+temporary private release, verified, and the local weights and transfer release
+were deleted afterward. The same CUDA fusion compiled and served the 28-layer
+Qwen3 model with full CUDA Graphs.
+
+At 512 input tokens and 64 output tokens:
+
+| Concurrency | Throughput | TTFT p50 | ITL p50 |
+| ---: | ---: | ---: | ---: |
+| 1 | +0.82% | +4.12% | -1.91% |
+| 16 | -2.57% | +18.74% | -1.89% |
+
+This second model repeats the Qwen2.5 conclusion: the fused decode path improves
+ITL, but higher-concurrency throughput and TTFT can regress. Qwen3 also confirms
+that the next useful fusion target is not a missing Q-RoPE operation; Q is
+already rotated in this kernel. Qwen3's Q/K normalization remains outside this
+fusion and is the relevant wider-fusion opportunity.
 
 ## Artifacts
 
@@ -281,6 +352,11 @@ RoPE tuning is unlikely to produce a material service improvement.
 - `benchmarks/results/l20-vllm-rope-kv-profile/validation-wide.json`
 - `benchmarks/results/l20-vllm-rope-kv-profile/resources-v2.json`
 - `benchmarks/results/l20-vllm-rope-kv-profile/neox-race-free-benchmark.json`
+- `benchmarks/results/l20-vllm-rope-kv-profile/ncu/policy-summary.json`
+- `benchmarks/results/l20-vllm-rope-kv-profile/l20-policy-baseline.json`
+- `benchmarks/results/l20-vllm-e2e/qwen-policy-v3-summary.json`
+- `benchmarks/results/l20-vllm-e2e/qwen-policy-v3-safe64-summary.json`
+- `benchmarks/results/l20-vllm-e2e/qwen3-0.6b-summary.json`
 
 Upstream references:
 

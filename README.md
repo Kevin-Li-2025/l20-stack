@@ -140,13 +140,13 @@ The kernel is now wired into vLLM 0.23's existing
 Qwen2.5-Coder-1.5B-Instruct, all 28 layers matched the fusion. A wider
 correctness matrix exposed a cross-warp in-place race in the NeoX layout. The
 race-free paired-lane kernel now passes 280/280 L20 cases through 1024 tokens.
-Microbenchmarks keep the fused path ahead through 512 tokens, so the recommended
-vLLM performance gate is `num_tokens <= 512`. The existing service comparison
-used the earlier 64-token gate; with prefix caching disabled, five of six tested
-shapes improve throughput by
-`+0.39%` to `+1.12%`, while concurrency 16/input 3072 regresses by `1.36%`.
-Tail latency remains mixed. This is a small, shape-dependent end-to-end result
-despite the much larger append microbenchmark win; see
+The measured warp policy raises kernel-level speedup to 1.51x at 128 tokens,
+1.18x at 512, and 1.09x at 1024. Nsight Compute shows 508.8 GB/s at 1024.
+However, a wider serving gate regresses high-concurrency throughput, so the
+recommended vLLM gate remains `num_tokens <= 64`. Under full CUDA Graphs, ITL
+improves consistently by 0.46%-0.72%, while request throughput remains mixed
+from -0.86% to +0.58%. This is a small, shape-dependent end-to-end result
+despite the larger kernel win; see
 `docs/l20-serving-integration.md`.
 
 The complete systems narrative, including the rejected benchmark methodology

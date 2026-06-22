@@ -7,6 +7,21 @@ import torch
 from vllm.triton_utils import tl, triton
 
 
+def l20_rope_kv_num_warps(num_tokens: int, head_dim: int) -> int:
+    """Return the measured L20 launch policy for the fused RoPE/KV kernel."""
+    if head_dim <= 64:
+        return 1 if num_tokens >= 96 else 2
+    if head_dim <= 128:
+        if num_tokens >= 128:
+            return 1
+        if num_tokens >= 32:
+            return 2
+        return 4
+    if head_dim <= 256:
+        return 2 if num_tokens == 1 else 4
+    raise RuntimeError("head_dim above 256 is not supported")
+
+
 @triton.jit
 def _l20_rope_kv_kernel(
     query,
@@ -307,7 +322,7 @@ def l20_rope_and_cache(
         rotary_dim,
         key_cache.shape[1],
         BLOCK_SIZE=block_size,
-        num_warps=4 if head_dim >= 128 else 2,
+        num_warps=l20_rope_kv_num_warps(num_tokens, head_dim),
         num_stages=1,
         **({} if is_neox else {"is_neox": False}),
     )

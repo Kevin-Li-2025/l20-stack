@@ -14,6 +14,8 @@ from pathlib import Path
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--execute-tokens", type=int)
+    parser.add_argument("--execute-iterations", type=int, default=20)
     return parser.parse_args()
 
 
@@ -63,12 +65,14 @@ def cubin_resource_usage(compiled):
 
 
 def compile_shape(torch, triton, kernel, shape, *, is_neox=False):
+    from vllm.v1.attention.ops.l20_rope_kv import l20_rope_kv_num_warps
+
     tokens = shape["tokens"]
     q_heads = shape["q_heads"]
     kv_heads = shape["kv_heads"]
     head_dim = shape["head_dim"]
     block = triton.next_power_of_2(head_dim)
-    num_warps = 4 if head_dim >= 128 else 2
+    num_warps = l20_rope_kv_num_warps(tokens, head_dim)
     dtype = torch.float16
     query = torch.empty(tokens, q_heads, head_dim, device="cuda", dtype=dtype)
     key = torch.empty(tokens, kv_heads, head_dim, device="cuda", dtype=dtype)
@@ -145,6 +149,36 @@ def main() -> int:
 
     if torch.cuda.get_device_name() != "NVIDIA L20":
         raise SystemExit("profile requires NVIDIA L20")
+    if args.execute_tokens:
+        from vllm.v1.attention.ops.l20_rope_kv import l20_rope_and_cache
+
+        tokens = args.execute_tokens
+        query = torch.randn(tokens, 32, 128, device="cuda", dtype=torch.float16)
+        key = torch.randn(tokens, 8, 128, device="cuda", dtype=torch.float16)
+        value = torch.randn_like(key)
+        positions = torch.arange(tokens, device="cuda", dtype=torch.int64)
+        angles = torch.randn(max(tokens, 2048), 64, device="cuda")
+        cos_sin = torch.cat((angles.cos(), angles.sin()), dim=-1)
+        blocks = max(8, (tokens + 15) // 16)
+        key_cache = torch.empty(
+            blocks, 16, 8, 128, device="cuda", dtype=torch.float16
+        )
+        value_cache = torch.empty_like(key_cache)
+        slots = torch.arange(tokens, device="cuda", dtype=torch.int64)
+        for _ in range(args.execute_iterations):
+            l20_rope_and_cache(
+                query,
+                key,
+                value,
+                positions,
+                cos_sin,
+                True,
+                key_cache,
+                value_cache,
+                slots,
+            )
+        torch.cuda.synchronize()
+        return 0
     shapes = [
         {"tokens": tokens, "q_heads": q_heads, "kv_heads": kv_heads, "head_dim": dim}
         for tokens in (1, 8, 16, 64)

@@ -7,11 +7,12 @@ if ! command -v ncu >/dev/null 2>&1; then
 fi
 
 output=${1:-benchmarks/results/l20-vllm-rope-kv-profile/profile}
+tokens=${2:-1}
 mkdir -p "$(dirname "$output")"
 
 ncu \
   --target-processes all \
-  --kernel-name regex:_l20_rope_kv_kernel \
+  --kernel-name regex:_l20_.*rope_kv_kernel \
   --launch-skip 5 \
   --launch-count 1 \
   --section SpeedOfLight \
@@ -19,6 +20,7 @@ ncu \
   --section MemoryWorkloadAnalysis \
   --section LaunchStats \
   --export "$output" \
-  env PYTHONPATH=src python scripts/profile_vllm_l20_rope_kv.py
+  env PYTHONPATH=src python scripts/profile_vllm_l20_rope_kv.py \
+    --execute-tokens "$tokens"
 
 ncu --import "${output}.ncu-rep" --page raw --csv > "${output}.csv"
