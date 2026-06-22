@@ -212,6 +212,27 @@ number is reported. Running an end-to-end benchmark with this kernel enabled
 would knowingly measure a regression. A future attempt needs page-granular
 address staging and a register/shared-memory merge strategy before another
 service integration attempt.
+
+### V16 Steady-State Paged Attention Experiments
+
+The V15 benchmark included allocation of the split-KV partial buffers on every
+call. V16 adds reusable per-layer workspace for partial output, maxima, sums,
+and final output. This removes approximately 8 to 12 microseconds from the L20
+path, but does not change the production decision: the best repeated result is
+0.78x of FlashInfer at batch 1, context 4096, and other measured regimes remain
+between approximately 0.21x and 0.75x.
+
+Two additional experiments did not help:
+
+- loading one block-table entry per 16-token page reduced duplicate index
+  traffic but lost the efficiency of the 32-token compute tile;
+- storing partial output in FP16 instead of FP32 preserved correctness but did
+  not produce a repeatable latency improvement.
+
+This narrows the bottleneck. Python allocation and partial-output byte volume
+are not the dominant gap. The next viable design must change work mapping more
+substantially, for example processing several Q heads that share a KV head in
+one program so page indices and K/V loads can be reused across the GQA group.
 5. FP8 through NVIDIA Transformer Engine before writing a custom FP8 GEMM.
 6. FlashAttention/vLLM production baselines before any custom attention kernel.
 

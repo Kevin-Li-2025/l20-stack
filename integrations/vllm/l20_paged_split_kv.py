@@ -7,6 +7,25 @@ import torch
 from vllm.triton_utils import tl, triton
 
 
+def allocate_l20_paged_split_kv_workspace(
+    query: torch.Tensor,
+    max_seq_len: int,
+    *,
+    split_size: int = 512,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    batch, num_q_heads, head_dim = query.shape
+    num_splits = triton.cdiv(max_seq_len, split_size)
+    partial_shape = (batch, num_q_heads, num_splits)
+    return (
+        torch.empty(
+            (*partial_shape, head_dim), device=query.device, dtype=query.dtype
+        ),
+        torch.empty(partial_shape, device=query.device, dtype=torch.float32),
+        torch.empty(partial_shape, device=query.device, dtype=torch.float32),
+        torch.empty_like(query),
+    )
+
+
 @triton.jit
 def _paged_split_kv_partial(
     query,
@@ -109,6 +128,105 @@ def _paged_split_kv_partial(
 
 
 @triton.jit
+def _paged_split_kv_partial_page16(
+    query,
+    key_cache,
+    value_cache,
+    block_table,
+    seq_lens,
+    partial_output,
+    partial_max,
+    partial_sum,
+    q_stride_b,
+    q_stride_h,
+    kc_stride_p,
+    kc_stride_t,
+    kc_stride_h,
+    vc_stride_p,
+    vc_stride_t,
+    vc_stride_h,
+    bt_stride_b,
+    num_q_heads: tl.constexpr,
+    num_kv_heads: tl.constexpr,
+    head_dim: tl.constexpr,
+    num_splits: tl.constexpr,
+    SPLIT_SIZE: tl.constexpr,
+):
+    split = tl.program_id(0)
+    head_program = tl.program_id(1)
+    batch = head_program // num_q_heads
+    q_head = head_program % num_q_heads
+    kv_head = q_head // (num_q_heads // num_kv_heads)
+    seq_len = tl.load(seq_lens + batch)
+    split_start = split * SPLIT_SIZE
+    dim = tl.arange(0, head_dim)
+    page_offset = tl.arange(0, 16)
+    q = tl.load(query + batch * q_stride_b + q_head * q_stride_h + dim).to(
+        tl.float32
+    )
+    scale = 1.0 / tl.sqrt(float(head_dim))
+    max_score = -float("inf")
+    normalizer = 0.0
+    accumulator = tl.zeros((head_dim,), tl.float32)
+
+    for page_start in range(0, SPLIT_SIZE, 16):
+        token_start = split_start + page_start
+        token = token_start + page_offset
+        token_mask = token < tl.minimum(split_start + SPLIT_SIZE, seq_len)
+        logical_page = token_start // 16
+        physical_page = tl.load(
+            block_table + batch * bt_stride_b + logical_page,
+            mask=token_start < seq_len,
+            other=0,
+        )
+        keys = tl.load(
+            key_cache
+            + physical_page * kc_stride_p
+            + page_offset[:, None] * kc_stride_t
+            + kv_head * kc_stride_h
+            + dim[None, :],
+            mask=token_mask[:, None],
+            other=0.0,
+        ).to(tl.float32)
+        scores = tl.sum(keys * q[None, :], axis=1) * scale
+        scores = tl.where(token_mask, scores, -float("inf"))
+        tile_max = tl.max(scores, axis=0)
+        next_max = tl.maximum(max_score, tile_max)
+        old_scale = tl.exp(max_score - next_max)
+        probabilities = tl.exp(scores - next_max)
+        values = tl.load(
+            value_cache
+            + physical_page * vc_stride_p
+            + page_offset[:, None] * vc_stride_t
+            + kv_head * vc_stride_h
+            + dim[None, :],
+            mask=token_mask[:, None],
+            other=0.0,
+        ).to(tl.float32)
+        accumulator = (
+            accumulator * old_scale
+            + tl.sum(probabilities[:, None] * values, axis=0)
+        )
+        normalizer = normalizer * old_scale + tl.sum(probabilities, axis=0)
+        max_score = next_max
+
+    partial_index = head_program * num_splits + split
+    valid_split = split_start < seq_len
+    tl.store(
+        partial_output + partial_index * head_dim + dim,
+        tl.where(valid_split, accumulator, 0.0),
+    )
+    tl.store(
+        partial_max + partial_index,
+        tl.where(valid_split, max_score, -float("inf")),
+    )
+    tl.store(
+        partial_sum + partial_index,
+        tl.where(valid_split, normalizer, 0.0),
+    )
+
+
+@triton.jit
 def _paged_split_kv_reduce(
     partial_output,
     partial_max,
@@ -148,6 +266,10 @@ def l20_paged_split_kv_attention(
     seq_lens: torch.Tensor,
     *,
     split_size: int = 512,
+    workspace: tuple[
+        torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor
+    ] | None = None,
+    page_granular: bool = False,
 ) -> torch.Tensor:
     if torch.cuda.get_device_capability(query.device) != (8, 9):
         raise RuntimeError("requires an SM89 GPU")
@@ -168,13 +290,24 @@ def l20_paged_split_kv_attention(
     if num_splits > 16:
         raise RuntimeError("supports at most 16 split-KV partitions")
     partial_shape = (batch, num_q_heads, num_splits)
-    partial_output = torch.empty(
-        (*partial_shape, head_dim), device=query.device, dtype=torch.float32
+    if workspace is None:
+        workspace = allocate_l20_paged_split_kv_workspace(
+            query, max_seq_len, split_size=split_size
+        )
+    partial_output, partial_max, partial_sum, output = workspace
+    if (
+        partial_output.shape != (*partial_shape, head_dim)
+        or partial_max.shape != partial_shape
+        or partial_sum.shape != partial_shape
+        or output.shape != query.shape
+    ):
+        raise RuntimeError("paged split-KV workspace shape does not match the request")
+    partial_kernel = (
+        _paged_split_kv_partial_page16
+        if page_size == 16 and page_granular
+        else _paged_split_kv_partial
     )
-    partial_max = torch.empty(partial_shape, device=query.device, dtype=torch.float32)
-    partial_sum = torch.empty_like(partial_max)
-    output = torch.empty_like(query)
-    _paged_split_kv_partial[(num_splits, batch * num_q_heads)](
+    partial_kernel[(num_splits, batch * num_q_heads)](
         query,
         key_cache,
         value_cache,
@@ -195,12 +328,15 @@ def l20_paged_split_kv_attention(
         num_q_heads=num_q_heads,
         num_kv_heads=num_kv_heads,
         head_dim=head_dim,
-        page_size=page_size,
         num_splits=num_splits,
         SPLIT_SIZE=split_size,
-        BLOCK_T=32,
         num_warps=4,
         num_stages=1,
+        **(
+            {}
+            if page_size == 16 and page_granular
+            else {"page_size": page_size, "BLOCK_T": 32}
+        ),
     )
     _paged_split_kv_reduce[(batch * num_q_heads,)](
         partial_output,

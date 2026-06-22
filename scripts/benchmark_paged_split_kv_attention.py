@@ -30,6 +30,7 @@ def main():
     args = parser.parse_args()
     import flashinfer
     from vllm.v1.attention.ops.l20_paged_split_kv import (
+        allocate_l20_paged_split_kv_workspace,
         l20_paged_split_kv_attention,
     )
 
@@ -84,13 +85,24 @@ def main():
                 kv_data_type=query.dtype,
             )
             expected = wrapper.run(query, cache)
+            l20_workspace = allocate_l20_paged_split_kv_workspace(query, context)
             actual = l20_paged_split_kv_attention(
-                query, cache[0], cache[1], block_table, seq_lens
+                query,
+                cache[0],
+                cache[1],
+                block_table,
+                seq_lens,
+                workspace=l20_workspace,
             )
             baseline_ms = latency_ms(lambda: wrapper.run(query, cache))
             fused_ms = latency_ms(
                 lambda: l20_paged_split_kv_attention(
-                    query, cache[0], cache[1], block_table, seq_lens
+                    query,
+                    cache[0],
+                    cache[1],
+                    block_table,
+                    seq_lens,
+                    workspace=l20_workspace,
                 )
             )
             reports.append(
