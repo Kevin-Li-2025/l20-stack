@@ -298,6 +298,28 @@ Remaining structural gaps include serial tile traversal per Q head, repeated KV
 scans across GQA heads, no asynchronous copy pipeline, and no tensor-core
 score computation. This version is retained as the CUDA optimization baseline,
 but remains ineligible for vLLM service dispatch.
+
+### V20 Multi-CTA CUDA Split-KV
+
+The CUDA path now partitions every Q head into independent 512-token CTAs and
+launches a second kernel to merge partial online-softmax `(m, l, o)` state.
+Passing `max_seq_len` from the caller removes a GPU-to-host synchronization
+that initially added roughly 20 microseconds.
+
+All batch 1 and batch 4 measurements at context 512, 2048, and 4096 pass
+correctness. The architectural improvement is substantial:
+
+- context 2048: 0.550 ms single CTA to 0.142-0.146 ms split-KV, 3.76-3.88x;
+- context 4096: 1.097 ms single CTA to 0.144-0.163 ms split-KV, 6.74-7.59x;
+- context 512: 0.139 ms single CTA versus 0.141 ms split-KV, effectively
+  unchanged after accounting for the merge kernel.
+
+For batch 1, split-KV latency grows only from 0.141 ms at 512 tokens to 0.144
+ms at 4096 tokens. This demonstrates that the original serial-context work
+mapping was fixed. The implementation still reaches only approximately
+0.16x-0.18x of FlashInfer, leaving a 5.5x-6.3x gap. The next bottleneck is the
+efficiency of each 512-token partial CTA and temporary-state handling, rather
+than insufficient context parallelism.
 5. FP8 through NVIDIA Transformer Engine before writing a custom FP8 GEMM.
 6. FlashAttention/vLLM production baselines before any custom attention kernel.
 

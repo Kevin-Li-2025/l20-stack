@@ -8,3 +8,6 @@ def test_cuda_prototype_is_l20_specialized_and_checked():
     assert "C10_CUDA_KERNEL_LAUNCH_CHECK" in source
     assert "code=sm_89" in benchmark
     assert "torch.allclose" in benchmark
+    assert "paged_decode_partial_kernel" in source
+    assert "paged_decode_merge_kernel" in source
+    assert "kSplitSize = 512" in source

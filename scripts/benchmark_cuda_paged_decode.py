@@ -45,7 +45,7 @@ def main():
 
     reports = []
     for batch in (1, 4):
-        for context in (512, 2048):
+        for context in (512, 2048, 4096):
             page_size = 16
             pages = context // page_size
             num_pages = batch * pages
@@ -94,11 +94,28 @@ def main():
             actual = extension.paged_decode(
                 query, cache[0], cache[1], block_table, seq_lens
             )
+            split_available = hasattr(extension, "paged_decode_split")
+            split_actual = (
+                extension.paged_decode_split(
+                    query, cache[0], cache[1], block_table, seq_lens, context
+                )
+                if split_available
+                else actual
+            )
             flashinfer_ms = latency_ms(lambda: wrapper.run(query, cache))
             cuda_ms = latency_ms(
                 lambda: extension.paged_decode(
                     query, cache[0], cache[1], block_table, seq_lens
                 )
+            )
+            split_ms = (
+                latency_ms(
+                    lambda: extension.paged_decode_split(
+                        query, cache[0], cache[1], block_table, seq_lens, context
+                    )
+                )
+                if split_available
+                else cuda_ms
             )
             reports.append(
                 {
@@ -113,6 +130,13 @@ def main():
                     "flashinfer_ms": flashinfer_ms,
                     "cuda_ms": cuda_ms,
                     "speedup": flashinfer_ms / cuda_ms,
+                    "split_correct": bool(
+                        torch.allclose(
+                            split_actual, expected, rtol=2e-2, atol=2e-2
+                        )
+                    ),
+                    "split_cuda_ms": split_ms,
+                    "split_speedup": flashinfer_ms / split_ms,
                 }
             )
     result = {
