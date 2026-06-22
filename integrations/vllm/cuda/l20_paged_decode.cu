@@ -150,7 +150,9 @@ __global__ void paged_decode_partial_kernel(
     int page_size,
     int max_pages,
     int num_splits,
-    int split_size) {
+    int split_size,
+    const int* page_indptr,
+    bool use_indptr) {
   const int q_head = blockIdx.x;
   const int split = blockIdx.y;
   const int batch = blockIdx.z;
@@ -189,7 +191,10 @@ __global__ void paged_decode_partial_kernel(
       if (token < split_end) {
         const int logical_page = token / page_size;
         const int page_offset = token - logical_page * page_size;
-        const int physical_page = block_table[batch * max_pages + logical_page];
+        const int page_index = use_indptr
+            ? page_indptr[batch] + logical_page
+            : batch * max_pages + logical_page;
+        const int physical_page = block_table[page_index];
         const int cache_base =
             ((physical_page * page_size + page_offset) * num_kv_heads + kv_head) *
             kHeadDim;
@@ -235,8 +240,10 @@ __global__ void paged_decode_partial_kernel(
         if (token < split_end) {
           const int logical_page = token / page_size;
           const int page_offset = token - logical_page * page_size;
-          const int physical_page =
-              block_table[batch * max_pages + logical_page];
+          const int page_index = use_indptr
+              ? page_indptr[batch] + logical_page
+              : batch * max_pages + logical_page;
+          const int physical_page = block_table[page_index];
           const int cache_offset =
               ((physical_page * page_size + page_offset) * num_kv_heads +
                kv_head) *
@@ -425,7 +432,60 @@ void l20_paged_decode_split_out_cuda(
       key_cache.size(1),
       block_table.size(1),
       num_splits,
-      split_size);
+      split_size,
+      nullptr,
+      false);
+  paged_decode_merge_kernel<<<
+      dim3(query.size(1), query.size(0)),
+      kHeadDim / 2,
+      0,
+      stream>>>(
+      reinterpret_cast<const half*>(partial_output.data_ptr<at::Half>()),
+      partial_max.data_ptr<float>(),
+      partial_sum.data_ptr<float>(),
+      reinterpret_cast<half*>(output.data_ptr<at::Half>()),
+      query.size(1),
+      num_splits);
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+}
+
+void l20_paged_decode_split_indices_out_cuda(
+    torch::Tensor query,
+    torch::Tensor key_cache,
+    torch::Tensor value_cache,
+    torch::Tensor page_indptr,
+    torch::Tensor page_indices,
+    torch::Tensor seq_lens,
+    torch::Tensor partial_output,
+    torch::Tensor partial_max,
+    torch::Tensor partial_sum,
+    torch::Tensor output,
+    int64_t max_seq_len,
+    int64_t split_size) {
+  const at::cuda::CUDAGuard guard(query.device());
+  const int num_splits = (max_seq_len + split_size - 1) / split_size;
+  const auto stream = at::cuda::getDefaultCUDAStream();
+  paged_decode_partial_kernel<<<
+      dim3(query.size(1), num_splits, query.size(0)),
+      256,
+      0,
+      stream>>>(
+      reinterpret_cast<const half*>(query.data_ptr<at::Half>()),
+      reinterpret_cast<const half*>(key_cache.data_ptr<at::Half>()),
+      reinterpret_cast<const half*>(value_cache.data_ptr<at::Half>()),
+      page_indices.data_ptr<int>(),
+      seq_lens.data_ptr<int>(),
+      reinterpret_cast<half*>(partial_output.data_ptr<at::Half>()),
+      partial_max.data_ptr<float>(),
+      partial_sum.data_ptr<float>(),
+      query.size(1),
+      key_cache.size(2),
+      key_cache.size(1),
+      0,
+      num_splits,
+      split_size,
+      page_indptr.data_ptr<int>(),
+      true);
   paged_decode_merge_kernel<<<
       dim3(query.size(1), query.size(0)),
       kHeadDim / 2,

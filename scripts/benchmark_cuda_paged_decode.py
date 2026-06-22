@@ -164,6 +164,22 @@ def main():
                         split_size,
                     )
                 )
+                indices_ms = latency_ms(
+                    lambda split_size=split_size: extension.paged_decode_split_indices_out(
+                        query,
+                        cache[0],
+                        cache[1],
+                        indptr,
+                        block_table.flatten(),
+                        seq_lens,
+                        partial_output,
+                        partial_max,
+                        partial_sum,
+                        split_output,
+                        context,
+                        split_size,
+                    )
+                )
                 split_reports.append(
                     {
                         "split_size": split_size,
@@ -179,6 +195,8 @@ def main():
                         "speedup": flashinfer_ms / split_ms,
                         "workspace_ms": workspace_ms,
                         "workspace_speedup": flashinfer_ms / workspace_ms,
+                        "indices_ms": indices_ms,
+                        "indices_vs_block_table": workspace_ms / indices_ms,
                     }
                 )
             best_split = min(split_reports, key=lambda item: item["cuda_ms"])

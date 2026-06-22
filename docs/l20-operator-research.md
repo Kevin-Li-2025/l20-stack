@@ -381,6 +381,30 @@ the next default optimization for Qwen3 2:1 GQA. Tensor cores remain relevant
 for larger GQA ratios or larger effective query batches, but the current
 priority is page metadata handling and the K/V load-to-PV pipeline inside each
 128-token partial CTA.
+
+### V24 Metadata And Tensor-Core Dispatch Matrix
+
+The CUDA extension now accepts FlashInfer-style `page_indptr` plus flattened
+`page_indices`. In the fixed-length benchmark this path is consistently about
+one to two percent slower than direct contiguous rows of the two-dimensional
+block table. Both formats still perform the same random physical-page lookup;
+changing metadata representation alone does not improve K/V coalescing.
+Indptr remains useful for variable-length serving integration, but is not a
+performance optimization by itself.
+
+FlashInfer CUDA-core and tensor-core decode paths were compared at context 2048
+over batch 1, 4, 8, and 16 and GQA ratios 1, 2, 4, and 8:
+
+- batch 1: tensor cores regress by 5 to 8 percent for every tested ratio;
+- batch 4: tensor cores regress through ratio 4, then improve ratio 8 by 1.16x;
+- batch 8: ratio 4 improves by 1.18x and ratio 8 by 1.88x;
+- batch 16: tensor-core gains are smaller, approximately 1.02x to 1.07x for
+  ratios 2 through 8.
+
+The provisional L20 rule is therefore conservative: keep CUDA-core decode for
+batch below four; at batch four require GQA ratio eight; at batch eight enable
+tensor cores from ratio four. Larger batch requires its own service-level gate
+because attention latency and scheduler behavior begin to dominate differently.
 5. FP8 through NVIDIA Transformer Engine before writing a custom FP8 GEMM.
 6. FlashAttention/vLLM production baselines before any custom attention kernel.
 

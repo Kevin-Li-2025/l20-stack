@@ -1,0 +1,119 @@
+{
+  "context": 2048,
+  "gpu": "NVIDIA L20",
+  "reports": [
+    {
+      "batch": 1,
+      "cuda_core_ms": 0.0247705602645874,
+      "gqa_ratio": 1,
+      "tensor_core_ms": 0.02678783893585205,
+      "tensor_core_speedup": 0.9246942362131055
+    },
+    {
+      "batch": 1,
+      "cuda_core_ms": 0.02470911979675293,
+      "gqa_ratio": 2,
+      "tensor_core_ms": 0.0260915207862854,
+      "tensor_core_speedup": 0.9470172321170673
+    },
+    {
+      "batch": 1,
+      "cuda_core_ms": 0.02461695909500122,
+      "gqa_ratio": 4,
+      "tensor_core_ms": 0.02679807901382446,
+      "tensor_core_speedup": 0.9186090944168775
+    },
+    {
+      "batch": 1,
+      "cuda_core_ms": 0.024494080543518065,
+      "gqa_ratio": 8,
+      "tensor_core_ms": 0.026224639415740967,
+      "tensor_core_speedup": 0.9340101938185599
+    },
+    {
+      "batch": 4,
+      "cuda_core_ms": 0.024576001167297364,
+      "gqa_ratio": 1,
+      "tensor_core_ms": 0.026419200897216798,
+      "tensor_core_speedup": 0.9302325707317812
+    },
+    {
+      "batch": 4,
+      "cuda_core_ms": 0.024442880153656005,
+      "gqa_ratio": 2,
+      "tensor_core_ms": 0.0260915207862854,
+      "tensor_core_speedup": 0.9368131644708123
+    },
+    {
+      "batch": 4,
+      "cuda_core_ms": 0.02425856113433838,
+      "gqa_ratio": 4,
+      "tensor_core_ms": 0.025968639850616454,
+      "tensor_core_speedup": 0.9341483140389626
+    },
+    {
+      "batch": 4,
+      "cuda_core_ms": 0.030658559799194338,
+      "gqa_ratio": 8,
+      "tensor_core_ms": 0.026521599292755126,
+      "tensor_core_speedup": 1.155984579239507
+    },
+    {
+      "batch": 8,
+      "cuda_core_ms": 0.024729599952697755,
+      "gqa_ratio": 1,
+      "tensor_core_ms": 0.02837503910064697,
+      "tensor_core_speedup": 0.871526550676503
+    },
+    {
+      "batch": 8,
+      "cuda_core_ms": 0.025466880798339843,
+      "gqa_ratio": 2,
+      "tensor_core_ms": 0.02837503910064697,
+      "tensor_core_speedup": 0.897509980797143
+    },
+    {
+      "batch": 8,
+      "cuda_core_ms": 0.03383296012878418,
+      "gqa_ratio": 4,
+      "tensor_core_ms": 0.028753919601440428,
+      "tensor_core_speedup": 1.1766381974264586
+    },
+    {
+      "batch": 8,
+      "cuda_core_ms": 0.055173120498657226,
+      "gqa_ratio": 8,
+      "tensor_core_ms": 0.029306879043579103,
+      "tensor_core_speedup": 1.882599659165864
+    },
+    {
+      "batch": 16,
+      "cuda_core_ms": 0.18754560470581055,
+      "gqa_ratio": 1,
+      "tensor_core_ms": 0.18897920608520508,
+      "tensor_core_speedup": 0.9924139728963188
+    },
+    {
+      "batch": 16,
+      "cuda_core_ms": 0.19310592651367187,
+      "gqa_ratio": 2,
+      "tensor_core_ms": 0.18956287384033202,
+      "tensor_core_speedup": 1.0186906465467713
+    },
+    {
+      "batch": 16,
+      "cuda_core_ms": 0.19337215423583984,
+      "gqa_ratio": 4,
+      "tensor_core_ms": 0.18948095321655273,
+      "tensor_core_speedup": 1.0205361064171974
+    },
+    {
+      "batch": 16,
+      "cuda_core_ms": 0.20391935348510742,
+      "gqa_ratio": 8,
+      "tensor_core_ms": 0.19049472808837892,
+      "tensor_core_speedup": 1.0704724247828015
+    }
+  ],
+  "schema_version": 1
+}
