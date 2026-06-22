@@ -133,6 +133,40 @@ Priority order for this repo:
 2. RoPE fused with contiguous or paged KV-cache writes, not isolated RoPE.
 3. SwiGLU activation fusion if a model trace shows material launch/traffic cost.
 4. INT4 dequantization fused with decode GEMV/GEMM input staging.
+
+## V13 Q/K Norm Fusion And Decode GEMV
+
+The next L20-specific kernels move beyond isolated RoPE/cache writes:
+
+- `integrations/vllm/l20_qk_norm_rope_kv.py` fuses per-head Q/K RMSNorm,
+  NeoX RoPE, and paged K/V-cache writes for BF16/FP16 head-dim 128 models.
+- `src/l20_stack/ops/triton_dequant_gemv.py` fuses symmetric groupwise INT4
+  unpacking, scale application, and a batch-one matrix-vector product.
+- `src/l20_stack/ops/triton_decode_attention.py` implements contiguous-cache
+  BF16 GQA decode attention with online softmax.
+
+All numbers below were measured on the repository's NVIDIA L20. Raw JSON is
+stored under `benchmarks/results/l20-*`.
+
+For the Qwen3 shape (16 Q heads, 8 KV heads, head dimension 128), the combined
+Q/K norm, RoPE, and cache-write kernel is correct against vLLM's
+`fused_qk_norm_rope` followed by `reshape_and_cache_flash`. It reduces latency
+by 1.28x to 1.48x for 1 to 64 tokens. This is the strongest direct integration
+target because its baseline is the production vLLM operation boundary.
+
+The INT4 kernel is correct for the tested 1024 to 4096 dimensions and is 7.88x
+to 27.78x faster than explicitly materializing a dequantized FP32 matrix before
+`torch.mv`. This establishes the value of eliminating the intermediate matrix,
+but it is not a comparison against Marlin, AWQ, or another fused production
+quantized GEMV implementation.
+
+The attention kernel is correct for all measured cases. Against PyTorch SDPA it
+is 2.15x to 2.29x faster at batch one for context 128 and 512, and 2.12x to
+2.43x faster at batch eight for context 128 through 4096. A single-program
+attention head regresses at batch one for context 2048 and 4096, reaching only
+0.41x and 0.24x of the SDPA baseline. The dispatch gate therefore rejects that
+regime. A long-context batch-one path requires split-KV work partitioning and a
+second reduction stage before it can be enabled.
 5. FP8 through NVIDIA Transformer Engine before writing a custom FP8 GEMM.
 6. FlashAttention/vLLM production baselines before any custom attention kernel.
 

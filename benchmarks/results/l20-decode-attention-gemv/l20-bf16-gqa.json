@@ -1,0 +1,78 @@
+{
+  "gpu": "NVIDIA L20",
+  "reports": [
+    {
+      "baseline_ms": 0.05470208168029785,
+      "batch": 1,
+      "context": 128,
+      "correct": true,
+      "fused_ms": 0.02543616056442261,
+      "max_abs_error": 0.001953125,
+      "speedup": 2.1505636254242435
+    },
+    {
+      "baseline_ms": 0.05945343971252441,
+      "batch": 1,
+      "context": 512,
+      "correct": true,
+      "fused_ms": 0.02598912000656128,
+      "max_abs_error": 0.0009765625,
+      "speedup": 2.2876280419465775
+    },
+    {
+      "baseline_ms": 0.060661759376525876,
+      "batch": 1,
+      "context": 2048,
+      "correct": true,
+      "fused_ms": 0.14717951774597168,
+      "max_abs_error": 0.00048828125,
+      "speedup": 0.4121616941375404
+    },
+    {
+      "baseline_ms": 0.06998015880584717,
+      "batch": 1,
+      "context": 4096,
+      "correct": true,
+      "fused_ms": 0.29229055404663085,
+      "max_abs_error": 0.00048828125,
+      "speedup": 0.23941984384032752
+    },
+    {
+      "baseline_ms": 0.05396480083465576,
+      "batch": 8,
+      "context": 128,
+      "correct": true,
+      "fused_ms": 0.02543616056442261,
+      "max_abs_error": 0.00390625,
+      "speedup": 2.1215780855753827
+    },
+    {
+      "baseline_ms": 0.07576576232910157,
+      "batch": 8,
+      "context": 512,
+      "correct": true,
+      "fused_ms": 0.031231999397277832,
+      "max_abs_error": 0.001953125,
+      "speedup": 2.4259017607340656
+    },
+    {
+      "baseline_ms": 0.4256563186645508,
+      "batch": 8,
+      "context": 2048,
+      "correct": true,
+      "fused_ms": 0.19409919738769532,
+      "max_abs_error": 0.00048828125,
+      "speedup": 2.1929834043277436
+    },
+    {
+      "baseline_ms": 0.9921433258056641,
+      "batch": 8,
+      "context": 4096,
+      "correct": true,
+      "fused_ms": 0.45804542541503906,
+      "max_abs_error": 0.00048828125,
+      "speedup": 2.166036970911071
+    }
+  ],
+  "schema_version": 1
+}

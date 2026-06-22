@@ -1,0 +1,66 @@
+{
+  "gpu": "NVIDIA L20",
+  "reports": [
+    {
+      "baseline_ms": 0.009215687592265459,
+      "correct": true,
+      "diagnostics": {
+        "key_cache_max_abs_error": 0.0,
+        "qkv_max_abs_error": 0.00048828125,
+        "value_cache_equal": true
+      },
+      "fused_ms": 0.006230172427015358,
+      "speedup": 1.4792026545371795,
+      "tokens": 1
+    },
+    {
+      "baseline_ms": 0.009591056406218068,
+      "correct": true,
+      "diagnostics": {
+        "key_cache_max_abs_error": 0.0,
+        "qkv_max_abs_error": 6.103515625e-05,
+        "value_cache_equal": true
+      },
+      "fused_ms": 0.0072279190683048515,
+      "speedup": 1.3269457385426202,
+      "tokens": 8
+    },
+    {
+      "baseline_ms": 0.009790390394991627,
+      "correct": true,
+      "diagnostics": {
+        "key_cache_max_abs_error": 0.0,
+        "qkv_max_abs_error": 0.0,
+        "value_cache_equal": true
+      },
+      "fused_ms": 0.006821085586501607,
+      "speedup": 1.4353126450085953,
+      "tokens": 16
+    },
+    {
+      "baseline_ms": 0.010258093174490938,
+      "correct": true,
+      "diagnostics": {
+        "key_cache_max_abs_error": 0.0,
+        "qkv_max_abs_error": 0.0078125,
+        "value_cache_equal": true
+      },
+      "fused_ms": 0.007775014342640819,
+      "speedup": 1.3193664631886364,
+      "tokens": 32
+    },
+    {
+      "baseline_ms": 0.011252953316919567,
+      "correct": true,
+      "diagnostics": {
+        "key_cache_max_abs_error": 0.0,
+        "qkv_max_abs_error": 0.000244140625,
+        "value_cache_equal": true
+      },
+      "fused_ms": 0.00881690304499313,
+      "speedup": 1.2762931904201669,
+      "tokens": 64
+    }
+  ],
+  "schema_version": 1
+}

@@ -1,0 +1,42 @@
+{
+  "gpu": "NVIDIA L20",
+  "reports": [
+    {
+      "baseline_ms": 0.05397742430437101,
+      "correct": true,
+      "fused_ms": 0.006852342135214063,
+      "k": 1024,
+      "max_abs_error": 0.0,
+      "n": 1024,
+      "speedup": 7.87722259619554
+    },
+    {
+      "baseline_ms": 0.09734207013376074,
+      "correct": true,
+      "fused_ms": 0.010835687712970499,
+      "k": 1024,
+      "max_abs_error": 0.03125,
+      "n": 3072,
+      "speedup": 8.983469504869605
+    },
+    {
+      "baseline_ms": 0.09597931365572099,
+      "correct": true,
+      "fused_ms": 0.010825474840177837,
+      "k": 3072,
+      "max_abs_error": 0.25,
+      "n": 1024,
+      "speedup": 8.866060387439251
+    },
+    {
+      "baseline_ms": 0.6237981511423221,
+      "correct": true,
+      "fused_ms": 0.022456768507281715,
+      "k": 4096,
+      "max_abs_error": 0.125,
+      "n": 4096,
+      "speedup": 27.777734402884036
+    }
+  ],
+  "schema_version": 1
+}
