@@ -474,6 +474,38 @@ entirely. Otherwise the right engineering work is vLLM integration: route L20
 serving through the FlashInfer sampler, keep seed/offset CUDA-graph compatible,
 and avoid CPU-side sampling fallbacks.
 
+The first vLLM serving pass now tests that integration boundary directly.
+`scripts/run_vllm_l20_sampling_campaign.sh` starts vLLM with either
+`VLLM_USE_FLASHINFER_SAMPLER=0` or `1`, uses local
+`/home/hhai/models/Qwen2.5-Coder-1.5B-Instruct`, and sends stochastic
+`temperature=0.8`, `top_p=0.9`, `top_k=50` requests through
+`vllm bench serve`. The FlashInfer path must export CUDA 13 for the server
+process too, not only for a prewarm subprocess; otherwise vLLM's engine process
+falls back to `/usr/bin/nvcc` and reproduces the same
+`BlockAdjacentDifference::FlagHeads` compile failure. The campaign script now
+exports `CUDA_HOME`, `CUDACXX`, and `PATH` before launching the server and then
+records a log scan with `scripts/inspect_vllm_sampling_path.py`.
+
+On L20 with vLLM 0.23.1rc1, FlashInfer attention, prefix caching disabled,
+input length 512, output length 32, and 24 requests per row:
+
+| concurrency | sampler | output tok/s | median TTFT | median ITL | p95 ITL | log evidence |
+| ---: | --- | ---: | ---: | ---: | ---: | --- |
+| 1 | torch/vLLM sampler | 170.80 | 28.27 ms | 5.16 ms | 5.35 ms | `FlashInfer top-p/top-k sampling disabled` |
+| 1 | FlashInfer sampler | 170.31 | 31.58 ms | 5.05 ms | 5.35 ms | `Using FlashInfer for top-p & top-k sampling` |
+| 16 | torch/vLLM sampler | 1001.49 | 185.17 ms | 5.83 ms | 8.09 ms | `FlashInfer top-p/top-k sampling disabled` |
+| 16 | FlashInfer sampler | 1021.70 | 153.06 ms | 5.76 ms | 7.30 ms | `Using FlashInfer for top-p & top-k sampling` |
+
+The serving-level result is positive but modest: FlashInfer sampler improves
+median ITL by 2.15% at concurrency 1 and 1.31% at concurrency 16. The
+concurrency-16 row also improves output throughput by 2.02%, median TTFT by
+17.34%, and p95 ITL by 9.74%. The concurrency-1 TTFT regresses, and each row is
+a one-run smoke, so this is evidence that the real service path can avoid the
+CPU-disabled sampler branch, not a final benchmark claim. Artifacts:
+`benchmarks/results/l20-vllm-sampling-e2e/summary.json`,
+`benchmarks/results/l20-vllm-sampling-e2e/torch/sampling-path.json`, and
+`benchmarks/results/l20-vllm-sampling-e2e/flashinfer/sampling-path.json`.
+
 ### V23 Tensor-Core Hypothesis Check
 
 FlashInfer exposes both CUDA-core decode and a tensor-core path. The wrapper

@@ -177,6 +177,15 @@ top-k/top-p/softmax/multinomial rather than deterministic argmax. FlashInfer
 pipeline and 6.13x-89.16x faster than CPU round-trip sampling. FlashInfer
 sampling JIT is now guarded by `l20_stack.flashinfer_env`, which forces CUDA 13
 nvcc for this cu130 environment and avoids the system CUDA 12 compiler failure.
+The first real vLLM stochastic-serving smoke now wires that path into
+`vllm serve`: with Qwen2.5-Coder-1.5B, input 512, output 32, `top_k=50`,
+`top_p=0.9`, and FlashInfer attention, enabling FlashInfer sampling changes
+median ITL from 5.16 to 5.05 ms at concurrency 1 and from 5.83 to 5.76 ms at
+concurrency 16. The c16 row also improves output throughput by 2.02% and p95
+ITL by 9.74%. The server log confirms `Using FlashInfer for top-p & top-k
+sampling`; the disabled baseline confirms `FlashInfer top-p/top-k sampling
+disabled`. This is a one-run smoke, so it proves routing and gives a small
+positive signal rather than a final benchmark claim.
 
 The first speculative decoding follow-up is an L20 hybrid tree-attention
 prototype for irregular draft-token masks. On the measured L20, the contiguous
