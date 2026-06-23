@@ -291,10 +291,14 @@ from a performance-only demo to an upstream-shaped engineering result: the
 NeoX race is resolved through 1024 tokens. The policy-v3 fused path reaches
 1.51x at 128 tokens, 1.38x at 256, 1.18x at 512, and 1.09x at 1024.
 
-The next optimization target should be selected from a full decode profile. The
-highest-probability candidates are attention scheduling at long context,
-decode GEMV/dequant fusion, and scheduler/batcher overhead at small batch. More
-RoPE tuning is unlikely to produce a material service improvement.
+The next optimization target should be selected from full decode profiles rather
+than from RoPE/KV counters alone. A follow-up Nsight pass on split-KV decode
+attention showed that the relevant partial CTA is not helped by reducing block
+size: for batch-one/context-4096, `split_size=1024, block_t=128, num_warps=8`
+reduced the profiled partial-kernel duration from 68.86 us to 57.98 us versus
+the default `512/32/4` shape. More RoPE tuning is unlikely to produce a material
+service improvement; attention tile policy and fused stochastic sampling are
+the higher-value system targets.
 
 ## L20 Policy V3: Measured Warp Dispatch
 

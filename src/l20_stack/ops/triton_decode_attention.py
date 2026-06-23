@@ -251,7 +251,14 @@ def gqa_decode_attention(query, key, value):
     return output
 
 
-def gqa_decode_attention_split_kv(query, key, value, split_size: int = 512):
+def gqa_decode_attention_split_kv(
+    query,
+    key,
+    value,
+    split_size: int = 512,
+    block_t: int = 32,
+    num_warps: int = 4,
+):
     if torch is None or triton is None:
         raise RuntimeError("requires PyTorch and Triton")
     batch, num_q_heads, head_dim = query.shape
@@ -269,6 +276,12 @@ def gqa_decode_attention_split_kv(query, key, value, split_size: int = 512):
     num_splits = triton.cdiv(context_length, split_size)
     if num_splits > 16:
         raise ValueError("split-KV path supports at most 16 splits")
+    if block_t not in {16, 32, 64, 128}:
+        raise ValueError("block_t must be one of 16, 32, 64, 128")
+    if split_size % block_t:
+        raise ValueError("split_size must be divisible by block_t")
+    if num_warps not in {1, 2, 4, 8}:
+        raise ValueError("num_warps must be one of 1, 2, 4, 8")
     partial_shape = (batch, num_q_heads, num_splits)
     partial_output = torch.empty(
         (*partial_shape, head_dim), device=query.device, dtype=torch.float32
@@ -296,8 +309,8 @@ def gqa_decode_attention_split_kv(query, key, value, split_size: int = 512):
         num_kv_heads=num_kv_heads,
         head_dim=head_dim,
         SPLIT_SIZE=split_size,
-        BLOCK_T=32,
-        num_warps=4,
+        BLOCK_T=block_t,
+        num_warps=num_warps,
         num_stages=1,
     )
     _gqa_decode_attention_reduce_kernel[(batch * num_q_heads,)](

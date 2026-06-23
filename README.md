@@ -168,7 +168,10 @@ batch 1/16/64 and vocab 151936, the preallocated path runs in
 48.1/46.1/47.1 us and is 23x/63x/232x faster than forcing logits to CPU.
 However, PyTorch's GPU `argmax` remains faster at 19.5/20.5/29.7 us, so the
 next useful sampling kernel must fuse top-k/top-p/multinomial work rather than
-claim a pure-argmax win.
+claim a pure-argmax win. The measured top-k=50 stochastic pipeline is
+0.218 ms on GPU versus 0.663 ms through CPU round-trip at batch 1, and
+0.217 ms versus 5.254 ms at batch 16, which confirms the real fusion target is
+top-k/top-p/softmax/multinomial rather than deterministic argmax.
 
 The first speculative decoding follow-up is an L20 hybrid tree-attention
 prototype for irregular draft-token masks. On the measured L20, the contiguous

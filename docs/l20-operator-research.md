@@ -364,6 +364,27 @@ The first sudo-collected L20 RoPE/KV sample is checked in at
 1024-token NeoX fused path runs in 29.76 us at 509.62 GB/s, 59.13% DRAM peak,
 70.52% L2 hit, 30.17% active warps, and 77.73% long-scoreboard stall.
 
+The same Nsight workflow was then applied to the contiguous split-KV decode
+attention partial kernel. This is the correct place to test block/tile changes;
+the RoPE/KV append kernel above already launches one-warp blocks and should not
+receive a 128-to-64-thread block-size experiment.
+
+Batch-one, context-4096 BF16 GQA attention:
+
+| shape | duration | DRAM | DRAM peak | active warps | regs/thread | long scoreboard | short scoreboard | barrier |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| split 512, block 32, 4 warps | 68.86 us | 281.13 GB/s | 32.60% | 11.92% | 56 | 38.75% | 20.66% | 12.47% |
+| split 1024, block 128, 8 warps | 57.98 us | 330.85 GB/s | 38.37% | 16.66% | 64 | 48.61% | 10.93% | 11.45% |
+
+The tile sweep confirms that smaller blocks are not the next move for this
+kernel. The best measured shape is `split_size=1024, block_t=128, num_warps=8`
+at 0.0758 ms, while the old `512/32/4` policy is 0.0768 ms in the same sweep.
+The Nsight run shows a larger profiler-isolated improvement, but both sources
+agree on the direction: increase tile work and warps for this partial CTA, do
+not reduce block size. The remaining problem is low grid occupancy
+(`waves_per_sm` below 0.2 for batch one), scalar online-softmax/PV work, and
+multi-kernel split/reduce overhead rather than RoPE/KV append tuning.
+
 ### GPU-Side Sampling V1
 
 The first post-RoPE system target is decode sampling, because moving logits to
@@ -398,6 +419,21 @@ but it does not beat PyTorch's optimized GPU `argmax`. The next useful kernel
 must fuse work that PyTorch/vLLM currently performs as multiple operations,
 especially top-k/top-p filtering and multinomial sampling. Pure greedy argmax is
 now a control path, not the final optimization target.
+
+The top-k sampling pipeline measurement makes that next step concrete. With
+`top_k=50`, temperature 0.8, and vocab 151936:
+
+| batch | GPU argmax | GPU top-k + softmax + multinomial | CPU round-trip pipeline | CPU/GPU pipeline |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 0.0205 ms | 0.2181 ms | 0.6628 ms | 3.04x |
+| 16 | 0.0215 ms | 0.2166 ms | 5.2543 ms | 24.26x |
+
+This proves the next sampler should not target pure argmax. The expensive
+serving path is the stochastic sampler boundary: top-k/top-p filtering,
+temperature scaling, probability normalization, random sampling, and token
+gather are separate framework operations with synchronization and launch cost.
+A fused L20 sampler has real room to improve there even though PyTorch already
+solves deterministic GPU argmax well.
 
 ### V23 Tensor-Core Hypothesis Check
 
