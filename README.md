@@ -204,6 +204,14 @@ path is 2.03x-24.07x faster; compared with an already predequantized BF16
 attention kernel, it only wins in the batch-16 long-context rows, reaching
 2.30x at 2048 context and 1.68x at 4096 context. This is a contiguous
 prototype, not a paged vLLM integration yet.
+The paged NHD version is now implemented as
+`l20_paged_split_kv_attention_fp8`. Three L20 confirmation runs show the fused
+path beats materializing dequantized K/V in every measured row, but it only
+beats the FlashInfer BF16-on-dequant reference at `batch=8, context=4096`,
+where the median ratio is 1.07x versus FlashInfer, 1.43x versus local BF16
+paged attention, and 11.88x versus materialized FP8. The policy is therefore
+narrow: `should_use_l20_paged_fp8_split_kv` only enables `batch >= 8` and
+`max_seq_len >= 4096`.
 
 The first speculative decoding follow-up is an L20 hybrid tree-attention
 prototype for irregular draft-token masks. On the measured L20, the contiguous

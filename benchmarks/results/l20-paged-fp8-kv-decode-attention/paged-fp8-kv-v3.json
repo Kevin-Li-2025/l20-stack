@@ -1,0 +1,169 @@
+{
+  "benchmark": "paged NHD split-KV decode attention; FP8 E4M3 KV scalar dequant",
+  "gpu": "NVIDIA L20",
+  "reports": [
+    {
+      "batch": 1,
+      "context": 2048,
+      "correctness": {
+        "bf16_vs_flashinfer_dequant_reference": true,
+        "fp8_fused_max_abs_error": 0.0009765625,
+        "fp8_fused_vs_flashinfer_dequant_reference": true,
+        "fp8_predequantized_vs_flashinfer_dequant_reference": true
+      },
+      "latency_ms": {
+        "flashinfer_bf16_on_dequant_kv": 0.026150399446487428,
+        "l20_bf16_paged": 0.08124160170555114,
+        "l20_fp8_fused_dequant_paged": 0.08098559975624084,
+        "l20_fp8_materialize_dequant_then_paged": 0.15086079835891725,
+        "l20_fp8_predequantized_paged": 0.08101119995117187
+      },
+      "ratios": {
+        "fused_fp8_vs_flashinfer_bf16_dequant": 0.32290184335483973,
+        "fused_fp8_vs_l20_bf16": 1.0031610798719877,
+        "fused_fp8_vs_materialized_fp8": 1.862810163942655,
+        "fused_fp8_vs_predequantized_fp8": 1.0003161079871987
+      },
+      "scales": {
+        "k": 0.012346540178571428,
+        "v": 0.010951450892857142
+      }
+    },
+    {
+      "batch": 1,
+      "context": 4096,
+      "correctness": {
+        "bf16_vs_flashinfer_dequant_reference": true,
+        "fp8_fused_max_abs_error": 0.00048828125,
+        "fp8_fused_vs_flashinfer_dequant_reference": true,
+        "fp8_predequantized_vs_flashinfer_dequant_reference": true
+      },
+      "latency_ms": {
+        "flashinfer_bf16_on_dequant_kv": 0.027187201380729675,
+        "l20_bf16_paged": 0.08094720244407654,
+        "l20_fp8_fused_dequant_paged": 0.08184319734573364,
+        "l20_fp8_materialize_dequant_then_paged": 0.14750720262527467,
+        "l20_fp8_predequantized_paged": 0.08162519931793213
+      },
+      "ratios": {
+        "fused_fp8_vs_flashinfer_bf16_dequant": 0.33218645241682876,
+        "fused_fp8_vs_l20_bf16": 0.9890522984106777,
+        "fused_fp8_vs_materialized_fp8": 1.80231476053109,
+        "fused_fp8_vs_predequantized_fp8": 0.9973363940453034
+      },
+      "scales": {
+        "k": 0.011509486607142858,
+        "v": 0.012416294642857142
+      }
+    },
+    {
+      "batch": 4,
+      "context": 2048,
+      "correctness": {
+        "bf16_vs_flashinfer_dequant_reference": true,
+        "fp8_fused_max_abs_error": 0.0009765625,
+        "fp8_fused_vs_flashinfer_dequant_reference": true,
+        "fp8_predequantized_vs_flashinfer_dequant_reference": true
+      },
+      "latency_ms": {
+        "flashinfer_bf16_on_dequant_kv": 0.025279998779296875,
+        "l20_bf16_paged": 0.08707839846611024,
+        "l20_fp8_fused_dequant_paged": 0.08936960101127625,
+        "l20_fp8_materialize_dequant_then_paged": 0.25068800449371337,
+        "l20_fp8_predequantized_paged": 0.08785920143127442
+      },
+      "ratios": {
+        "fused_fp8_vs_flashinfer_bf16_dequant": 0.28287022089431907,
+        "fused_fp8_vs_l20_bf16": 0.9743626186170741,
+        "fused_fp8_vs_materialized_fp8": 2.8050701990051707,
+        "fused_fp8_vs_predequantized_fp8": 0.9830994033439708
+      },
+      "scales": {
+        "k": 0.01123046875,
+        "v": 0.011928013392857142
+      }
+    },
+    {
+      "batch": 4,
+      "context": 4096,
+      "correctness": {
+        "bf16_vs_flashinfer_dequant_reference": true,
+        "fp8_fused_max_abs_error": 0.00048828125,
+        "fp8_fused_vs_flashinfer_dequant_reference": true,
+        "fp8_predequantized_vs_flashinfer_dequant_reference": true
+      },
+      "latency_ms": {
+        "flashinfer_bf16_on_dequant_kv": 0.025497600436210632,
+        "l20_bf16_paged": 0.1198464035987854,
+        "l20_fp8_fused_dequant_paged": 0.11878399848937989,
+        "l20_fp8_materialize_dequant_then_paged": 0.7323391914367676,
+        "l20_fp8_predequantized_paged": 0.12047359943389893
+      },
+      "ratios": {
+        "fused_fp8_vs_flashinfer_bf16_dequant": 0.21465517881594376,
+        "fused_fp8_vs_l20_bf16": 1.0089440086452428,
+        "fused_fp8_vs_materialized_fp8": 6.165301730453566,
+        "fused_fp8_vs_predequantized_fp8": 1.0142241460634962
+      },
+      "scales": {
+        "k": 0.01171875,
+        "v": 0.011928013392857142
+      }
+    },
+    {
+      "batch": 8,
+      "context": 2048,
+      "correctness": {
+        "bf16_vs_flashinfer_dequant_reference": true,
+        "fp8_fused_max_abs_error": 0.0009765625,
+        "fp8_fused_vs_flashinfer_dequant_reference": true,
+        "fp8_predequantized_vs_flashinfer_dequant_reference": true
+      },
+      "latency_ms": {
+        "flashinfer_bf16_on_dequant_kv": 0.02593280076980591,
+        "l20_bf16_paged": 0.11987199783325195,
+        "l20_fp8_fused_dequant_paged": 0.11900160312652588,
+        "l20_fp8_materialize_dequant_then_paged": 0.7251840114593506,
+        "l20_fp8_predequantized_paged": 0.11878399848937989
+      },
+      "ratios": {
+        "fused_fp8_vs_flashinfer_bf16_dequant": 0.2179197598055332,
+        "fused_fp8_vs_l20_bf16": 1.0073141426994108,
+        "fused_fp8_vs_materialized_fp8": 6.093901194661339,
+        "fused_fp8_vs_predequantized_fp8": 0.9981714142378852
+      },
+      "scales": {
+        "k": 0.012346540178571428,
+        "v": 0.012555803571428572
+      }
+    },
+    {
+      "batch": 8,
+      "context": 4096,
+      "correctness": {
+        "bf16_vs_flashinfer_dequant_reference": true,
+        "fp8_fused_max_abs_error": 0.00048828125,
+        "fp8_fused_vs_flashinfer_dequant_reference": true,
+        "fp8_predequantized_vs_flashinfer_dequant_reference": true
+      },
+      "latency_ms": {
+        "flashinfer_bf16_on_dequant_kv": 0.19338239431381227,
+        "l20_bf16_paged": 0.2582528114318848,
+        "l20_fp8_fused_dequant_paged": 0.18086400032043456,
+        "l20_fp8_materialize_dequant_then_paged": 2.1488256454467773,
+        "l20_fp8_predequantized_paged": 0.26740479469299316
+      },
+      "ratios": {
+        "fused_fp8_vs_flashinfer_bf16_dequant": 1.0692144040339648,
+        "fused_fp8_vs_l20_bf16": 1.4278839955676166,
+        "fused_fp8_vs_materialized_fp8": 11.880891949971963,
+        "fused_fp8_vs_predequantized_fp8": 1.478485459899346
+      },
+      "scales": {
+        "k": 0.012276785714285714,
+        "v": 0.012486049107142858
+      }
+    }
+  ],
+  "schema_version": 1
+}

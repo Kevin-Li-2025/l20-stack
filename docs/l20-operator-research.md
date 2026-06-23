@@ -1098,6 +1098,57 @@ not be presented as a production vLLM speedup.
 Raw report:
 `benchmarks/results/l20-fp8-kv-decode-attention/fp8-kv-v2.json`.
 
+## V30 Paged FP8 KV Fused Decode Attention
+
+V30 moves the FP8 fused-dequant prototype onto the serving-shaped paged NHD KV
+layout used by vLLM/FlashInfer. The new
+`l20_paged_split_kv_attention_fp8` entry point consumes:
+
+- query `[batch, q_heads, 128]`;
+- FP8 E4M3 key/value cache `[num_pages, page_size, kv_heads, 128]`;
+- randomized per-request `block_table`;
+- scalar K/V dequant scales;
+- the existing split-KV workspace and reduce kernel.
+
+The benchmark compares four paths under the same randomized page table:
+
+1. FlashInfer BF16 decode on dequantized K/V;
+2. local BF16 paged split-KV;
+3. local paged split-KV after materializing dequantized K/V every call;
+4. local paged split-KV with FP8 dequant fused into the partial attention
+   kernel.
+
+Three L20 confirmation runs used `q_heads=16`, `kv_heads=8`, `head_dim=128`,
+page size 16, split size 512, and 80 timed CUDA Event iterations per row. All
+rows passed the FlashInfer dequant-reference check with maximum absolute error
+at most `0.0009765625`.
+
+Median ratios across the three runs:
+
+| Batch | Context | Fused FP8 vs FlashInfer BF16-on-dequant | Fused FP8 vs local BF16 paged | Fused FP8 vs materialized FP8 |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 2048 | 0.32x | 1.00x | 1.83x |
+| 1 | 4096 | 0.33x | 0.99x | 1.80x |
+| 4 | 2048 | 0.29x | 0.99x | 2.84x |
+| 4 | 4096 | 0.22x | 1.02x | 5.91x |
+| 8 | 2048 | 0.22x | 1.02x | 6.14x |
+| 8 | 4096 | 1.07x | 1.43x | 11.88x |
+
+The result is now more useful but still gated. Paged FP8 fused dequant removes
+materialization cost in every row, and it starts beating the local BF16 paged
+kernel at larger work sizes. It only beats the production FlashInfer
+BF16-on-dequant reference in the measured `batch=8, context=4096` row. The
+repository therefore exposes `should_use_l20_paged_fp8_split_kv` with the
+conservative gate `batch >= 8 and max_seq_len >= 4096`.
+
+The next step is not broader enabling. It is a vLLM FP8 KV-cache integration
+that compares against vLLM's native FP8 cache path and records Nsight counters
+for the winning and losing rows. If the same gate survives real ITL, then the
+kernel is worth wiring into a serving dispatch path.
+
+Raw reports:
+`benchmarks/results/l20-paged-fp8-kv-decode-attention/paged-fp8-kv-v{1,2,3}.json`.
+
 ## Upstream-Oriented Dispatcher Integration
 
 The production experiment no longer imports and invokes a raw pybind symbol
