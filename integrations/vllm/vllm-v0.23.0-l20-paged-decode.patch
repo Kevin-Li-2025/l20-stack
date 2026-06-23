@@ -1,0 +1,857 @@
+From 6efb66d4eedf6b410abc8e74db027ee8dca2d8ff Mon Sep 17 00:00:00 2001
+From: Kevin-Li-2025 <2242139@qq.com>
+Date: Mon, 22 Jun 2026 22:36:01 +0100
+Subject: [PATCH] Add SM89 paged decode path for FlashInfer
+
+---
+ CMakeLists.txt                              |   1 +
+ csrc/attention/l20_paged_decode.cu          | 499 ++++++++++++++++++++
+ csrc/ops.h                                  |   7 +
+ csrc/torch_bindings.cpp                     |  10 +
+ tests/v1/attention/test_l20_paged_decode.py | 107 +++++
+ vllm/_custom_ops.py                         |  47 ++
+ vllm/v1/attention/backends/flashinfer.py    |  85 +++-
+ 7 files changed, 748 insertions(+), 8 deletions(-)
+ create mode 100644 csrc/attention/l20_paged_decode.cu
+ create mode 100644 tests/v1/attention/test_l20_paged_decode.py
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index d956e29e3..531f82e1c 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -307,6 +307,7 @@ endif()
+ #
+
+ set(VLLM_EXT_SRC
++  "csrc/attention/l20_paged_decode.cu"
+   "csrc/quantization/activation_kernels.cu"
+   "csrc/torch_bindings.cpp")
+
+diff --git a/csrc/attention/l20_paged_decode.cu b/csrc/attention/l20_paged_decode.cu
+new file mode 100644
+index 000000000..a15dc3d09
+--- /dev/null
++++ b/csrc/attention/l20_paged_decode.cu
+@@ -0,0 +1,499 @@
++#include <ATen/cuda/CUDAContext.h>
++#include <c10/cuda/CUDAGuard.h>
++#include <cuda_fp16.h>
++#include <torch/all.h>
++
++#include <cmath>
++
++namespace {
++
++constexpr int kHeadDim = 128;
++__inline__ __device__ float warp_sum(float value) {
++  for (int offset = 16; offset > 0; offset /= 2) {
++    value += __shfl_down_sync(0xffffffff, value, offset);
++  }
++  return value;
++}
++
++__global__ void paged_decode_kernel(
++    const half* query,
++    const half* key_cache,
++    const half* value_cache,
++    const int* block_table,
++    const int* seq_lens,
++    half* output,
++    int num_q_heads,
++    int num_kv_heads,
++    int page_size,
++    int max_pages) {
++  const int batch = blockIdx.y;
++  const int q_head = blockIdx.x;
++  const int kv_head = q_head / (num_q_heads / num_kv_heads);
++  const int thread = threadIdx.x;
++  const int lane = thread & 31;
++  const int warp = thread >> 5;
++  __shared__ float scores[16];
++  __shared__ float probabilities[16];
++  __shared__ float alpha_shared;
++  __shared__ float running_max_shared;
++  __shared__ float running_sum_shared;
++
++  const int q_base = (batch * num_q_heads + q_head) * 128;
++  const int pair0 = lane * 2;
++  const int pair1 = pair0 + 64;
++  const half2 q01 = *reinterpret_cast<const half2*>(query + q_base + pair0);
++  const half2 q23 = *reinterpret_cast<const half2*>(query + q_base + pair1);
++  const float2 q01f = __half22float2(q01);
++  const float2 q23f = __half22float2(q23);
++  float2 accumulator = make_float2(0.0f, 0.0f);
++  const int seq_len = seq_lens[batch];
++  if (thread == 0) {
++    running_max_shared = -INFINITY;
++    running_sum_shared = 0.0f;
++  }
++  __syncthreads();
++
++  for (int tile_start = 0; tile_start < seq_len; tile_start += 16) {
++#pragma unroll
++    for (int warp_token = 0; warp_token < 2; ++warp_token) {
++      const int token_index = warp + warp_token * 8;
++      const int token = tile_start + token_index;
++      float dot = 0.0f;
++      if (token < seq_len) {
++        const int logical_page = token / page_size;
++        const int page_offset = token - logical_page * page_size;
++        const int physical_page = block_table[batch * max_pages + logical_page];
++        const int cache_base =
++            ((physical_page * page_size + page_offset) * num_kv_heads + kv_head) *
++            128;
++        const half2 k01 =
++            *reinterpret_cast<const half2*>(key_cache + cache_base + pair0);
++        const half2 k23 =
++            *reinterpret_cast<const half2*>(key_cache + cache_base + pair1);
++        const float2 k01f = __half22float2(k01);
++        const float2 k23f = __half22float2(k23);
++        dot = q01f.x * k01f.x + q01f.y * k01f.y +
++              q23f.x * k23f.x + q23f.y * k23f.y;
++      }
++      dot = warp_sum(dot);
++      if (lane == 0) {
++        scores[token_index] = token < seq_len
++            ? dot * 0.08838834764831845f
++            : -INFINITY;
++      }
++    }
++    __syncthreads();
++    if (thread == 0) {
++      float tile_max = scores[0];
++#pragma unroll
++      for (int index = 1; index < 16; ++index) {
++        tile_max = fmaxf(tile_max, scores[index]);
++      }
++      const float next_max = fmaxf(running_max_shared, tile_max);
++      alpha_shared = expf(running_max_shared - next_max);
++      float tile_sum = 0.0f;
++#pragma unroll
++      for (int index = 0; index < 16; ++index) {
++        probabilities[index] = expf(scores[index] - next_max);
++        tile_sum += probabilities[index];
++      }
++      running_sum_shared = running_sum_shared * alpha_shared + tile_sum;
++      running_max_shared = next_max;
++    }
++    __syncthreads();
++    if (thread < 64) {
++      accumulator.x *= alpha_shared;
++      accumulator.y *= alpha_shared;
++#pragma unroll
++      for (int index = 0; index < 16; ++index) {
++        const int value_token = tile_start + index;
++        if (value_token < seq_len) {
++          const int logical_page = value_token / page_size;
++          const int page_offset = value_token - logical_page * page_size;
++          const int physical_page =
++              block_table[batch * max_pages + logical_page];
++          const int cache_offset =
++              ((physical_page * page_size + page_offset) * num_kv_heads +
++               kv_head) *
++                  128 +
++              thread * 2;
++          const half2 value =
++              *reinterpret_cast<const half2*>(value_cache + cache_offset);
++          const float2 value_float = __half22float2(value);
++          accumulator.x += probabilities[index] * value_float.x;
++          accumulator.y += probabilities[index] * value_float.y;
++        }
++      }
++    }
++    __syncthreads();
++  }
++  if (thread < 64) {
++    const half2 result = __floats2half2_rn(
++        accumulator.x / running_sum_shared,
++        accumulator.y / running_sum_shared);
++    *reinterpret_cast<half2*>(
++        output + (batch * num_q_heads + q_head) * 128 + thread * 2) = result;
++  }
++}
++
++__global__ void paged_decode_partial_kernel(
++    const half* query,
++    const half* key_cache,
++    const half* value_cache,
++    const int* block_table,
++    const int* seq_lens,
++    half* partial_output,
++    float* partial_max,
++    float* partial_sum,
++    int num_q_heads,
++    int num_kv_heads,
++    int page_size,
++    int max_pages,
++    int num_splits,
++    int split_size,
++    const int* page_indptr,
++    bool use_indptr) {
++  const int q_head = blockIdx.x;
++  const int split = blockIdx.y;
++  const int batch = blockIdx.z;
++  const int kv_head = q_head / (num_q_heads / num_kv_heads);
++  const int thread = threadIdx.x;
++  const int lane = thread & 31;
++  const int warp = thread >> 5;
++  const int split_start = split * split_size;
++  const int split_end = min(split_start + split_size, seq_lens[batch]);
++  __shared__ float scores[16];
++  __shared__ float probabilities[16];
++  __shared__ float alpha_shared;
++  __shared__ float running_max_shared;
++  __shared__ float running_sum_shared;
++  __shared__ int physical_page_shared;
++
++  const int q_base = (batch * num_q_heads + q_head) * kHeadDim;
++  const int pair0 = lane * 2;
++  const int pair1 = pair0 + 64;
++  const float2 q01f = __half22float2(
++      *reinterpret_cast<const half2*>(query + q_base + pair0));
++  const float2 q23f = __half22float2(
++      *reinterpret_cast<const half2*>(query + q_base + pair1));
++  float2 accumulator = make_float2(0.0f, 0.0f);
++  if (thread == 0) {
++    running_max_shared = -INFINITY;
++    running_sum_shared = 0.0f;
++  }
++  __syncthreads();
++
++  for (int tile_start = split_start; tile_start < split_end; tile_start += 16) {
++    if (thread == 0) {
++      const int logical_page = tile_start / page_size;
++      const int page_index = use_indptr
++          ? page_indptr[batch] + logical_page
++          : batch * max_pages + logical_page;
++      physical_page_shared = block_table[page_index];
++    }
++    __syncthreads();
++#pragma unroll
++    for (int warp_token = 0; warp_token < 2; ++warp_token) {
++      const int token_index = warp + warp_token * 8;
++      const int token = tile_start + token_index;
++      float dot = 0.0f;
++      if (token < split_end) {
++        const int page_offset = token - tile_start;
++        const int cache_base =
++            ((physical_page_shared * page_size + page_offset) * num_kv_heads +
++             kv_head) *
++            kHeadDim;
++        const float2 k01f = __half22float2(
++            *reinterpret_cast<const half2*>(key_cache + cache_base + pair0));
++        const float2 k23f = __half22float2(
++            *reinterpret_cast<const half2*>(key_cache + cache_base + pair1));
++        dot = q01f.x * k01f.x + q01f.y * k01f.y +
++              q23f.x * k23f.x + q23f.y * k23f.y;
++      }
++      dot = warp_sum(dot);
++      if (lane == 0) {
++        scores[token_index] = token < split_end
++            ? dot * 0.08838834764831845f
++            : -INFINITY;
++      }
++    }
++    __syncthreads();
++    if (thread == 0) {
++      float tile_max = scores[0];
++#pragma unroll
++      for (int index = 1; index < 16; ++index) {
++        tile_max = fmaxf(tile_max, scores[index]);
++      }
++      const float next_max = fmaxf(running_max_shared, tile_max);
++      alpha_shared = expf(running_max_shared - next_max);
++      float tile_sum = 0.0f;
++#pragma unroll
++      for (int index = 0; index < 16; ++index) {
++        probabilities[index] = expf(scores[index] - next_max);
++        tile_sum += probabilities[index];
++      }
++      running_sum_shared = running_sum_shared * alpha_shared + tile_sum;
++      running_max_shared = next_max;
++    }
++    __syncthreads();
++    if (thread < 64) {
++      accumulator.x *= alpha_shared;
++      accumulator.y *= alpha_shared;
++#pragma unroll
++      for (int index = 0; index < 16; ++index) {
++        const int token = tile_start + index;
++        if (token < split_end) {
++          const int cache_offset =
++              ((physical_page_shared * page_size + index) * num_kv_heads +
++               kv_head) *
++                  kHeadDim +
++              thread * 2;
++          const float2 value = __half22float2(
++              *reinterpret_cast<const half2*>(value_cache + cache_offset));
++          accumulator.x += probabilities[index] * value.x;
++          accumulator.y += probabilities[index] * value.y;
++        }
++      }
++    }
++    __syncthreads();
++  }
++
++  const int partial_index =
++      ((batch * num_q_heads + q_head) * num_splits + split);
++  if (thread < 64) {
++    *reinterpret_cast<half2*>(
++        partial_output + partial_index * kHeadDim + thread * 2) =
++        __floats2half2_rn(accumulator.x, accumulator.y);
++  }
++  if (thread == 0) {
++    partial_max[partial_index] = running_max_shared;
++    partial_sum[partial_index] = running_sum_shared;
++  }
++}
++
++__global__ void paged_decode_merge_kernel(
++    const half* partial_output,
++    const float* partial_max,
++    const float* partial_sum,
++    half* output,
++    int num_q_heads,
++    int num_splits) {
++  const int q_head = blockIdx.x;
++  const int batch = blockIdx.y;
++  const int pair = threadIdx.x;
++  const int base = (batch * num_q_heads + q_head) * num_splits;
++  __shared__ float global_max;
++  __shared__ float denominator;
++  __shared__ float corrections[64];
++  if (pair == 0) {
++    float max_value = partial_max[base];
++    for (int split = 1; split < num_splits; ++split) {
++      max_value = fmaxf(max_value, partial_max[base + split]);
++    }
++    float sum = 0.0f;
++    for (int split = 0; split < num_splits; ++split) {
++      corrections[split] = expf(partial_max[base + split] - max_value);
++      sum += partial_sum[base + split] * corrections[split];
++    }
++    global_max = max_value;
++    denominator = sum;
++  }
++  __syncthreads();
++  float2 numerator = make_float2(0.0f, 0.0f);
++  for (int split = 0; split < num_splits; ++split) {
++    const float2 partial = __half22float2(
++        *reinterpret_cast<const half2*>(
++            partial_output + (base + split) * kHeadDim + pair * 2));
++    numerator.x += partial.x * corrections[split];
++    numerator.y += partial.y * corrections[split];
++  }
++  *reinterpret_cast<half2*>(
++      output + (batch * num_q_heads + q_head) * kHeadDim + pair * 2) =
++      __floats2half2_rn(numerator.x / denominator, numerator.y / denominator);
++}
++
++}  // namespace
++
++torch::Tensor l20_paged_decode_cuda(
++    torch::Tensor query,
++    torch::Tensor key_cache,
++    torch::Tensor value_cache,
++    torch::Tensor block_table,
++    torch::Tensor seq_lens) {
++  TORCH_CHECK(query.is_cuda(), "query must be CUDA");
++  TORCH_CHECK(query.scalar_type() == torch::kFloat16, "FP16 only");
++  TORCH_CHECK(query.dim() == 3 && query.size(2) == 128, "Q must be [B,H,128]");
++  TORCH_CHECK(key_cache.dim() == 4 && key_cache.size(3) == 128, "NHD cache only");
++  TORCH_CHECK(key_cache.sizes() == value_cache.sizes(), "K/V cache mismatch");
++  TORCH_CHECK(block_table.scalar_type() == torch::kInt32, "int32 block table");
++  TORCH_CHECK(seq_lens.scalar_type() == torch::kInt32, "int32 sequence lengths");
++  const at::cuda::CUDAGuard guard(query.device());
++  auto output = torch::empty_like(query);
++  const dim3 grid(query.size(1), query.size(0));
++  paged_decode_kernel<<<grid, 256, 0, at::cuda::getCurrentCUDAStream()>>>(
++      reinterpret_cast<const half*>(query.data_ptr<at::Half>()),
++      reinterpret_cast<const half*>(key_cache.data_ptr<at::Half>()),
++      reinterpret_cast<const half*>(value_cache.data_ptr<at::Half>()),
++      block_table.data_ptr<int>(),
++      seq_lens.data_ptr<int>(),
++      reinterpret_cast<half*>(output.data_ptr<at::Half>()),
++      query.size(1),
++      key_cache.size(2),
++      key_cache.size(1),
++      block_table.size(1));
++  C10_CUDA_KERNEL_LAUNCH_CHECK();
++  return output;
++}
++
++void l20_paged_decode_split_out_cuda(
++    torch::Tensor query,
++    torch::Tensor key_cache,
++    torch::Tensor value_cache,
++    torch::Tensor block_table,
++    torch::Tensor seq_lens,
++    torch::Tensor partial_output,
++    torch::Tensor partial_max,
++    torch::Tensor partial_sum,
++    torch::Tensor output,
++    int64_t max_seq_len,
++    int64_t split_size);
++
++torch::Tensor l20_paged_decode_split_cuda(
++    torch::Tensor query,
++    torch::Tensor key_cache,
++    torch::Tensor value_cache,
++    torch::Tensor block_table,
++    torch::Tensor seq_lens,
++    int64_t max_seq_len,
++    int64_t split_size) {
++  TORCH_CHECK(query.is_cuda(), "query must be CUDA");
++  TORCH_CHECK(query.scalar_type() == torch::kFloat16, "FP16 only");
++  TORCH_CHECK(query.dim() == 3 && query.size(2) == kHeadDim, "invalid query");
++  TORCH_CHECK(
++      split_size >= 64 && split_size <= 1024 && split_size % 16 == 0,
++      "split_size must be a multiple of 16 from 64 through 1024");
++  const int num_splits = (max_seq_len + split_size - 1) / split_size;
++  auto partial_output = torch::empty(
++      {query.size(0), query.size(1), num_splits, kHeadDim},
++      query.options());
++  auto float_options = query.options().dtype(torch::kFloat32);
++  auto partial_max =
++      torch::empty({query.size(0), query.size(1), num_splits}, float_options);
++  auto partial_sum = torch::empty_like(partial_max);
++  auto output = torch::empty_like(query);
++  l20_paged_decode_split_out_cuda(
++      query,
++      key_cache,
++      value_cache,
++      block_table,
++      seq_lens,
++      partial_output,
++      partial_max,
++      partial_sum,
++      output,
++      max_seq_len,
++      split_size);
++  return output;
++}
++
++void l20_paged_decode_split_out_cuda(
++    torch::Tensor query,
++    torch::Tensor key_cache,
++    torch::Tensor value_cache,
++    torch::Tensor block_table,
++    torch::Tensor seq_lens,
++    torch::Tensor partial_output,
++    torch::Tensor partial_max,
++    torch::Tensor partial_sum,
++    torch::Tensor output,
++    int64_t max_seq_len,
++    int64_t split_size) {
++  const at::cuda::CUDAGuard guard(query.device());
++  const int num_splits = (max_seq_len + split_size - 1) / split_size;
++  TORCH_CHECK(
++      partial_output.size(2) >= num_splits &&
++          partial_output.size(3) == kHeadDim,
++      "partial output workspace has wrong shape");
++  const auto stream = at::cuda::getCurrentCUDAStream();
++  const dim3 partial_grid(query.size(1), num_splits, query.size(0));
++  paged_decode_partial_kernel<<<partial_grid, 256, 0, stream>>>(
++      reinterpret_cast<const half*>(query.data_ptr<at::Half>()),
++      reinterpret_cast<const half*>(key_cache.data_ptr<at::Half>()),
++      reinterpret_cast<const half*>(value_cache.data_ptr<at::Half>()),
++      block_table.data_ptr<int>(),
++      seq_lens.data_ptr<int>(),
++      reinterpret_cast<half*>(partial_output.data_ptr<at::Half>()),
++      partial_max.data_ptr<float>(),
++      partial_sum.data_ptr<float>(),
++      query.size(1),
++      key_cache.size(2),
++      key_cache.size(1),
++      block_table.size(1),
++      num_splits,
++      split_size,
++      nullptr,
++      false);
++  paged_decode_merge_kernel<<<
++      dim3(query.size(1), query.size(0)),
++      kHeadDim / 2,
++      0,
++      stream>>>(
++      reinterpret_cast<const half*>(partial_output.data_ptr<at::Half>()),
++      partial_max.data_ptr<float>(),
++      partial_sum.data_ptr<float>(),
++      reinterpret_cast<half*>(output.data_ptr<at::Half>()),
++      query.size(1),
++      num_splits);
++  C10_CUDA_KERNEL_LAUNCH_CHECK();
++}
++
++void l20_paged_decode_split_indices_out_cuda(
++    torch::Tensor query,
++    torch::Tensor key_cache,
++    torch::Tensor value_cache,
++    torch::Tensor page_indptr,
++    torch::Tensor page_indices,
++    torch::Tensor seq_lens,
++    torch::Tensor partial_output,
++    torch::Tensor partial_max,
++    torch::Tensor partial_sum,
++    torch::Tensor output,
++    int64_t max_seq_len,
++    int64_t split_size) {
++  const at::cuda::CUDAGuard guard(query.device());
++  const int num_splits = (max_seq_len + split_size - 1) / split_size;
++  const auto stream = at::cuda::getCurrentCUDAStream();
++  paged_decode_partial_kernel<<<
++      dim3(query.size(1), num_splits, query.size(0)),
++      256,
++      0,
++      stream>>>(
++      reinterpret_cast<const half*>(query.data_ptr<at::Half>()),
++      reinterpret_cast<const half*>(key_cache.data_ptr<at::Half>()),
++      reinterpret_cast<const half*>(value_cache.data_ptr<at::Half>()),
++      page_indices.data_ptr<int>(),
++      seq_lens.data_ptr<int>(),
++      reinterpret_cast<half*>(partial_output.data_ptr<at::Half>()),
++      partial_max.data_ptr<float>(),
++      partial_sum.data_ptr<float>(),
++      query.size(1),
++      key_cache.size(2),
++      key_cache.size(1),
++      0,
++      num_splits,
++      split_size,
++      page_indptr.data_ptr<int>(),
++      true);
++  paged_decode_merge_kernel<<<
++      dim3(query.size(1), query.size(0)),
++      kHeadDim / 2,
++      0,
++      stream>>>(
++      reinterpret_cast<const half*>(partial_output.data_ptr<at::Half>()),
++      partial_max.data_ptr<float>(),
++      partial_sum.data_ptr<float>(),
++      reinterpret_cast<half*>(output.data_ptr<at::Half>()),
++      query.size(1),
++      num_splits);
++  C10_CUDA_KERNEL_LAUNCH_CHECK();
++}
+diff --git a/csrc/ops.h b/csrc/ops.h
+index e39bae08f..d20906ae0 100644
+--- a/csrc/ops.h
++++ b/csrc/ops.h
+@@ -62,6 +62,13 @@ void persistent_masked_m_silu_mul_quant(
+     at::Tensor& y_s,           // (E, T, H//group_size) [OUT]
+     bool use_ue8m0);
+
++void l20_paged_decode_split_out_cuda(
++    torch::Tensor query, torch::Tensor key_cache, torch::Tensor value_cache,
++    torch::Tensor block_table, torch::Tensor seq_lens,
++    torch::Tensor partial_output, torch::Tensor partial_max,
++    torch::Tensor partial_sum, torch::Tensor output, int64_t max_seq_len,
++    int64_t split_size);
++
+ void gelu_and_mul(torch::Tensor& out, torch::Tensor& input);
+
+ void gelu_tanh_and_mul(torch::Tensor& out, torch::Tensor& input);
+diff --git a/csrc/torch_bindings.cpp b/csrc/torch_bindings.cpp
+index c63e59c3b..53dc02bfe 100644
+--- a/csrc/torch_bindings.cpp
++++ b/csrc/torch_bindings.cpp
+@@ -29,6 +29,16 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
+   ops.impl("persistent_masked_m_silu_mul_quant", torch::kCUDA,
+            &persistent_masked_m_silu_mul_quant);
+
++  ops.def(
++      "l20_paged_decode_split_out("
++      "Tensor query, Tensor key_cache, Tensor value_cache, "
++      "Tensor block_table, Tensor seq_lens, "
++      "Tensor(a!) partial_output, Tensor(b!) partial_max, "
++      "Tensor(c!) partial_sum, Tensor(d!) output, "
++      "int max_seq_len, int split_size) -> ()");
++  ops.impl("l20_paged_decode_split_out", torch::kCUDA,
++           &l20_paged_decode_split_out_cuda);
++
+   ops.def("weak_ref_tensor(Tensor input) -> Tensor");
+   ops.impl("weak_ref_tensor", torch::kCUDA, &weak_ref_tensor);
+
+diff --git a/tests/v1/attention/test_l20_paged_decode.py b/tests/v1/attention/test_l20_paged_decode.py
+new file mode 100644
+index 000000000..9e3980967
+--- /dev/null
++++ b/tests/v1/attention/test_l20_paged_decode.py
+@@ -0,0 +1,107 @@
++# SPDX-License-Identifier: Apache-2.0
++# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++
++import pytest
++import torch
++from vllm.platforms import current_platform
++from vllm.platforms.interface import DeviceCapability
++
++from vllm import _custom_ops as ops
++
++
++def _reference(query, key_cache, value_cache, block_tables, seq_lens):
++    scale = query.shape[-1] ** -0.5
++    outputs = []
++    for batch in range(query.shape[0]):
++        length = int(seq_lens[batch])
++        logical = torch.arange(length, device=query.device)
++        physical = block_tables[batch, logical // 16]
++        offsets = logical % 16
++        keys = key_cache[physical, offsets]
++        values = value_cache[physical, offsets]
++        group = query.shape[1] // keys.shape[1]
++        keys = keys.repeat_interleave(group, dim=1)
++        values = values.repeat_interleave(group, dim=1)
++        scores = torch.einsum("hd,thd->ht", query[batch].float(), keys.float()) * scale
++        outputs.append(
++            torch.einsum("ht,thd->hd", scores.softmax(dim=-1), values.float())
++        )
++    return torch.stack(outputs).to(query.dtype)
++
++
++@pytest.mark.parametrize(
++    ("batch", "context", "q_heads", "kv_heads"),
++    [
++        (1, 129, 12, 2),
++        (1, 2304, 16, 8),
++        (4, 513, 12, 2),
++        (4, 640, 16, 8),
++    ],
++)
++def test_l20_paged_decode_matches_reference(batch, context, q_heads, kv_heads):
++    if current_platform.get_device_capability() != DeviceCapability(8, 9):
++        pytest.skip("L20 paged decode is specialized for SM89")
++
++    torch.manual_seed(17)
++    pages_per_request = (context + 15) // 16
++    pages = batch * pages_per_request
++    block_tables = torch.randperm(pages, device="cuda", dtype=torch.int32).reshape(
++        batch, pages_per_request
++    )
++    seq_lens = torch.full((batch,), context, device="cuda", dtype=torch.int32)
++    query = torch.randn(batch, q_heads, 128, device="cuda", dtype=torch.float16)
++    key_cache = torch.randn(
++        pages, 16, kv_heads, 128, device="cuda", dtype=torch.float16
++    )
++    value_cache = torch.randn_like(key_cache)
++    splits = (context + 63) // 64
++    partial = torch.empty(
++        batch, q_heads, splits, 128, device="cuda", dtype=torch.float16
++    )
++    maxima = torch.empty(batch, q_heads, splits, device="cuda", dtype=torch.float32)
++    sums = torch.empty_like(maxima)
++    output = torch.empty_like(query)
++
++    ops.l20_paged_decode_split_out(
++        query,
++        key_cache,
++        value_cache,
++        block_tables,
++        seq_lens,
++        partial,
++        maxima,
++        sums,
++        output,
++        context,
++        64,
++    )
++    expected = _reference(query, key_cache, value_cache, block_tables, seq_lens)
++    torch.testing.assert_close(output, expected, rtol=2e-2, atol=2e-2)
++
++
++def test_l20_paged_decode_fake_tensor():
++    if not hasattr(torch.ops._C, "l20_paged_decode_split_out"):
++        pytest.skip("CUDA extension is not available")
++
++    from torch._subclasses.fake_tensor import FakeTensorMode
++
++    with FakeTensorMode():
++        query = torch.empty(1, 12, 128, device="cuda", dtype=torch.float16)
++        cache = torch.empty(9, 16, 2, 128, device="cuda", dtype=torch.float16)
++        block_tables = torch.empty(1, 9, device="cuda", dtype=torch.int32)
++        seq_lens = torch.empty(1, device="cuda", dtype=torch.int32)
++        partial = torch.empty(1, 12, 3, 128, device="cuda", dtype=torch.float16)
++        maxima = torch.empty(1, 12, 3, device="cuda", dtype=torch.float32)
++        ops.l20_paged_decode_split_out(
++            query,
++            cache,
++            cache,
++            block_tables,
++            seq_lens,
++            partial,
++            maxima,
++            torch.empty_like(maxima),
++            torch.empty_like(query),
++            129,
++            64,
++        )
+diff --git a/vllm/_custom_ops.py b/vllm/_custom_ops.py
+index 2c0684c27..b742de3d3 100644
+--- a/vllm/_custom_ops.py
++++ b/vllm/_custom_ops.py
+@@ -110,6 +110,53 @@ if hasattr(torch.ops, "_C") and hasattr(torch.ops._C, "scaled_fp4_quant"):
+         return None
+
+
++if hasattr(torch.ops, "_C") and hasattr(torch.ops._C, "l20_paged_decode_split_out"):
++
++    @register_fake("_C::l20_paged_decode_split_out")
++    def _l20_paged_decode_split_out_fake(
++        query: torch.Tensor,
++        key_cache: torch.Tensor,
++        value_cache: torch.Tensor,
++        block_table: torch.Tensor,
++        seq_lens: torch.Tensor,
++        partial_output: torch.Tensor,
++        partial_max: torch.Tensor,
++        partial_sum: torch.Tensor,
++        output: torch.Tensor,
++        max_seq_len: int,
++        split_size: int,
++    ) -> None:
++        return None
++
++
++def l20_paged_decode_split_out(
++    query: torch.Tensor,
++    key_cache: torch.Tensor,
++    value_cache: torch.Tensor,
++    block_table: torch.Tensor,
++    seq_lens: torch.Tensor,
++    partial_output: torch.Tensor,
++    partial_max: torch.Tensor,
++    partial_sum: torch.Tensor,
++    output: torch.Tensor,
++    max_seq_len: int,
++    split_size: int,
++) -> None:
++    torch.ops._C.l20_paged_decode_split_out(
++        query,
++        key_cache,
++        value_cache,
++        block_table,
++        seq_lens,
++        partial_output,
++        partial_max,
++        partial_sum,
++        output,
++        max_seq_len,
++        split_size,
++    )
++
++
+ # page attention ops
+ def paged_attention_v1(
+     out: torch.Tensor,
+diff --git a/vllm/v1/attention/backends/flashinfer.py b/vllm/v1/attention/backends/flashinfer.py
+index 73e1cce56..551eb503e 100755
+--- a/vllm/v1/attention/backends/flashinfer.py
++++ b/vllm/v1/attention/backends/flashinfer.py
+@@ -447,6 +447,9 @@ class FIDecode:
+     """Metadata for the native FlashInfer decode pathway (non-TRTLLM)."""
+
+     wrapper: BatchDecodeWithPagedKVCacheWrapper
++    block_tables: torch.Tensor
++    seq_lens: torch.Tensor
++    max_seq_len: int
+
+
+ @dataclass
+@@ -1249,7 +1252,12 @@ class FlashInferMetadataBuilder(AttentionMetadataBuilder[FlashInferMetadata]):
+                     fixed_split_size=self.decode_fixed_split_size,
+                     disable_split_kv=self.disable_split_kv,
+                 )
+-                attn_metadata.decode = FIDecode(wrapper=decode_wrapper)
++                attn_metadata.decode = FIDecode(
++                    wrapper=decode_wrapper,
++                    block_tables=block_table_tensor[:num_decodes],
++                    seq_lens=seq_lens[:num_decodes],
++                    max_seq_len=max_seq_len,
++                )
+         return attn_metadata
+
+     def use_cascade_attention(self, *args, **kwargs) -> bool:
+@@ -1742,14 +1750,75 @@ class FlashInferImpl(AttentionImpl):
+                         get_dcp_group(),
+                     )
+                 else:
+-                    decode_wrapper.run(
+-                        decode_query,
+-                        kv_cache_permute,
+-                        k_scale=layer._k_scale_float,
+-                        v_scale=layer._v_scale_float,
+-                        out=out_decode,
+-                        kv_cache_sf=kv_cache_sf,
++                    l20_batch = decode_query.shape[0]
++                    l20_max_seq = attn_metadata.decode.max_seq_len
++                    l20_enabled = (
++                        current_platform.get_device_capability()
++                        == DeviceCapability(8, 9)
++                        and not torch.cuda.is_current_stream_capturing()
++                        and decode_query.dtype == torch.float16
++                        and decode_query.shape[-1] == 128
++                        and decode_query.shape[1] in (12, 16)
++                        and kv_cache_permute.shape[1] == 2
++                        and kv_cache_permute.shape[2] == 16
++                        and kv_cache_permute.shape[4] == 128
++                        and (
++                            (
++                                decode_query.shape[1] == 16
++                                and kv_cache_permute.shape[3] == 8
++                            )
++                            or (
++                                decode_query.shape[1] == 12
++                                and kv_cache_permute.shape[3] == 2
++                            )
++                        )
++                        and (
++                            (l20_batch == 1 and l20_max_seq <= 2304)
++                            or (l20_batch <= 4 and l20_max_seq <= 640)
++                        )
+                     )
++                    if l20_enabled:
++                        from vllm import _custom_ops as ops
++
++                        l20_shape = (4, decode_query.shape[1], 64)
++                        if getattr(self, "_l20_workspace_shape", None) != l20_shape:
++                            self._l20_partial_output = torch.empty(
++                                (*l20_shape, 128),
++                                dtype=decode_query.dtype,
++                                device=decode_query.device,
++                            )
++                            self._l20_partial_max = torch.empty(
++                                l20_shape,
++                                dtype=torch.float32,
++                                device=decode_query.device,
++                            )
++                            self._l20_partial_sum = torch.empty_like(
++                                self._l20_partial_max
++                            )
++                            self._l20_workspace_shape = l20_shape
++                        key_cache, value_cache = kv_cache_permute.unbind(1)
++                        ops.l20_paged_decode_split_out(
++                            decode_query,
++                            key_cache,
++                            value_cache,
++                            attn_metadata.decode.block_tables,
++                            attn_metadata.decode.seq_lens,
++                            self._l20_partial_output,
++                            self._l20_partial_max,
++                            self._l20_partial_sum,
++                            out_decode.view_as(decode_query),
++                            l20_max_seq,
++                            64,
++                        )
++                    else:
++                        decode_wrapper.run(
++                            decode_query,
++                            kv_cache_permute,
++                            k_scale=layer._k_scale_float,
++                            v_scale=layer._v_scale_float,
++                            out=out_decode,
++                            kv_cache_sf=kv_cache_sf,
++                        )
+
+                 if needs_fp8_out:
+                     output[:num_decode_tokens].copy_(out_decode.to(output.dtype))
+--
+2.50.1 (Apple Git-155)

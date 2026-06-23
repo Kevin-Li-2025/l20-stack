@@ -1,0 +1,38 @@
+{
+  "base": {
+    "commit": "0fc695fc6d1d82e9a5ac6835ac8e4e1c83703665",
+    "tag": "v0.23.0"
+  },
+  "fork_commit": "6efb66d4eedf6b410abc8e74db027ee8dca2d8ff",
+  "gpu": "NVIDIA L20",
+  "native_fragment": {
+    "cuda_dispatch_registered": true,
+    "namespace": "_C",
+    "operator": "l20_paged_decode_split_out"
+  },
+  "pytest": {
+    "cases": 5,
+    "failed": 0,
+    "matrix": [
+      "batch=1 context=129 q_heads=12 kv_heads=2",
+      "batch=1 context=2304 q_heads=16 kv_heads=8",
+      "batch=4 context=513 q_heads=12 kv_heads=2",
+      "batch=4 context=640 q_heads=16 kv_heads=8",
+      "FakeTensor"
+    ]
+  },
+  "schema_version": 1,
+  "source_build": {
+    "operator_compile": "passed",
+    "status": "blocked_by_host_cuda_headers",
+    "unrelated_failure": "vLLM cumem_allocator requires CU_DEVICE_ATTRIBUTE_HANDLE_TYPE_FABRIC_SUPPORTED, which is absent from the host CUDA 12.0 headers"
+  },
+  "vllm_smoke": {
+    "attention_backend": "FLASHINFER",
+    "completion_tokens": 8,
+    "enforce_eager": true,
+    "finish_reason": "length",
+    "model": "Qwen2.5-Coder-1.5B-Instruct",
+    "passed": true
+  }
+}

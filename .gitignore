@@ -36,3 +36,4 @@ mlruns/
 
 hf_cache/
 tokenizers_cache/
+.upstream-work/

@@ -21,3 +21,14 @@ def test_operator_uses_pytorch_dispatcher_and_fake_registration():
     assert "torch.ops.l20_stack.paged_decode_split_out" in wrapper
     assert 'register_fake("l20_stack::paged_decode_split_out")' in wrapper
     assert '"l20_paged_decode_ops.so"' in wrapper
+
+
+def test_upstream_patch_uses_vllm_native_extension():
+    patch = Path(
+        "integrations/vllm/vllm-v0.23.0-l20-paged-decode.patch"
+    ).read_text()
+    assert "_C::l20_paged_decode_split_out" in patch
+    assert "csrc/attention/l20_paged_decode.cu" in patch
+    assert "vllm/_custom_ops.py" in patch
+    assert "tests/v1/attention/test_l20_paged_decode.py" in patch
+    assert "DeviceCapability(8, 9)" in patch
