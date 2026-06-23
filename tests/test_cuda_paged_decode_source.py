@@ -9,8 +9,28 @@ def test_cuda_prototype_is_l20_specialized_and_checked():
     assert "code=sm_89" in benchmark
     assert "torch.allclose" in benchmark
     assert "paged_decode_partial_kernel" in source
+    assert "paged_decode_fp8_e4m3_partial_kernel" in source
+    assert "fp8_e4m3fn_to_float" in source
     assert "paged_decode_merge_kernel" in source
     assert "split_size must be a multiple of 16 from 64 through 1024" in source
     smoke = Path("scripts/smoke_cuda_paged_decode_op.py").read_text()
     assert "torch.ops.l20_stack.paged_decode_split_out" in smoke
     assert "torch.testing.assert_close" in smoke
+    fp8_smoke = Path("scripts/smoke_cuda_paged_fp8_decode_op.py").read_text()
+    fp8_benchmark = Path("scripts/benchmark_cuda_paged_fp8_decode.py").read_text()
+    assert "torch.float8_e4m3fn" in fp8_smoke
+    assert "torch.ops.l20_stack.paged_decode_fp8_e4m3_split_out" in fp8_smoke
+    assert "torch.testing.assert_close" in fp8_smoke
+    assert "paged_decode_fp8_e4m3_split_out" in fp8_benchmark
+    assert "cuda_fp8_fused_dequant" in fp8_benchmark
+    assert "fp8_fused_vs_materialized" in fp8_benchmark
+
+
+def test_cuda_fp8_binding_is_registered():
+    binding = Path("integrations/vllm/cuda/l20_paged_decode.cpp").read_text()
+    wrapper = Path("integrations/vllm/l20_paged_decode.py").read_text()
+
+    assert "paged_decode_fp8_e4m3_split_out" in binding
+    assert "l20_paged_decode_fp8_e4m3_split_out_cuda" in binding
+    assert "def paged_decode_fp8_e4m3_split_out" in wrapper
+    assert 'register_fake("l20_stack::paged_decode_fp8_e4m3_split_out")' in wrapper

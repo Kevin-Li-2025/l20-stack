@@ -225,6 +225,16 @@ The vLLM installer now reflects that conclusion: `VLLM_ENABLE_L20_FP8_PAGED_DECO
 still has to pass `should_use_l20_paged_fp8_split_kv`, which is disabled after
 the ITL regression. Reproducing the negative experiment requires the explicit
 `VLLM_L20_FP8_PAGED_FORCE=1` override used by the campaign script.
+The first CUDA-extension FP8 variant moves E4M3 dequantization out of the
+Python/Triton hook and into `l20_paged_decode.cu`, using CUDA's FP8 conversion
+intrinsics and an `fp8x2 -> half2` conversion path. Correctness holds on L20
+for Qwen3-style 16Q/8KV and Qwen2.5-Coder-style 12Q/2KV shapes. The result is
+still not a serving candidate: at batch 8/context 4096, Qwen3 improves over
+materializing K/V by 5.77x but remains 1.80x slower than the CUDA BF16
+predequantized path; Qwen2.5-Coder remains slower than both materialized and
+predequantized CUDA baselines. This narrows the next optimization to fusing
+FP8 dequant into a production-quality attention kernel boundary, not just
+porting the current split-decode structure to CUDA.
 
 The first speculative decoding follow-up is an L20 hybrid tree-attention
 prototype for irregular draft-token masks. On the measured L20, the contiguous

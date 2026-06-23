@@ -1,9 +1,11 @@
 #include <ATen/cuda/CUDAContext.h>
 #include <c10/cuda/CUDAGuard.h>
+#include <cuda_fp8.h>
 #include <cuda_fp16.h>
 #include <torch/extension.h>
 
 #include <cmath>
+#include <cstdint>
 
 namespace {
 
@@ -13,6 +15,21 @@ __inline__ __device__ float warp_sum(float value) {
     value += __shfl_down_sync(0xffffffff, value, offset);
   }
   return value;
+}
+
+__inline__ __device__ float fp8_e4m3fn_to_float(uint8_t value) {
+  const __half_raw half_value = __nv_cvt_fp8_to_halfraw(
+      static_cast<__nv_fp8_storage_t>(value),
+      __NV_E4M3);
+  return __half2float(static_cast<half>(half_value));
+}
+
+__inline__ __device__ float2 fp8x2_e4m3fn_to_float2(const uint8_t* values) {
+  const auto packed = static_cast<__nv_fp8x2_storage_t>(
+      static_cast<uint16_t>(values[0]) |
+      (static_cast<uint16_t>(values[1]) << 8));
+  const __half2_raw half_pair = __nv_cvt_fp8x2_to_halfraw2(packed, __NV_E4M3);
+  return __half22float2(static_cast<half2>(half_pair));
 }
 
 __global__ void paged_decode_kernel(
@@ -271,6 +288,139 @@ __global__ void paged_decode_partial_kernel(
   }
 }
 
+__global__ void paged_decode_fp8_e4m3_partial_kernel(
+    const half* query,
+    const uint8_t* key_cache,
+    const uint8_t* value_cache,
+    const int* block_table,
+    const int* seq_lens,
+    half* partial_output,
+    float* partial_max,
+    float* partial_sum,
+    float k_scale,
+    float v_scale,
+    int num_q_heads,
+    int num_kv_heads,
+    int page_size,
+    int max_pages,
+    int num_splits,
+    int split_size) {
+  const int q_head = blockIdx.x;
+  const int split = blockIdx.y;
+  const int batch = blockIdx.z;
+  const int kv_head = q_head / (num_q_heads / num_kv_heads);
+  const int thread = threadIdx.x;
+  const int lane = thread & 31;
+  const int warp = thread >> 5;
+  const int split_start = split * split_size;
+  const int split_end = min(split_start + split_size, seq_lens[batch]);
+  __shared__ float scores[16];
+  __shared__ float probabilities[16];
+  __shared__ float alpha_shared;
+  __shared__ float running_max_shared;
+  __shared__ float running_sum_shared;
+  __shared__ int physical_page_shared;
+
+  const int q_base = (batch * num_q_heads + q_head) * kHeadDim;
+  const int pair0 = lane * 2;
+  const int pair1 = pair0 + 64;
+  const float2 q01f = __half22float2(
+      *reinterpret_cast<const half2*>(query + q_base + pair0));
+  const float2 q23f = __half22float2(
+      *reinterpret_cast<const half2*>(query + q_base + pair1));
+  float2 accumulator = make_float2(0.0f, 0.0f);
+  if (thread == 0) {
+    running_max_shared = -INFINITY;
+    running_sum_shared = 0.0f;
+  }
+  __syncthreads();
+
+  for (int tile_start = split_start; tile_start < split_end; tile_start += 16) {
+    if (thread == 0) {
+      const int logical_page = tile_start / page_size;
+      physical_page_shared = block_table[batch * max_pages + logical_page];
+    }
+    __syncthreads();
+#pragma unroll
+    for (int warp_token = 0; warp_token < 2; ++warp_token) {
+      const int token_index = warp + warp_token * 8;
+      const int token = tile_start + token_index;
+      float dot = 0.0f;
+      if (token < split_end) {
+        const int page_offset = token - tile_start;
+        const int cache_base =
+            ((physical_page_shared * page_size + page_offset) * num_kv_heads +
+             kv_head) *
+            kHeadDim;
+        const float2 k01 =
+            fp8x2_e4m3fn_to_float2(key_cache + cache_base + pair0);
+        const float2 k23 =
+            fp8x2_e4m3fn_to_float2(key_cache + cache_base + pair1);
+        dot = (q01f.x * k01.x + q01f.y * k01.y +
+               q23f.x * k23.x + q23f.y * k23.y) *
+              k_scale;
+      }
+      dot = warp_sum(dot);
+      if (lane == 0) {
+        scores[token_index] = token < split_end
+            ? dot * 0.08838834764831845f
+            : -INFINITY;
+      }
+    }
+    __syncthreads();
+    if (thread == 0) {
+      float tile_max = scores[0];
+#pragma unroll
+      for (int index = 1; index < 16; ++index) {
+        tile_max = fmaxf(tile_max, scores[index]);
+      }
+      const float next_max = fmaxf(running_max_shared, tile_max);
+      alpha_shared = expf(running_max_shared - next_max);
+      float tile_sum = 0.0f;
+#pragma unroll
+      for (int index = 0; index < 16; ++index) {
+        probabilities[index] = expf(scores[index] - next_max);
+        tile_sum += probabilities[index];
+      }
+      running_sum_shared = running_sum_shared * alpha_shared + tile_sum;
+      running_max_shared = next_max;
+    }
+    __syncthreads();
+    if (thread < 64) {
+      accumulator.x *= alpha_shared;
+      accumulator.y *= alpha_shared;
+#pragma unroll
+      for (int index = 0; index < 16; ++index) {
+        const int token = tile_start + index;
+        if (token < split_end) {
+          const int cache_offset =
+              ((physical_page_shared * page_size + index) * num_kv_heads +
+               kv_head) *
+                  kHeadDim +
+              thread * 2;
+          const float2 value =
+              fp8x2_e4m3fn_to_float2(value_cache + cache_offset);
+          accumulator.x += probabilities[index] * value.x * v_scale;
+          accumulator.y += probabilities[index] * value.y * v_scale;
+        }
+      }
+    }
+    __syncthreads();
+  }
+
+  const int partial_index =
+      ((batch * num_q_heads + q_head) * num_splits + split);
+  if (thread < 64) {
+    *reinterpret_cast<half2*>(
+        partial_output + partial_index * kHeadDim + thread * 2) =
+        __floats2half2_rn(accumulator.x, accumulator.y);
+  }
+  if (thread == 0) {
+    partial_max[partial_index] = running_max_shared;
+    partial_sum[partial_index] = running_sum_shared;
+  }
+}
+
 __global__ void paged_decode_merge_kernel(
     const half* partial_output,
     const float* partial_max,
@@ -484,6 +634,82 @@ void l20_paged_decode_split_indices_out_cuda(
       split_size,
       page_indptr.data_ptr<int>(),
       true);
+  paged_decode_merge_kernel<<<
+      dim3(query.size(1), query.size(0)),
+      kHeadDim / 2,
+      0,
+      stream>>>(
+      reinterpret_cast<const half*>(partial_output.data_ptr<at::Half>()),
+      partial_max.data_ptr<float>(),
+      partial_sum.data_ptr<float>(),
+      reinterpret_cast<half*>(output.data_ptr<at::Half>()),
+      query.size(1),
+      num_splits);
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+}
+
+void l20_paged_decode_fp8_e4m3_split_out_cuda(
+    torch::Tensor query,
+    torch::Tensor key_cache,
+    torch::Tensor value_cache,
+    torch::Tensor block_table,
+    torch::Tensor seq_lens,
+    torch::Tensor partial_output,
+    torch::Tensor partial_max,
+    torch::Tensor partial_sum,
+    torch::Tensor output,
+    double k_scale,
+    double v_scale,
+    int64_t max_seq_len,
+    int64_t split_size) {
+  TORCH_CHECK(query.is_cuda(), "query must be CUDA");
+  TORCH_CHECK(query.scalar_type() == torch::kFloat16, "query must be FP16");
+  TORCH_CHECK(
+      key_cache.scalar_type() == torch::kFloat8_e4m3fn &&
+          value_cache.scalar_type() == torch::kFloat8_e4m3fn,
+      "K/V cache must be torch.float8_e4m3fn");
+  TORCH_CHECK(query.dim() == 3 && query.size(2) == kHeadDim, "invalid query");
+  TORCH_CHECK(
+      key_cache.dim() == 4 && key_cache.size(3) == kHeadDim,
+      "NHD cache only");
+  TORCH_CHECK(key_cache.sizes() == value_cache.sizes(), "K/V cache mismatch");
+  TORCH_CHECK(block_table.scalar_type() == torch::kInt32, "int32 block table");
+  TORCH_CHECK(seq_lens.scalar_type() == torch::kInt32, "int32 sequence lengths");
+  TORCH_CHECK(
+      split_size >= 64 && split_size <= 1024 && split_size % 16 == 0,
+      "split_size must be a multiple of 16 from 64 through 1024");
+  TORCH_CHECK(
+      query.size(1) % key_cache.size(2) == 0,
+      "Q heads must be divisible by KV heads");
+  const int num_splits = (max_seq_len + split_size - 1) / split_size;
+  TORCH_CHECK(
+      partial_output.size(2) >= num_splits &&
+          partial_output.size(3) == kHeadDim,
+      "partial output workspace has wrong shape");
+
+  const at::cuda::CUDAGuard guard(query.device());
+  const auto stream = at::cuda::getCurrentCUDAStream();
+  paged_decode_fp8_e4m3_partial_kernel<<<
+      dim3(query.size(1), num_splits, query.size(0)),
+      256,
+      0,
+      stream>>>(
+      reinterpret_cast<const half*>(query.data_ptr<at::Half>()),
+      reinterpret_cast<const uint8_t*>(key_cache.data_ptr()),
+      reinterpret_cast<const uint8_t*>(value_cache.data_ptr()),
+      block_table.data_ptr<int>(),
+      seq_lens.data_ptr<int>(),
+      reinterpret_cast<half*>(partial_output.data_ptr<at::Half>()),
+      partial_max.data_ptr<float>(),
+      partial_sum.data_ptr<float>(),
+      static_cast<float>(k_scale),
+      static_cast<float>(v_scale),
+      query.size(1),
+      key_cache.size(2),
+      key_cache.size(1),
+      block_table.size(1),
+      num_splits,
+      split_size);
   paged_decode_merge_kernel<<<
       dim3(query.size(1), query.size(0)),
       kHeadDim / 2,
