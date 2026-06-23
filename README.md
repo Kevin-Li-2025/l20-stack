@@ -195,6 +195,16 @@ The best sustained regime is c4, where output throughput also improves
 either production-hardening this vLLM route or fusing sampling into the logits
 producer / LM-head epilogue.
 
+The first FP8 KV-cache attention prototype now fuses E4M3 K/V dequantization
+inside the contiguous split-KV decode attention kernel. On L20 with
+`q_heads=16`, `kv_heads=8`, `head_dim=128`, and contexts 512/2048/4096, all
+rows match the dequantized BF16 reference within `0.001953125` max absolute
+error. Compared with materializing dequantized K/V before attention, the fused
+path is 2.03x-24.07x faster; compared with an already predequantized BF16
+attention kernel, it only wins in the batch-16 long-context rows, reaching
+2.30x at 2048 context and 1.68x at 4096 context. This is a contiguous
+prototype, not a paged vLLM integration yet.
+
 The first speculative decoding follow-up is an L20 hybrid tree-attention
 prototype for irregular draft-token masks. On the measured L20, the contiguous
 v1 kernel matches both a dense PyTorch reference and repeated decode attention

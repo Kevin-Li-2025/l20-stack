@@ -1048,6 +1048,56 @@ are between -0.004% and +0.046%, while throughput regresses 0.28% to 1.30%.
 The installer therefore captures FlashInfer during CUDA Graph creation and
 enables the L20 kernel only in eager execution.
 
+## V29 FP8 KV Fused Decode Attention
+
+The next quantization target is FP8 KV cache decode attention on SM89. The
+prototype extends the contiguous split-KV GQA attention kernel with inline FP8
+E4M3 K/V dequantization:
+
+- input query remains BF16 with shape `[batch, q_heads, 128]`;
+- K/V cache tensors use real `torch.float8_e4m3fn` storage with shape
+  `[batch, context, kv_heads, 128]`;
+- scalar K and V dequant scales are applied inside the partial attention
+  kernel before online softmax and PV accumulation;
+- the existing second-stage split-KV log-sum-exp reduction is reused.
+
+This is intentionally not yet a vLLM paged-cache integration. It answers a
+smaller question first: on L20, does fused FP8 dequantization remove the cost of
+materializing BF16 K/V before decode attention?
+
+The first L20 run used Qwen-style 2:1 GQA dimensions
+`q_heads=16, kv_heads=8, head_dim=128`, split size 1024, 128-token tiles, and
+80 timed CUDA Event iterations. All rows passed BF16 reference checks and FP8
+dequant-reference checks. The maximum absolute fused-FP8 error versus the
+dequantized BF16 reference was at most `0.001953125`.
+
+| Batch | Context | BF16 KV | FP8 predequantized | FP8 materialize then attention | FP8 fused dequant | Fused vs materialized | Fused vs BF16 |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 512 | 0.0575 ms | 0.0571 ms | 0.1230 ms | 0.0601 ms | 2.05x | 0.96x |
+| 1 | 2048 | 0.0586 ms | 0.0597 ms | 0.1225 ms | 0.0602 ms | 2.04x | 0.97x |
+| 1 | 4096 | 0.0587 ms | 0.0586 ms | 0.1230 ms | 0.0594 ms | 2.07x | 0.99x |
+| 4 | 512 | 0.0577 ms | 0.0567 ms | 0.1206 ms | 0.0593 ms | 2.03x | 0.97x |
+| 4 | 2048 | 0.0569 ms | 0.0571 ms | 0.2103 ms | 0.0602 ms | 3.49x | 0.94x |
+| 4 | 4096 | 0.0577 ms | 0.0576 ms | 0.6388 ms | 0.0601 ms | 10.63x | 0.96x |
+| 16 | 512 | 0.0573 ms | 0.0575 ms | 0.2312 ms | 0.0606 ms | 3.81x | 0.95x |
+| 16 | 2048 | 0.2010 ms | 0.2001 ms | 2.1057 ms | 0.0875 ms | 24.07x | 2.30x |
+| 16 | 4096 | 0.3737 ms | 0.3734 ms | 4.2806 ms | 0.2227 ms | 19.22x | 1.68x |
+
+The result is positive but narrow. Fusing dequantization is clearly valuable
+when the alternative is materializing dequantized K/V every decode step. Against
+an already predequantized BF16 attention kernel, the FP8 fused path only wins in
+the high-work long-context regime, where reduced K/V traffic becomes visible.
+Small batch rows remain launch/reduction dominated and are slightly slower than
+BF16.
+
+The next valid step is a paged FP8 KV kernel that consumes vLLM/FlashInfer NHD
+page tables and compares against vLLM's FP8 KV-cache path under the same
+serving layout. Until then, this is a contiguous split-KV prototype and should
+not be presented as a production vLLM speedup.
+
+Raw report:
+`benchmarks/results/l20-fp8-kv-decode-attention/fp8-kv-v2.json`.
+
 ## Upstream-Oriented Dispatcher Integration
 
 The production experiment no longer imports and invokes a raw pybind symbol

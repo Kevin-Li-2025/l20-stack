@@ -1,0 +1,286 @@
+{
+  "benchmark": "contiguous split-KV decode attention; FP8 E4M3 KV scalar dequant",
+  "gpu": "NVIDIA L20",
+  "reports": [
+    {
+      "batch": 1,
+      "context": 512,
+      "correctness": {
+        "bf16_vs_reference": true,
+        "fp8_fused_max_abs_error": 0.0009765625,
+        "fp8_fused_vs_dequant_reference": true,
+        "fp8_nonfused_vs_dequant_reference": true,
+        "fp8_quantization_max_abs_delta": 0.013671875
+      },
+      "dtype": {
+        "bf16_kv": "torch.bfloat16",
+        "fp8_kv": "torch.float8_e4m3fn",
+        "query": "torch.bfloat16"
+      },
+      "latency_ms": {
+        "bf16_kv": 0.05751039981842041,
+        "fp8_fused_dequant_attention": 0.060096001625061034,
+        "fp8_materialize_dequant_then_attention": 0.12300800085067749,
+        "fp8_predequantized_attention": 0.057126402854919434
+      },
+      "ratios": {
+        "fused_fp8_vs_bf16": 0.9569754769581479,
+        "fused_fp8_vs_materialized_fp8": 2.0468583187634417,
+        "fused_fp8_vs_predequantized_fp8": 0.9505857513005785
+      },
+      "scales": {
+        "k": 0.010672433035714286,
+        "v": 0.010602678571428572
+      }
+    },
+    {
+      "batch": 1,
+      "context": 2048,
+      "correctness": {
+        "bf16_vs_reference": true,
+        "fp8_fused_max_abs_error": 0.0009765625,
+        "fp8_fused_vs_dequant_reference": true,
+        "fp8_nonfused_vs_dequant_reference": true,
+        "fp8_quantization_max_abs_delta": 0.00537109375
+      },
+      "dtype": {
+        "bf16_kv": "torch.bfloat16",
+        "fp8_kv": "torch.float8_e4m3fn",
+        "query": "torch.bfloat16"
+      },
+      "latency_ms": {
+        "bf16_kv": 0.05861160159111023,
+        "fp8_fused_dequant_attention": 0.060211199522018435,
+        "fp8_materialize_dequant_then_attention": 0.12253439426422119,
+        "fp8_predequantized_attention": 0.05968639850616455
+      },
+      "ratios": {
+        "fused_fp8_vs_bf16": 0.973433548183619,
+        "fused_fp8_vs_materialized_fp8": 2.035076451506534,
+        "fused_fp8_vs_predequantized_fp8": 0.9912839966647405
+      },
+      "scales": {
+        "k": 0.01171875,
+        "v": 0.011788504464285714
+      }
+    },
+    {
+      "batch": 1,
+      "context": 4096,
+      "correctness": {
+        "bf16_vs_reference": true,
+        "fp8_fused_max_abs_error": 0.00048828125,
+        "fp8_fused_vs_dequant_reference": true,
+        "fp8_nonfused_vs_dequant_reference": true,
+        "fp8_quantization_max_abs_delta": 0.0038547515869140625
+      },
+      "dtype": {
+        "bf16_kv": "torch.bfloat16",
+        "fp8_kv": "torch.float8_e4m3fn",
+        "query": "torch.bfloat16"
+      },
+      "latency_ms": {
+        "bf16_kv": 0.058739197254180905,
+        "fp8_fused_dequant_attention": 0.05940480232238769,
+        "fp8_materialize_dequant_then_attention": 0.12303359508514404,
+        "fp8_predequantized_attention": 0.05859839916229248
+      },
+      "ratios": {
+        "fused_fp8_vs_bf16": 0.988795433328865,
+        "fused_fp8_vs_materialized_fp8": 2.071105201519655,
+        "fused_fp8_vs_predequantized_fp8": 0.986425286701252
+      },
+      "scales": {
+        "k": 0.011858258928571428,
+        "v": 0.013113839285714286
+      }
+    },
+    {
+      "batch": 4,
+      "context": 512,
+      "correctness": {
+        "bf16_vs_reference": true,
+        "fp8_fused_max_abs_error": 0.001953125,
+        "fp8_fused_vs_dequant_reference": true,
+        "fp8_nonfused_vs_dequant_reference": true,
+        "fp8_quantization_max_abs_delta": 0.015625
+      },
+      "dtype": {
+        "bf16_kv": "torch.bfloat16",
+        "fp8_kv": "torch.float8_e4m3fn",
+        "query": "torch.bfloat16"
+      },
+      "latency_ms": {
+        "bf16_kv": 0.05767679810523987,
+        "fp8_fused_dequant_attention": 0.05930240154266357,
+        "fp8_materialize_dequant_then_attention": 0.12055039405822754,
+        "fp8_predequantized_attention": 0.056729602813720706
+      },
+      "ratios": {
+        "fused_fp8_vs_bf16": 0.9725878987168133,
+        "fused_fp8_vs_materialized_fp8": 2.0328079626168374,
+        "fused_fp8_vs_predequantized_fp8": 0.9566156064170195
+      },
+      "scales": {
+        "k": 0.0107421875,
+        "v": 0.011090959821428572
+      }
+    },
+    {
+      "batch": 4,
+      "context": 2048,
+      "correctness": {
+        "bf16_vs_reference": true,
+        "fp8_fused_max_abs_error": 0.00048828125,
+        "fp8_fused_vs_dequant_reference": true,
+        "fp8_nonfused_vs_dequant_reference": true,
+        "fp8_quantization_max_abs_delta": 0.0067596435546875
+      },
+      "dtype": {
+        "bf16_kv": "torch.bfloat16",
+        "fp8_kv": "torch.float8_e4m3fn",
+        "query": "torch.bfloat16"
+      },
+      "latency_ms": {
+        "bf16_kv": 0.056857597827911374,
+        "fp8_fused_dequant_attention": 0.060198402404785155,
+        "fp8_materialize_dequant_then_attention": 0.21029119491577147,
+        "fp8_predequantized_attention": 0.05713919997215271
+      },
+      "ratios": {
+        "fused_fp8_vs_bf16": 0.9445034345860278,
+        "fused_fp8_vs_materialized_fp8": 3.4933019235582816,
+        "fused_fp8_vs_predequantized_fp8": 0.9491813352111604
+      },
+      "scales": {
+        "k": 0.011579241071428572,
+        "v": 0.011648995535714286
+      }
+    },
+    {
+      "batch": 4,
+      "context": 4096,
+      "correctness": {
+        "bf16_vs_reference": true,
+        "fp8_fused_max_abs_error": 0.00048828125,
+        "fp8_fused_vs_dequant_reference": true,
+        "fp8_nonfused_vs_dequant_reference": true,
+        "fp8_quantization_max_abs_delta": 0.004150390625
+      },
+      "dtype": {
+        "bf16_kv": "torch.bfloat16",
+        "fp8_kv": "torch.float8_e4m3fn",
+        "query": "torch.bfloat16"
+      },
+      "latency_ms": {
+        "bf16_kv": 0.057715201377868654,
+        "fp8_fused_dequant_attention": 0.060108798742294314,
+        "fp8_materialize_dequant_then_attention": 0.6388095855712891,
+        "fp8_predequantized_attention": 0.057574397325515746
+      },
+      "ratios": {
+        "fused_fp8_vs_bf16": 0.9601789186523627,
+        "fused_fp8_vs_materialized_fp8": 10.62755534859498,
+        "fused_fp8_vs_predequantized_fp8": 0.9578364321063151
+      },
+      "scales": {
+        "k": 0.012486049107142858,
+        "v": 0.011997767857142858
+      }
+    },
+    {
+      "batch": 16,
+      "context": 512,
+      "correctness": {
+        "bf16_vs_reference": true,
+        "fp8_fused_max_abs_error": 0.001953125,
+        "fp8_fused_vs_dequant_reference": true,
+        "fp8_nonfused_vs_dequant_reference": true,
+        "fp8_quantization_max_abs_delta": 0.015625
+      },
+      "dtype": {
+        "bf16_kv": "torch.bfloat16",
+        "fp8_kv": "torch.float8_e4m3fn",
+        "query": "torch.bfloat16"
+      },
+      "latency_ms": {
+        "bf16_kv": 0.0573311984539032,
+        "fp8_fused_dequant_attention": 0.06064640283584595,
+        "fp8_materialize_dequant_then_attention": 0.23118081092834472,
+        "fp8_predequantized_attention": 0.05752360224723816
+      },
+      "ratios": {
+        "fused_fp8_vs_bf16": 0.9453355149370335,
+        "fused_fp8_vs_materialized_fp8": 3.811945970713071,
+        "fused_fp8_vs_predequantized_fp8": 0.9485080657288051
+      },
+      "scales": {
+        "k": 0.011579241071428572,
+        "v": 0.012416294642857142
+      }
+    },
+    {
+      "batch": 16,
+      "context": 2048,
+      "correctness": {
+        "bf16_vs_reference": true,
+        "fp8_fused_max_abs_error": 0.0009765625,
+        "fp8_fused_vs_dequant_reference": true,
+        "fp8_nonfused_vs_dequant_reference": true,
+        "fp8_quantization_max_abs_delta": 0.008056640625
+      },
+      "dtype": {
+        "bf16_kv": "torch.bfloat16",
+        "fp8_kv": "torch.float8_e4m3fn",
+        "query": "torch.bfloat16"
+      },
+      "latency_ms": {
+        "bf16_kv": 0.20103681087493896,
+        "fp8_fused_dequant_attention": 0.08747519850730896,
+        "fp8_materialize_dequant_then_attention": 2.1056640625,
+        "fp8_predequantized_attention": 0.20011520385742188
+      },
+      "ratios": {
+        "fused_fp8_vs_bf16": 2.298214971848751,
+        "fused_fp8_vs_materialized_fp8": 24.071555119981372,
+        "fused_fp8_vs_predequantized_fp8": 2.2876793339394514
+      },
+      "scales": {
+        "k": 0.012765066964285714,
+        "v": 0.012555803571428572
+      }
+    },
+    {
+      "batch": 16,
+      "context": 4096,
+      "correctness": {
+        "bf16_vs_reference": true,
+        "fp8_fused_max_abs_error": 0.00048828125,
+        "fp8_fused_vs_dequant_reference": true,
+        "fp8_nonfused_vs_dequant_reference": true,
+        "fp8_quantization_max_abs_delta": 0.00640869140625
+      },
+      "dtype": {
+        "bf16_kv": "torch.bfloat16",
+        "fp8_kv": "torch.float8_e4m3fn",
+        "query": "torch.bfloat16"
+      },
+      "latency_ms": {
+        "bf16_kv": 0.3737472057342529,
+        "fp8_fused_dequant_attention": 0.2226815938949585,
+        "fp8_materialize_dequant_then_attention": 4.280601501464844,
+        "fp8_predequantized_attention": 0.37344000339508054
+      },
+      "ratios": {
+        "fused_fp8_vs_bf16": 1.6783928981151168,
+        "fused_fp8_vs_materialized_fp8": 19.22296956201981,
+        "fused_fp8_vs_predequantized_fp8": 1.677013339374769
+      },
+      "scales": {
+        "k": 0.012486049107142858,
+        "v": 0.013392857142857142
+      }
+    }
+  ],
+  "schema_version": 1
+}
