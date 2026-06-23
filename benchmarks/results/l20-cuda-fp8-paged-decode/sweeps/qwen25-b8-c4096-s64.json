@@ -1,0 +1,23 @@
+{
+  "gpu": "NVIDIA L20",
+  "reports": [
+    {
+      "batch": 8,
+      "context": 4096,
+      "correct": true,
+      "kv_heads": 2,
+      "latency_ms": {
+        "cuda_bf16_predequantized": 0.09158656120300293,
+        "cuda_fp8_fused_dequant": 0.2611609649658203,
+        "cuda_fp8_materialize_then_bf16": 0.27435007095336916
+      },
+      "max_abs_error": 6.103515625e-05,
+      "q_heads": 12,
+      "ratios": {
+        "fp8_fused_vs_bf16_predequantized": 0.3506900857675626,
+        "fp8_fused_vs_materialized": 1.050501827442991
+      },
+      "split_size": 64
+    }
+  ]
+}

@@ -24,6 +24,7 @@ def test_cuda_prototype_is_l20_specialized_and_checked():
     assert "paged_decode_fp8_e4m3_split_out" in fp8_benchmark
     assert "cuda_fp8_fused_dequant" in fp8_benchmark
     assert "fp8_fused_vs_materialized" in fp8_benchmark
+    assert 'parser.add_argument("--split-size", type=int, default=64)' in fp8_benchmark
 
 
 def test_cuda_fp8_binding_is_registered():

@@ -50,7 +50,7 @@ def main() -> None:
     parser.add_argument("--contexts", default="512,2048,4096")
     parser.add_argument("--q-heads", type=int, default=16)
     parser.add_argument("--kv-heads", type=int, default=8)
-    parser.add_argument("--split-size", type=int, default=512)
+    parser.add_argument("--split-size", type=int, default=64)
     args = parser.parse_args()
     if args.q_heads % args.kv_heads:
         raise SystemExit("q-heads must be divisible by kv-heads")

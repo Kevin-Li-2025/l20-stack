@@ -235,6 +235,12 @@ predequantized path; Qwen2.5-Coder remains slower than both materialized and
 predequantized CUDA baselines. This narrows the next optimization to fusing
 FP8 dequant into a production-quality attention kernel boundary, not just
 porting the current split-decode structure to CUDA.
+A split-size sweep confirmed that smaller L20 FP8 partitions are better for
+this scalar split-decode structure. At batch 8/context 4096, `split_size=64`
+improves Qwen3 FP8 latency from 0.364 ms to 0.342 ms and Qwen2.5-Coder from
+0.334 ms to 0.261 ms. The default CUDA FP8 benchmark now uses 64. This is a
+real scheduling improvement, but it still leaves FP8 slower than the BF16
+predequantized CUDA path, so the production gate remains closed.
 
 The first speculative decoding follow-up is an L20 hybrid tree-attention
 prototype for irregular draft-token masks. On the measured L20, the contiguous
