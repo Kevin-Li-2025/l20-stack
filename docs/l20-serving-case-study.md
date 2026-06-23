@@ -249,10 +249,25 @@ scripts/profile_kernel.sh \
 
 The wrapper emits `.ncu-rep`, raw `.csv`, parsed `.json`, and a Markdown
 dashboard. `scripts/summarize_ncu_profile.py` extracts arithmetic intensity,
-DRAM throughput, L2 throughput, active-warps, sector-excess, and warp-stall
-metrics without inferring missing counters. If `ncu` is not available on the
-host or hardware counters are blocked by permissions, the profile step fails
-explicitly instead of silently falling back to proxy data.
+DRAM throughput, L1/L2 hit rate, L2 throughput, active-warps, register count,
+sector-excess, and warp-stall metrics without inferring missing counters. If
+`ncu` is not available on the host or hardware counters are blocked by
+permissions, the profile step fails explicitly instead of silently falling back
+to proxy data.
+
+On the remote L20 host, `ncu` was already installed as Nsight Compute
+2025.3.1.0 under `/usr/local/cuda-13.0/bin/ncu`. Normal-user profiling failed
+with `ERR_NVGPUCTRPERM`, so the report below was collected through sudo and then
+exported back to user-readable artifacts:
+
+| Tokens | Kernel | Duration | DRAM | DRAM peak | L2 hit | L1 hit | Active warps | Reg/thread | Long scoreboard |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1024 | `_l20_neox_rope_kv_kernel` | 29.76 us | 509.62 GB/s | 59.13% | 70.52% | 25.21% | 30.17% | 32 | 77.73% |
+
+This confirms the 1024-token fused path is memory-bound on L20: arithmetic
+intensity is 2.07 FLOP/B against an L20 FP16 balance point of 69.21 FLOP/B. The
+main stall is long scoreboard, not register pressure or Tensor Core scarcity
+(`sm__pipe_tensor_cycles_active` is zero for this non-matmul kernel).
 
 Artifacts:
 
@@ -263,6 +278,8 @@ Artifacts:
 - `scripts/summarize_ncu_profile.py`
 - `benchmarks/results/l20-vllm-rope-kv-profile/validation.json`
 - `benchmarks/results/l20-vllm-rope-kv-profile/resources.json`
+- `benchmarks/results/l20-vllm-rope-kv-profile/ncu/tokens-1024.json`
+- `benchmarks/results/l20-vllm-rope-kv-profile/ncu/tokens-1024.md`
 
 ## Conclusion
 
@@ -311,7 +328,7 @@ serving boundary.
 | 1 | 3.68 us | 5.6 GB/s | 0.66% | 70.25% | 7.15% |
 | 512, old 4-warp | 18.69 us | 427.3 GB/s | 49.63% | 69.51% | 65.25% |
 | 512, policy 1-warp | 16.77 us | 448.6 GB/s | 52.23% | 69.68% | 29.95% |
-| 1024, policy 1-warp | 29.79 us | 508.8 GB/s | 59.15% | 70.60% | 30.02% |
+| 1024, policy 1-warp | 29.76 us | 509.6 GB/s | 59.13% | 70.52% | 30.17% |
 
 The dominant stall at 512 and 1024 is long scoreboard. Reducing warps lowered
 active occupancy but improved latency and achieved DRAM throughput, so

@@ -357,10 +357,12 @@ batch one, context 4096, where the best 128-token path improves from roughly
 0.0469 ms to 0.0459 ms, or about two percent. Merge and allocation are therefore
 secondary costs; almost all remaining time is inside the 128-token partial CTA.
 
-Nsight Compute 2025.3.1 is installed, but hardware-counter collection is
-blocked by `ERR_NVGPUCTRPERM` for the remote user. DRAM, L2, occupancy, register,
-and warp-stall counters cannot be reported until the host enables non-admin
-performance-counter access. Benchmark timing and correctness remain available.
+Nsight Compute 2025.3.1 is installed. Hardware-counter collection is blocked by
+`ERR_NVGPUCTRPERM` for the normal remote user, but sudo profiling is available.
+The first sudo-collected L20 RoPE/KV sample is checked in at
+`benchmarks/results/l20-vllm-rope-kv-profile/ncu/tokens-1024.json`: the
+1024-token NeoX fused path runs in 29.76 us at 509.62 GB/s, 59.13% DRAM peak,
+70.52% L2 hit, 30.17% active warps, and 77.73% long-scoreboard stall.
 
 ### V23 Tensor-Core Hypothesis Check
 

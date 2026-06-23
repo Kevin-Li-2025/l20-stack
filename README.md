@@ -141,7 +141,8 @@ Qwen2.5-Coder-1.5B-Instruct, all 28 layers matched the fusion. A wider
 correctness matrix exposed a cross-warp in-place race in the NeoX layout. The
 race-free paired-lane kernel now passes 280/280 L20 cases through 1024 tokens.
 The measured warp policy raises kernel-level speedup to 1.51x at 128 tokens,
-1.18x at 512, and 1.09x at 1024. Nsight Compute shows 508.8 GB/s at 1024.
+1.18x at 512, and 1.09x at 1024. Nsight Compute shows 509.6 GB/s, 59.1% peak
+DRAM throughput, and 77.7% long-scoreboard stall at 1024 tokens.
 However, a wider serving gate regresses high-concurrency throughput, so the
 recommended vLLM gate remains `num_tokens <= 64`. Under full CUDA Graphs, ITL
 improves consistently by 0.46%-0.72%, while request throughput remains mixed

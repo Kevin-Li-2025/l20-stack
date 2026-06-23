@@ -46,12 +46,28 @@ class L20KernelProfileTest(unittest.TestCase):
         self.assertEqual(summary["stall_long_scoreboard_pct"], 31.0)
         self.assertAlmostEqual(summary["sector_excess_ratio_l1_over_l2"], 2.0)
 
+    def test_ncu_summary_extracts_wide_raw_csv(self):
+        module = load_ncu_summary_script()
+        rows = module.read_ncu_csv(Path("tests/fixtures/ncu_wide_sample.csv"))
+        summary = module.summarize_kernel("_l20_wide_kernel", rows["_l20_wide_kernel"])
+        self.assertAlmostEqual(summary["duration_ns"], 29760.0)
+        self.assertAlmostEqual(summary["dram_bytes"], 15_166_208.0)
+        self.assertAlmostEqual(summary["achieved_memory_bandwidth_gbps"], 509.617204)
+        self.assertAlmostEqual(summary["memory_bandwidth_utilization_pct"], 59.129471)
+        self.assertAlmostEqual(summary["l2_throughput_utilization_pct"], 33.646515)
+        self.assertAlmostEqual(summary["l1_sector_hit_rate_pct"], 70.519970)
+        self.assertAlmostEqual(summary["active_warps_pct"], 30.170858)
+        self.assertAlmostEqual(summary["registers_per_thread"], 24.0)
+        self.assertAlmostEqual(summary["stall_long_scoreboard_pct"], 24.25)
+        self.assertAlmostEqual(summary["sector_excess_ratio_l1_over_l2"], 2.0)
+
     def test_profile_kernel_wrapper_exports_dashboard_artifacts(self):
         source = Path("scripts/profile_kernel.sh").read_text()
         self.assertIn("--section SpeedOfLight", source)
         self.assertIn("--section MemoryWorkloadAnalysis", source)
         self.assertIn("--section WarpStateStats", source)
         self.assertIn("scripts/summarize_ncu_profile.py", source)
+        self.assertIn("summary_python=\"${PYTHON:-python3}\"", source)
         self.assertIn("--markdown-output", source)
         rope_source = Path("scripts/profile_vllm_l20_rope_kv_ncu.sh").read_text()
         self.assertIn("scripts/profile_kernel.sh", rope_source)

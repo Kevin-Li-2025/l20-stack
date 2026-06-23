@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import inspect
 import shutil
 from pathlib import Path
 
@@ -27,7 +26,7 @@ def parse_args():
 
 def main() -> int:
     args = parse_args()
-    package = Path(inspect.getfile(vllm)).parent
+    package = Path(next(iter(vllm.__path__)))
     integration = Path(__file__).resolve().parent
     targets = {
         "config": package / "config" / "compilation.py",

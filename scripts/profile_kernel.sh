@@ -109,7 +109,8 @@ ncu \
   "$@"
 
 ncu --import "${output}.ncu-rep" --page raw --csv > "${output}.csv"
-python scripts/summarize_ncu_profile.py \
+summary_python="${PYTHON:-python3}"
+"$summary_python" scripts/summarize_ncu_profile.py \
   --csv "${output}.csv" \
   --json-output "${output}.json" \
   --markdown-output "${output}.md"
