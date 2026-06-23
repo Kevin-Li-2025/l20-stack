@@ -1,0 +1,26 @@
+{
+  "attention_backend": "FLASHINFER",
+  "conclusion": "real vLLM ngram speculative serving reaches FlashInfer native prefill site, but all observed calls are causal; the non-causal L20 tree hook is not entered",
+  "events": {
+    "native_prefill_site": 140
+  },
+  "flashinfer_sampler": "disabled",
+  "max_seq_len_max": 6071,
+  "max_seq_len_min": 9,
+  "model": "Qwen2.5-Coder-1.5B-Instruct",
+  "native_prefill_causal_counts": {
+    "True": 140
+  },
+  "native_prefill_site": 140,
+  "prefill_hook_run": 0,
+  "prefill_hook_skip": 0,
+  "prefill_tokens_max": 2048,
+  "prefill_tokens_min": 8,
+  "schema_version": 1,
+  "served_model": "l20-qwen",
+  "spec_method": "ngram",
+  "spec_tokens": 16,
+  "timestamp": 1782226373.2897747,
+  "trace_path": "/tmp/l20_tree_trace_serving.jsonl",
+  "vllm": "0.23.1rc1.dev312+gf4a108c81"
+}

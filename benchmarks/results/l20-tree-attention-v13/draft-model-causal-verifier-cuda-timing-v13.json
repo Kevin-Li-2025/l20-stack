@@ -1,0 +1,125 @@
+{
+  "cases": {
+    "hook_off": {
+      "request_seconds": [
+        1.6314120292663574,
+        0.9547474384307861,
+        0.9333789348602295
+      ],
+      "timing_summary": {
+        "cached_length_top": [],
+        "case": "hook_off",
+        "draft_length_top": [],
+        "event_counts": {
+          "causal_verifier_skip": 952,
+          "native_prefill_site": 952,
+          "native_prefill_timing": 952
+        },
+        "skip_reasons": {
+          "cached_length": 28,
+          "dispatch_gate": 924
+        },
+        "timing_ms": {
+          "native_prefill_timing": {
+            "count": 952,
+            "max": 2.126847982406616,
+            "mean": 0.0798333785066209,
+            "median": 0.06860800087451935,
+            "min": 0.05734400078654289,
+            "p95": 0.12390399724245071
+          }
+        }
+      },
+      "warm_median_seconds": 0.9440631866455078
+    },
+    "hook_on": {
+      "request_seconds": [
+        6.170180320739746,
+        3.196826696395874,
+        0.9626719951629639
+      ],
+      "timing_summary": {
+        "cached_length_top": [
+          [
+            2123,
+            84
+          ],
+          [
+            2125,
+            84
+          ],
+          [
+            2127,
+            84
+          ],
+          [
+            2131,
+            84
+          ],
+          [
+            2112,
+            56
+          ],
+          [
+            2132,
+            56
+          ],
+          [
+            2141,
+            56
+          ],
+          [
+            2150,
+            56
+          ]
+        ],
+        "case": "hook_on",
+        "draft_length_top": [
+          [
+            9,
+            840
+          ],
+          [
+            11,
+            56
+          ]
+        ],
+        "event_counts": {
+          "causal_verifier_run": 896,
+          "causal_verifier_skip": 56,
+          "causal_verifier_timing": 896,
+          "native_prefill_site": 952,
+          "native_prefill_timing": 56
+        },
+        "skip_reasons": {
+          "cached_length": 28,
+          "dispatch_gate": 28
+        },
+        "timing_ms": {
+          "causal_verifier_timing": {
+            "count": 896,
+            "max": 378.7489318847656,
+            "mean": 7.579689123185484,
+            "median": 0.21606400609016418,
+            "min": 0.16281600296497345,
+            "p95": 0.2805759906768799
+          },
+          "native_prefill_timing": {
+            "count": 56,
+            "max": 2.1719040870666504,
+            "mean": 0.2004480002714055,
+            "median": 0.19097600132226944,
+            "min": 0.11980800330638885,
+            "p95": 0.20377600193023682
+          }
+        }
+      },
+      "warm_median_seconds": 2.079749345779419
+    }
+  },
+  "model": "Qwen2.5-Coder-1.5B-Instruct",
+  "schema_version": 1,
+  "spec_method": "draft_model",
+  "spec_tokens": 8,
+  "timing": "cuda_event_opt_in"
+}

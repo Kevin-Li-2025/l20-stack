@@ -1,0 +1,65 @@
+{
+  "attention_backend": "FLASHINFER",
+  "conclusion": "causal verifier hook runs in real draft_model serving, but the current three-kernel Triton path is slightly slower than native FlashInfer prefill in this coarse warm single-request smoke",
+  "direct_smoke_bf16": "causal-verifier-bf16-direct.json",
+  "direct_smoke_fp16": "causal-verifier-fp16-direct.json",
+  "dtype": "bfloat16",
+  "hook_off_reasons": {
+    "cached_length": 28,
+    "dispatch_gate": 504
+  },
+  "hook_off_times_s": [
+    {
+      "elapsed_s": 0.9515745639801025,
+      "iter": 0,
+      "prefix": "{\"id\":\"cmpl-a59ed5d356aa2f93\",\"object\":\"text_completion\",\"created\":1782227584,\"model\":\"l20-qwen\",\"choices\":[{\"index\":0,\""
+    },
+    {
+      "elapsed_s": 0.5532627105712891,
+      "iter": 1,
+      "prefix": "{\"id\":\"cmpl-a579a18642db5839\",\"object\":\"text_completion\",\"created\":1782227585,\"model\":\"l20-qwen\",\"choices\":[{\"index\":0,\""
+    },
+    {
+      "elapsed_s": 0.5479121208190918,
+      "iter": 2,
+      "prefix": "{\"id\":\"cmpl-8bcaa5f2a09f2802\",\"object\":\"text_completion\",\"created\":1782227585,\"model\":\"l20-qwen\",\"choices\":[{\"index\":0,\""
+    }
+  ],
+  "hook_off_tree_events": {
+    "causal_verifier_skip": 532,
+    "native_prefill_site": 532
+  },
+  "hook_off_warm_median_s": 0.5505874156951904,
+  "hook_on_reasons": {
+    "cached_length": 28,
+    "dispatch_gate": 28
+  },
+  "hook_on_times_s": [
+    {
+      "elapsed_s": 1.0962982177734375,
+      "iter": 0,
+      "prefix": "{\"id\":\"cmpl-9baef38932bb95b0\",\"object\":\"text_completion\",\"created\":1782227475,\"model\":\"l20-qwen\",\"choices\":[{\"index\":0,\""
+    },
+    {
+      "elapsed_s": 0.5719075202941895,
+      "iter": 1,
+      "prefix": "{\"id\":\"cmpl-98de007a55173678\",\"object\":\"text_completion\",\"created\":1782227476,\"model\":\"l20-qwen\",\"choices\":[{\"index\":0,\""
+    },
+    {
+      "elapsed_s": 0.5707442760467529,
+      "iter": 2,
+      "prefix": "{\"id\":\"cmpl-85cdcaeee996014d\",\"object\":\"text_completion\",\"created\":1782227477,\"model\":\"l20-qwen\",\"choices\":[{\"index\":0,\""
+    }
+  ],
+  "hook_on_tree_events": {
+    "causal_verifier_run": 644,
+    "causal_verifier_skip": 56,
+    "native_prefill_site": 700
+  },
+  "hook_on_warm_median_s": 0.5713258981704712,
+  "model": "Qwen2.5-Coder-1.5B-Instruct",
+  "schema_version": 1,
+  "spec_method": "draft_model",
+  "spec_tokens": 8,
+  "timestamp": 1782227615.327052
+}

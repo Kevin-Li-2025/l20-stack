@@ -1,0 +1,171 @@
+{
+  "calc_spec_decode_metadata": 5,
+  "conclusion": "draft_model speculative verification also uses causal padded verifier metadata; this vLLM path is not LongSpec-style irregular tree attention",
+  "examples": {
+    "spec": [
+      {
+        "batch_size": 1,
+        "cu_num_scheduled_tokens": [
+          9
+        ],
+        "event": "calc_spec_decode_metadata",
+        "num_draft_tokens": [
+          8
+        ],
+        "total_draft_tokens": 8,
+        "total_sampled_tokens": 9,
+        "ts": 1782226974.6388798
+      },
+      {
+        "event": "rejection_sampler_call",
+        "logits_shape": [
+          9,
+          151936
+        ],
+        "max_spec_len": 8,
+        "num_draft_tokens": [
+          8
+        ],
+        "ts": 1782226974.6462362
+      },
+      {
+        "causal": true,
+        "event": "prepare_inputs_padded",
+        "max_query_len": 9,
+        "max_seq_len": 2177,
+        "num_reqs": 1,
+        "total_num_tokens": 9,
+        "ts": 1782226975.4920576
+      },
+      {
+        "batch_size": 1,
+        "cu_num_scheduled_tokens": [
+          9
+        ],
+        "event": "calc_spec_decode_metadata",
+        "num_draft_tokens": [
+          8
+        ],
+        "total_draft_tokens": 8,
+        "total_sampled_tokens": 9,
+        "ts": 1782226975.667673
+      },
+      {
+        "event": "rejection_sampler_call",
+        "logits_shape": [
+          9,
+          151936
+        ],
+        "max_spec_len": 8,
+        "num_draft_tokens": [
+          8
+        ],
+        "ts": 1782226975.6744976
+      },
+      {
+        "causal": true,
+        "event": "prepare_inputs_padded",
+        "max_query_len": 9,
+        "max_seq_len": 2183,
+        "num_reqs": 1,
+        "total_num_tokens": 9,
+        "ts": 1782226975.6760921
+      },
+      {
+        "batch_size": 1,
+        "cu_num_scheduled_tokens": [
+          9
+        ],
+        "event": "calc_spec_decode_metadata",
+        "num_draft_tokens": [
+          8
+        ],
+        "total_draft_tokens": 8,
+        "total_sampled_tokens": 9,
+        "ts": 1782226975.7541435
+      },
+      {
+        "event": "rejection_sampler_call",
+        "logits_shape": [
+          9,
+          151936
+        ],
+        "max_spec_len": 8,
+        "num_draft_tokens": [
+          8
+        ],
+        "ts": 1782226975.7606912
+      }
+    ],
+    "tree": [
+      {
+        "causal": true,
+        "event": "native_prefill_site",
+        "is_kvcache_nvfp4": false,
+        "max_seq_len": 1792,
+        "num_decode_tokens": 0,
+        "prefill_tokens": 1792,
+        "ts": 1782226973.290102
+      },
+      {
+        "causal": true,
+        "event": "native_prefill_site",
+        "is_kvcache_nvfp4": false,
+        "max_seq_len": 1792,
+        "num_decode_tokens": 0,
+        "prefill_tokens": 1792,
+        "ts": 1782226973.2950046
+      },
+      {
+        "causal": true,
+        "event": "native_prefill_site",
+        "is_kvcache_nvfp4": false,
+        "max_seq_len": 1792,
+        "num_decode_tokens": 0,
+        "prefill_tokens": 1792,
+        "ts": 1782226973.2967334
+      },
+      {
+        "causal": true,
+        "event": "native_prefill_site",
+        "is_kvcache_nvfp4": false,
+        "max_seq_len": 1792,
+        "num_decode_tokens": 0,
+        "prefill_tokens": 1792,
+        "ts": 1782226973.2978158
+      },
+      {
+        "causal": true,
+        "event": "native_prefill_site",
+        "is_kvcache_nvfp4": false,
+        "max_seq_len": 1792,
+        "num_decode_tokens": 0,
+        "prefill_tokens": 1792,
+        "ts": 1782226973.2983482
+      }
+    ]
+  },
+  "native_prefill_causal_counts": {
+    "True": 196
+  },
+  "native_prefill_site": 196,
+  "prefill_hook_run": 0,
+  "prepare_inputs_padded": 5,
+  "rejection_sampler_call": 5,
+  "schema_version": 1,
+  "spec_events": {
+    "calc_spec_decode_metadata": 5,
+    "prepare_inputs_padded": 5,
+    "rejection_sampler_call": 5
+  },
+  "spec_metadata_causal_counts": {
+    "True": 5
+  },
+  "spec_trace_path": "/tmp/l20_spec_trace_draft_model.jsonl",
+  "tag": "draft_model",
+  "timestamp": 1782227003.7197814,
+  "tree_events": {
+    "native_prefill_site": 196
+  },
+  "tree_trace_path": "/tmp/l20_tree_trace_draft_model.jsonl"
+}

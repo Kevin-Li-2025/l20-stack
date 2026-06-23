@@ -1,0 +1,24 @@
+{
+  "cached_length_top": [],
+  "case": "hook_off",
+  "draft_length_top": [],
+  "event_counts": {
+    "causal_verifier_skip": 952,
+    "native_prefill_site": 952,
+    "native_prefill_timing": 952
+  },
+  "skip_reasons": {
+    "cached_length": 28,
+    "dispatch_gate": 924
+  },
+  "timing_ms": {
+    "native_prefill_timing": {
+      "count": 952,
+      "max": 2.126847982406616,
+      "mean": 0.0798333785066209,
+      "median": 0.06860800087451935,
+      "min": 0.05734400078654289,
+      "p95": 0.12390399724245071
+    }
+  }
+}

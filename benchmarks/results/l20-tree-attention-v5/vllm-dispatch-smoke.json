@@ -1,0 +1,13 @@
+{
+  "batch": 1,
+  "cached_length": 4096,
+  "correct": true,
+  "dispatch_path": "vllm.v1.attention.ops.l20_tree_attention_dispatch",
+  "draft_length": 16,
+  "gpu": "NVIDIA L20",
+  "import_path": "vllm.v1.attention.ops.l20_tree_attention",
+  "max_abs_error": 1.52587890625e-05,
+  "paged_prefix_ms": 0.1642291259765625,
+  "schema_version": 1,
+  "should_dispatch": true
+}

@@ -1,0 +1,111 @@
+{
+  "gpu": "NVIDIA L20",
+  "operator": "hybrid_tree_attention_paged_prefix",
+  "reports": [
+    {
+      "batch": 1,
+      "cached_length": 2048,
+      "contiguous_split_ms": 0.0906112015247345,
+      "draft_length": 8,
+      "paged_correct": true,
+      "paged_max_abs_error": 3.0517578125e-05,
+      "paged_prefix_ms": 0.2172032117843628,
+      "paged_vs_contiguous_split": 0.4171724753991778,
+      "split_correct": true,
+      "split_max_abs_error": 3.0517578125e-05,
+      "tree": "chain"
+    },
+    {
+      "batch": 1,
+      "cached_length": 2048,
+      "contiguous_split_ms": 0.09054719805717468,
+      "draft_length": 8,
+      "paged_correct": true,
+      "paged_max_abs_error": 3.0517578125e-05,
+      "paged_prefix_ms": 0.21747200489044188,
+      "paged_vs_contiguous_split": 0.41636254791871063,
+      "split_correct": true,
+      "split_max_abs_error": 3.0517578125e-05,
+      "tree": "fork2"
+    },
+    {
+      "batch": 1,
+      "cached_length": 2048,
+      "contiguous_split_ms": 0.10986239910125732,
+      "draft_length": 16,
+      "paged_correct": true,
+      "paged_max_abs_error": 6.103515625e-05,
+      "paged_prefix_ms": 0.275711989402771,
+      "paged_vs_contiguous_split": 0.39846797862956185,
+      "split_correct": true,
+      "split_max_abs_error": 6.103515625e-05,
+      "tree": "chain"
+    },
+    {
+      "batch": 1,
+      "cached_length": 2048,
+      "contiguous_split_ms": 0.10977280139923096,
+      "draft_length": 16,
+      "paged_correct": true,
+      "paged_max_abs_error": 6.103515625e-05,
+      "paged_prefix_ms": 0.2739583969116211,
+      "paged_vs_contiguous_split": 0.4006915014714575,
+      "split_correct": true,
+      "split_max_abs_error": 6.103515625e-05,
+      "tree": "fork2"
+    },
+    {
+      "batch": 1,
+      "cached_length": 4096,
+      "contiguous_split_ms": 0.11624959707260132,
+      "draft_length": 8,
+      "paged_correct": true,
+      "paged_max_abs_error": 3.0517578125e-05,
+      "paged_prefix_ms": 0.4269567966461182,
+      "paged_vs_contiguous_split": 0.27227484838226956,
+      "split_correct": true,
+      "split_max_abs_error": 1.52587890625e-05,
+      "tree": "chain"
+    },
+    {
+      "batch": 1,
+      "cached_length": 4096,
+      "contiguous_split_ms": 0.11630079746246338,
+      "draft_length": 8,
+      "paged_correct": true,
+      "paged_max_abs_error": 3.0517578125e-05,
+      "paged_prefix_ms": 0.42641921043395997,
+      "paged_vs_contiguous_split": 0.27273817552475166,
+      "split_correct": true,
+      "split_max_abs_error": 1.52587890625e-05,
+      "tree": "fork2"
+    },
+    {
+      "batch": 1,
+      "cached_length": 4096,
+      "contiguous_split_ms": 0.15354880094528198,
+      "draft_length": 16,
+      "paged_correct": true,
+      "paged_max_abs_error": 3.0517578125e-05,
+      "paged_prefix_ms": 0.5395711898803711,
+      "paged_vs_contiguous_split": 0.2845756108277861,
+      "split_correct": true,
+      "split_max_abs_error": 3.0517578125e-05,
+      "tree": "chain"
+    },
+    {
+      "batch": 1,
+      "cached_length": 4096,
+      "contiguous_split_ms": 0.153766405582428,
+      "draft_length": 16,
+      "paged_correct": true,
+      "paged_max_abs_error": 3.0517578125e-05,
+      "paged_prefix_ms": 0.5394176006317138,
+      "paged_vs_contiguous_split": 0.2850600451345147,
+      "split_correct": true,
+      "split_max_abs_error": 3.0517578125e-05,
+      "tree": "fork2"
+    }
+  ],
+  "schema_version": 1
+}

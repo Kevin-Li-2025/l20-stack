@@ -1,0 +1,100 @@
+{
+  "calc_spec_decode_metadata": 1,
+  "conclusion": "ngram speculative verification produces causal target prefill/logits, not a non-causal tree-attention verifier path",
+  "examples": {
+    "spec": [
+      {
+        "batch_size": 1,
+        "cu_num_scheduled_tokens": [
+          15
+        ],
+        "event": "calc_spec_decode_metadata",
+        "num_draft_tokens": [
+          14
+        ],
+        "total_draft_tokens": 14,
+        "total_sampled_tokens": 15,
+        "ts": 1782226828.8653486
+      },
+      {
+        "event": "rejection_sampler_call",
+        "logits_shape": [
+          15,
+          151936
+        ],
+        "max_spec_len": 14,
+        "num_draft_tokens": [
+          14
+        ],
+        "ts": 1782226828.8724024
+      }
+    ],
+    "tree": [
+      {
+        "causal": true,
+        "event": "native_prefill_site",
+        "is_kvcache_nvfp4": false,
+        "max_seq_len": 9,
+        "num_decode_tokens": 8,
+        "prefill_tokens": 8,
+        "ts": 1782226803.373311
+      },
+      {
+        "causal": true,
+        "event": "native_prefill_site",
+        "is_kvcache_nvfp4": false,
+        "max_seq_len": 9,
+        "num_decode_tokens": 8,
+        "prefill_tokens": 8,
+        "ts": 1782226803.387871
+      },
+      {
+        "causal": true,
+        "event": "native_prefill_site",
+        "is_kvcache_nvfp4": false,
+        "max_seq_len": 9,
+        "num_decode_tokens": 8,
+        "prefill_tokens": 8,
+        "ts": 1782226803.388609
+      },
+      {
+        "causal": true,
+        "event": "native_prefill_site",
+        "is_kvcache_nvfp4": false,
+        "max_seq_len": 9,
+        "num_decode_tokens": 8,
+        "prefill_tokens": 8,
+        "ts": 1782226803.389184
+      },
+      {
+        "causal": true,
+        "event": "native_prefill_site",
+        "is_kvcache_nvfp4": false,
+        "max_seq_len": 9,
+        "num_decode_tokens": 8,
+        "prefill_tokens": 8,
+        "ts": 1782226803.3897393
+      }
+    ]
+  },
+  "native_prefill_causal_counts": {
+    "True": 140
+  },
+  "native_prefill_site": 140,
+  "prefill_hook_run": 0,
+  "prepare_inputs_padded": 0,
+  "rejection_sampler_call": 1,
+  "schema_version": 1,
+  "spec_events": {
+    "calc_spec_decode_metadata": 1,
+    "rejection_sampler_call": 1
+  },
+  "spec_metadata_causal_counts": {},
+  "spec_trace_path": "/tmp/l20_spec_trace_ngram.jsonl",
+  "tag": "ngram",
+  "timestamp": 1782227003.7185674,
+  "tree_events": {
+    "native_prefill_site": 140
+  },
+  "tree_trace_path": "/tmp/l20_tree_trace_serving.jsonl"
+}

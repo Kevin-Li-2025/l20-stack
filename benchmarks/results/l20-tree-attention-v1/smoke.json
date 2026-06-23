@@ -1,0 +1,51 @@
+{
+  "gpu": "NVIDIA L20",
+  "operator": "hybrid_tree_attention",
+  "reports": [
+    {
+      "batch": 1,
+      "cached_length": 512,
+      "correct": true,
+      "draft_length": 4,
+      "l20_tree_ms": 0.030310399532318115,
+      "max_abs_error": 6.103515625e-05,
+      "speedup_vs_torch_dense": 7.795607938256039,
+      "torch_dense_ms": 0.23628799120585123,
+      "tree": "chain"
+    },
+    {
+      "batch": 1,
+      "cached_length": 512,
+      "correct": true,
+      "draft_length": 4,
+      "l20_tree_ms": 0.030638720989227295,
+      "max_abs_error": 6.103515625e-05,
+      "speedup_vs_torch_dense": 7.29151387151104,
+      "torch_dense_ms": 0.22340265909830728,
+      "tree": "fork2"
+    },
+    {
+      "batch": 1,
+      "cached_length": 512,
+      "correct": true,
+      "draft_length": 8,
+      "l20_tree_ms": 0.0313971209526062,
+      "max_abs_error": 6.103515625e-05,
+      "speedup_vs_torch_dense": 7.321945296345905,
+      "torch_dense_ms": 0.22988800207773843,
+      "tree": "chain"
+    },
+    {
+      "batch": 1,
+      "cached_length": 512,
+      "correct": true,
+      "draft_length": 8,
+      "l20_tree_ms": 0.031109120845794678,
+      "max_abs_error": 6.103515625e-05,
+      "speedup_vs_torch_dense": 7.458305650526731,
+      "torch_dense_ms": 0.23202133178710938,
+      "tree": "fork2"
+    }
+  ],
+  "schema_version": 1
+}

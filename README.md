@@ -153,3 +153,57 @@ The complete systems narrative, including the rejected benchmark methodology
 and bottleneck analysis behind the `7.82x -> marginal service gain` performance
 dilution, is in
 [`docs/l20-serving-case-study.md`](docs/l20-serving-case-study.md).
+
+The first speculative decoding follow-up is an L20 hybrid tree-attention
+prototype for irregular draft-token masks. On the measured L20, the contiguous
+v1 kernel matches both a dense PyTorch reference and repeated decode attention
+for chain drafts. Representative chain rows show 9.78x at
+`batch=1,cached=512,draft=8`, 21.50x at `batch=1,cached=2048,draft=16`, and
+25.49x at `batch=1,cached=4096,draft=16` versus repeated decode launches. See
+[`docs/l20-hybrid-tree-attention.md`](docs/l20-hybrid-tree-attention.md).
+The v2 split prefix/suffix path now performs an explicit log-sum-exp merge and
+beats the monolithic path only in the measured long-context regime, so its gate
+is `cached_length >= 4096`.
+The v3 path replaces the contiguous cached prefix with a randomized page-16 NHD
+block table. It is correct against the dense reference; the measured page-table
+overhead is small in the default wide-tile kernel, while a page16-specialized
+loop was rejected as a negative result.
+The v5 smoke installs the operator under
+`vllm.v1.attention.ops.l20_tree_attention`, adds
+`vllm.v1.attention.ops.l20_tree_attention_dispatch`, and validates the
+`VLLM_ENABLE_L20_TREE_ATTENTION=1` dispatch gate on the L20 host; full
+speculative serving integration is still pending.
+The v6 smoke also patches FlashInfer's backend module with
+`maybe_run_l20_tree_attention(...)`, giving the future speculative metadata path
+a backend-local hook with the same fallback behavior.
+The v7 patch adds a guarded non-causal native-prefill insertion point,
+`maybe_run_l20_tree_attention_from_prefill(...)`, for conservative chain-draft
+speculative verification shapes.
+The v8 smoke calls that backend hook directly with vLLM-shaped tensors and
+threads `max_seq_len` through metadata to avoid a hot-path GPU scalar sync.
+The v9 real serving smoke runs Qwen2.5-Coder-1.5B-Instruct with vLLM ngram
+speculative decoding and FlashInfer attention. It reaches the native-prefill
+site 140 times, but all observed calls are causal, so the current non-causal
+tree hook is not entered (`prefill_hook_run=0`).
+The v10 verifier trace repeats the test for both ngram and draft-model
+speculative decoding. Both paths verify draft tokens through causal multi-token
+target passes (`[draft + 1, vocab]` logits) rather than a non-causal irregular
+tree mask, so the next serving target is a causal speculative-verifier hook.
+The v11 hook implements that causal verifier path and does enter real
+draft-model serving (`causal_verifier_run=140` for the first measured request).
+Direct FP16/BF16 correctness passes, but the current three-kernel implementation
+is slightly slower than native FlashInfer in warm e2e smoke
+(`0.5713 s` vs `0.5506 s` median), so it remains experimental rather than a
+default win.
+The v12 causal verifier replaces that three-kernel path with a single paged
+online-softmax kernel. Direct L20 hook latency improves from about `0.184 ms` to
+about `0.084 ms` at `cached=2048,draft=9`, and a long-context draft-model
+serving smoke enters the hook 1064 times. With tracing disabled, hook-on and
+hook-off are effectively tied (`1.0982 s` vs `1.1009 s` post-warm median), so
+this is a real kernel improvement but still only a noise-level service result.
+The v13 CUDA Event timing pass explains the tie: in the real vLLM causal
+verifier path, native FlashInfer prefill is still faster than the current L20
+hook (`0.0686 ms` vs `0.2161 ms` median). The causal hook therefore stays
+experimental/off by default; the next meaningful optimization would need tiled
+Tensor Core QK/PV or a true irregular LongSpec-style workload, not more
+launch-count-only fusion.

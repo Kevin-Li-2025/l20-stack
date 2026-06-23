@@ -1,0 +1,12 @@
+{
+  "cached_length": 2048,
+  "correct": true,
+  "draft_length": 9,
+  "dtype": "float16",
+  "gpu": "NVIDIA L20",
+  "hook": "maybe_run_l20_causal_verifier_from_prefill",
+  "hook_ms": 0.08486911773681641,
+  "max_abs_error": 1.52587890625e-05,
+  "ran": true,
+  "schema_version": 1
+}

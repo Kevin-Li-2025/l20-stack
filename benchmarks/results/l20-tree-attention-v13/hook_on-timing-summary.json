@@ -1,0 +1,76 @@
+{
+  "cached_length_top": [
+    [
+      2123,
+      84
+    ],
+    [
+      2125,
+      84
+    ],
+    [
+      2127,
+      84
+    ],
+    [
+      2131,
+      84
+    ],
+    [
+      2112,
+      56
+    ],
+    [
+      2132,
+      56
+    ],
+    [
+      2141,
+      56
+    ],
+    [
+      2150,
+      56
+    ]
+  ],
+  "case": "hook_on",
+  "draft_length_top": [
+    [
+      9,
+      840
+    ],
+    [
+      11,
+      56
+    ]
+  ],
+  "event_counts": {
+    "causal_verifier_run": 896,
+    "causal_verifier_skip": 56,
+    "causal_verifier_timing": 896,
+    "native_prefill_site": 952,
+    "native_prefill_timing": 56
+  },
+  "skip_reasons": {
+    "cached_length": 28,
+    "dispatch_gate": 28
+  },
+  "timing_ms": {
+    "causal_verifier_timing": {
+      "count": 896,
+      "max": 378.7489318847656,
+      "mean": 7.579689123185484,
+      "median": 0.21606400609016418,
+      "min": 0.16281600296497345,
+      "p95": 0.2805759906768799
+    },
+    "native_prefill_timing": {
+      "count": 56,
+      "max": 2.1719040870666504,
+      "mean": 0.2004480002714055,
+      "median": 0.19097600132226944,
+      "min": 0.11980800330638885,
+      "p95": 0.20377600193023682
+    }
+  }
+}

@@ -1,0 +1,20 @@
+[
+  {
+    "block_t": 32,
+    "correct": true,
+    "max_abs_error": 0.0001220703125,
+    "ms": 0.13328895568847657
+  },
+  {
+    "block_t": 64,
+    "correct": true,
+    "max_abs_error": 0.0001220703125,
+    "ms": 0.09699328422546387
+  },
+  {
+    "block_t": 128,
+    "correct": true,
+    "max_abs_error": 0.0001220703125,
+    "ms": 0.10131456375122071
+  }
+]

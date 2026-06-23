@@ -21,12 +21,12 @@ index d956e29e3..531f82e1c 100644
 +++ b/CMakeLists.txt
 @@ -307,6 +307,7 @@ endif()
  #
-
+ 
  set(VLLM_EXT_SRC
 +  "csrc/attention/l20_paged_decode.cu"
    "csrc/quantization/activation_kernels.cu"
    "csrc/torch_bindings.cpp")
-
+ 
 diff --git a/csrc/attention/l20_paged_decode.cu b/csrc/attention/l20_paged_decode.cu
 new file mode 100644
 index 000000000..a15dc3d09
@@ -539,7 +539,7 @@ index e39bae08f..d20906ae0 100644
 @@ -62,6 +62,13 @@ void persistent_masked_m_silu_mul_quant(
      at::Tensor& y_s,           // (E, T, H//group_size) [OUT]
      bool use_ue8m0);
-
+ 
 +void l20_paged_decode_split_out_cuda(
 +    torch::Tensor query, torch::Tensor key_cache, torch::Tensor value_cache,
 +    torch::Tensor block_table, torch::Tensor seq_lens,
@@ -548,7 +548,7 @@ index e39bae08f..d20906ae0 100644
 +    int64_t split_size);
 +
  void gelu_and_mul(torch::Tensor& out, torch::Tensor& input);
-
+ 
  void gelu_tanh_and_mul(torch::Tensor& out, torch::Tensor& input);
 diff --git a/csrc/torch_bindings.cpp b/csrc/torch_bindings.cpp
 index c63e59c3b..53dc02bfe 100644
@@ -557,7 +557,7 @@ index c63e59c3b..53dc02bfe 100644
 @@ -29,6 +29,16 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
    ops.impl("persistent_masked_m_silu_mul_quant", torch::kCUDA,
             &persistent_masked_m_silu_mul_quant);
-
+ 
 +  ops.def(
 +      "l20_paged_decode_split_out("
 +      "Tensor query, Tensor key_cache, Tensor value_cache, "
@@ -570,7 +570,7 @@ index c63e59c3b..53dc02bfe 100644
 +
    ops.def("weak_ref_tensor(Tensor input) -> Tensor");
    ops.impl("weak_ref_tensor", torch::kCUDA, &weak_ref_tensor);
-
+ 
 diff --git a/tests/v1/attention/test_l20_paged_decode.py b/tests/v1/attention/test_l20_paged_decode.py
 new file mode 100644
 index 000000000..9e3980967
@@ -690,8 +690,8 @@ index 2c0684c27..b742de3d3 100644
 +++ b/vllm/_custom_ops.py
 @@ -110,6 +110,53 @@ if hasattr(torch.ops, "_C") and hasattr(torch.ops._C, "scaled_fp4_quant"):
          return None
-
-
+ 
+ 
 +if hasattr(torch.ops, "_C") and hasattr(torch.ops._C, "l20_paged_decode_split_out"):
 +
 +    @register_fake("_C::l20_paged_decode_split_out")
@@ -748,13 +748,13 @@ index 73e1cce56..551eb503e 100755
 +++ b/vllm/v1/attention/backends/flashinfer.py
 @@ -447,6 +447,9 @@ class FIDecode:
      """Metadata for the native FlashInfer decode pathway (non-TRTLLM)."""
-
+ 
      wrapper: BatchDecodeWithPagedKVCacheWrapper
 +    block_tables: torch.Tensor
 +    seq_lens: torch.Tensor
 +    max_seq_len: int
-
-
+ 
+ 
  @dataclass
 @@ -1249,7 +1252,12 @@ class FlashInferMetadataBuilder(AttentionMetadataBuilder[FlashInferMetadata]):
                      fixed_split_size=self.decode_fixed_split_size,
@@ -768,7 +768,7 @@ index 73e1cce56..551eb503e 100755
 +                    max_seq_len=max_seq_len,
 +                )
          return attn_metadata
-
+ 
      def use_cascade_attention(self, *args, **kwargs) -> bool:
 @@ -1742,14 +1750,75 @@ class FlashInferImpl(AttentionImpl):
                          get_dcp_group(),
@@ -850,8 +850,9 @@ index 73e1cce56..551eb503e 100755
 +                            out=out_decode,
 +                            kv_cache_sf=kv_cache_sf,
 +                        )
-
+ 
                  if needs_fp8_out:
                      output[:num_decode_tokens].copy_(out_decode.to(output.dtype))
---
+-- 
 2.50.1 (Apple Git-155)
+

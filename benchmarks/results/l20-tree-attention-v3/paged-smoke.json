@@ -1,0 +1,111 @@
+{
+  "gpu": "NVIDIA L20",
+  "operator": "hybrid_tree_attention_paged_prefix",
+  "reports": [
+    {
+      "batch": 1,
+      "cached_length": 2048,
+      "contiguous_split_ms": 0.09086719751358033,
+      "draft_length": 8,
+      "paged_correct": true,
+      "paged_max_abs_error": 3.0517578125e-05,
+      "paged_prefix_ms": 0.08376320004463196,
+      "paged_vs_contiguous_split": 1.0848104831854932,
+      "split_correct": true,
+      "split_max_abs_error": 3.0517578125e-05,
+      "tree": "chain"
+    },
+    {
+      "batch": 1,
+      "cached_length": 2048,
+      "contiguous_split_ms": 0.09076480269432068,
+      "draft_length": 8,
+      "paged_correct": true,
+      "paged_max_abs_error": 3.0517578125e-05,
+      "paged_prefix_ms": 0.08358399868011475,
+      "paged_vs_contiguous_split": 1.085911228555691,
+      "split_correct": true,
+      "split_max_abs_error": 3.0517578125e-05,
+      "tree": "fork2"
+    },
+    {
+      "batch": 1,
+      "cached_length": 2048,
+      "contiguous_split_ms": 0.10964479446411132,
+      "draft_length": 16,
+      "paged_correct": true,
+      "paged_max_abs_error": 6.103515625e-05,
+      "paged_prefix_ms": 0.10470399856567383,
+      "paged_vs_contiguous_split": 1.0471882255321745,
+      "split_correct": true,
+      "split_max_abs_error": 6.103515625e-05,
+      "tree": "chain"
+    },
+    {
+      "batch": 1,
+      "cached_length": 2048,
+      "contiguous_split_ms": 0.10977280139923096,
+      "draft_length": 16,
+      "paged_correct": true,
+      "paged_max_abs_error": 6.103515625e-05,
+      "paged_prefix_ms": 0.10452480316162109,
+      "paged_vs_contiguous_split": 1.0502081618799624,
+      "split_correct": true,
+      "split_max_abs_error": 6.103515625e-05,
+      "tree": "fork2"
+    },
+    {
+      "batch": 1,
+      "cached_length": 4096,
+      "contiguous_split_ms": 0.11626240015029907,
+      "draft_length": 8,
+      "paged_correct": true,
+      "paged_max_abs_error": 1.52587890625e-05,
+      "paged_prefix_ms": 0.1215872049331665,
+      "paged_vs_contiguous_split": 0.9562058788521839,
+      "split_correct": true,
+      "split_max_abs_error": 1.52587890625e-05,
+      "tree": "chain"
+    },
+    {
+      "batch": 1,
+      "cached_length": 4096,
+      "contiguous_split_ms": 0.11641600131988525,
+      "draft_length": 8,
+      "paged_correct": true,
+      "paged_max_abs_error": 1.52587890625e-05,
+      "paged_prefix_ms": 0.12153600454330445,
+      "paged_vs_contiguous_split": 0.9578725395601195,
+      "split_correct": true,
+      "split_max_abs_error": 1.52587890625e-05,
+      "tree": "fork2"
+    },
+    {
+      "batch": 1,
+      "cached_length": 4096,
+      "contiguous_split_ms": 0.15394560098648072,
+      "draft_length": 16,
+      "paged_correct": true,
+      "paged_max_abs_error": 3.0517578125e-05,
+      "paged_prefix_ms": 0.1750656008720398,
+      "paged_vs_contiguous_split": 0.8793595099188204,
+      "split_correct": true,
+      "split_max_abs_error": 3.0517578125e-05,
+      "tree": "chain"
+    },
+    {
+      "batch": 1,
+      "cached_length": 4096,
+      "contiguous_split_ms": 0.153766405582428,
+      "draft_length": 16,
+      "paged_correct": true,
+      "paged_max_abs_error": 3.0517578125e-05,
+      "paged_prefix_ms": 0.16517119407653807,
+      "paged_vs_contiguous_split": 0.9309517100855658,
+      "split_correct": true,
+      "split_max_abs_error": 3.0517578125e-05,
+      "tree": "fork2"
+    }
+  ],
+  "schema_version": 1
+}

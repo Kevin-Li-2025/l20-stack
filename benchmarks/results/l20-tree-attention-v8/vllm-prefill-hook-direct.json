@@ -1,0 +1,11 @@
+{
+  "cached_length": 4096,
+  "correct": true,
+  "draft_length": 16,
+  "gpu": "NVIDIA L20",
+  "hook": "maybe_run_l20_tree_attention_from_prefill",
+  "hook_ms": 0.2899865531921387,
+  "max_abs_error": 3.0517578125e-05,
+  "ran": true,
+  "schema_version": 1
+}

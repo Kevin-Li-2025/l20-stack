@@ -1,0 +1,155 @@
+{
+  "cases": {
+    "hook_off": {
+      "request_seconds": [
+        1.4946727752685547,
+        1.1087121963500977,
+        1.1086506843566895
+      ],
+      "trace_summary": {
+        "cached_length_top": [
+          [
+            2203,
+            84
+          ],
+          [
+            2205,
+            84
+          ],
+          [
+            2207,
+            84
+          ],
+          [
+            2211,
+            84
+          ],
+          [
+            2220,
+            84
+          ],
+          [
+            2223,
+            84
+          ],
+          [
+            2225,
+            84
+          ],
+          [
+            2229,
+            84
+          ]
+        ],
+        "case": "hook_off",
+        "event_counts": {
+          "causal_verifier_skip": 1120,
+          "native_prefill_site": 1120
+        },
+        "prefill_tokens_top": [
+          [
+            9,
+            1008
+          ],
+          [
+            11,
+            56
+          ],
+          [
+            1792,
+            28
+          ],
+          [
+            411,
+            28
+          ]
+        ],
+        "skip_reasons": {
+          "cached_length": 28,
+          "dispatch_gate": 1092
+        }
+      },
+      "warm_mean_seconds": 1.1086814403533936,
+      "warm_median_seconds": 1.1086814403533936
+    },
+    "hook_on": {
+      "request_seconds": [
+        6.047576904296875,
+        1.5379836559295654,
+        1.1882927417755127
+      ],
+      "trace_summary": {
+        "cached_length_top": [
+          [
+            2203,
+            84
+          ],
+          [
+            2205,
+            84
+          ],
+          [
+            2207,
+            84
+          ],
+          [
+            2211,
+            84
+          ],
+          [
+            2220,
+            84
+          ],
+          [
+            2223,
+            84
+          ],
+          [
+            2225,
+            84
+          ],
+          [
+            2229,
+            84
+          ]
+        ],
+        "case": "hook_on",
+        "event_counts": {
+          "causal_verifier_run": 1064,
+          "causal_verifier_skip": 56,
+          "native_prefill_site": 1120
+        },
+        "prefill_tokens_top": [
+          [
+            9,
+            1008
+          ],
+          [
+            11,
+            56
+          ],
+          [
+            1792,
+            28
+          ],
+          [
+            411,
+            28
+          ]
+        ],
+        "skip_reasons": {
+          "cached_length": 28,
+          "dispatch_gate": 28
+        }
+      },
+      "warm_mean_seconds": 1.363138198852539,
+      "warm_median_seconds": 1.363138198852539
+    }
+  },
+  "hook_on_vs_off_warm_median_delta_pct": 22.951295948278627,
+  "model": "Qwen2.5-Coder-1.5B-Instruct",
+  "prompt": "long_context",
+  "schema_version": 1,
+  "spec_method": "draft_model",
+  "spec_tokens": 8
+}
