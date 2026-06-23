@@ -29,12 +29,19 @@ The `_C` namespace fragment compiled and registered on the L20. The upstream
 test file passes `5/5` cases, and Qwen2.5-Coder-1.5B completes a real
 eight-token request through the source-tree FlashInfer backend.
 
-The host cannot complete an unmodified full vLLM build because its CUDA 12.0
-headers do not define
-`CU_DEVICE_ATTRIBUTE_HANDLE_TYPE_FABRIC_SUPPORTED`, required by the unrelated
-`cumem_allocator` target. The L20 operator itself compiles successfully. A
-clean full-wheel build on a vLLM-supported CUDA toolkit remains required before
-opening an upstream PR.
+The full editable vLLM wheel now builds with the CUDA 13.0 components installed
+inside the isolated vLLM environment. The system CUDA 12 compiler must not be
+used. NVIDIA wheel components for NVCC, CRT, NVVM, runtime, and CCCL must all
+remain on the CUDA 13.0 release line. The reproducible environment setup is in
+`scripts/build_vllm_cuda13_l20.sh`.
+
+The CUDA 13 Compute Sanitizer package reports zero memcheck errors across all
+four numerical GPU cases. The fully built wheel also completes the
+Qwen2.5-Coder-1.5B eight-token FlashInfer eager service request.
+
+The remote host has intermittent GitHub connectivity. CUTLASS and
+vLLM FlashAttention are therefore supplied through `VLLM_CUTLASS_SRC_DIR` and
+`VLLM_FLASH_ATTN_SRC_DIR` instead of being fetched during CMake configuration.
 
 Apply the patch from a clean vLLM `v0.23.0` checkout:
 

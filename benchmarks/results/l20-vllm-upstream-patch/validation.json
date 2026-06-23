@@ -23,9 +23,18 @@
   },
   "schema_version": 1,
   "source_build": {
+    "cuda": "13.0",
     "operator_compile": "passed",
-    "status": "blocked_by_host_cuda_headers",
-    "unrelated_failure": "vLLM cumem_allocator requires CU_DEVICE_ATTRIBUTE_HANDLE_TYPE_FABRIC_SUPPORTED, which is absent from the host CUDA 12.0 headers"
+    "status": "passed",
+    "vllm": "0.23.1.dev0+g0fc695fc6.d20260623",
+    "wheel": "editable"
+  },
+  "sanitizer": {
+    "cases": 4,
+    "errors": 0,
+    "status": "passed",
+    "tool": "Compute Sanitizer memcheck",
+    "version": "2025.3.1.0"
   },
   "vllm_smoke": {
     "attention_backend": "FLASHINFER",

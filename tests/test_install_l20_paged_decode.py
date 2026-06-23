@@ -32,3 +32,11 @@ def test_upstream_patch_uses_vllm_native_extension():
     assert "vllm/_custom_ops.py" in patch
     assert "tests/v1/attention/test_l20_paged_decode.py" in patch
     assert "DeviceCapability(8, 9)" in patch
+
+
+def test_cuda13_upstream_build_is_reproducible():
+    source = Path("scripts/build_vllm_cuda13_l20.sh").read_text()
+    assert "CUDAToolkit_ROOT" in source
+    assert "VLLM_CUTLASS_SRC_DIR" in source
+    assert "VLLM_FLASH_ATTN_SRC_DIR" in source
+    assert "TORCH_CUDA_ARCH_LIST" in source
