@@ -29,6 +29,7 @@ cd "$vllm_source_dir"
 setsid env \
   PYTHONPATH="$vllm_source_dir" \
   VLLM_ENABLE_L20_FP8_PAGED_DECODE="$enable_l20_fp8" \
+  VLLM_L20_FP8_PAGED_FORCE="$enable_l20_fp8" \
   VLLM_L20_FP8_PAGED_TRACE="$trace_file" \
   VLLM_USE_FLASHINFER_SAMPLER=0 \
   vllm serve "$model" \

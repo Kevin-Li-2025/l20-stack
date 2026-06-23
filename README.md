@@ -221,6 +221,10 @@ while Qwen2.5-Coder-1.5B's 12Q/2KV shape has no FlashInfer CUDA-core baseline
 because group size 6 is unsupported; there the fused FP8 path is only 1.08x
 over local BF16 paged attention. The next serious implementation has to remove
 Python/Triton dispatch and split-reduce overhead, not widen the current gate.
+The vLLM installer now reflects that conclusion: `VLLM_ENABLE_L20_FP8_PAGED_DECODE=1`
+still has to pass `should_use_l20_paged_fp8_split_kv`, which is disabled after
+the ITL regression. Reproducing the negative experiment requires the explicit
+`VLLM_L20_FP8_PAGED_FORCE=1` override used by the campaign script.
 
 The first speculative decoding follow-up is an L20 hybrid tree-attention
 prototype for irregular draft-token masks. On the measured L20, the contiguous

@@ -62,6 +62,9 @@ def main() -> int:
 """
     new_call = """                        l20_fp8_batch = decode_query.shape[0]
                         l20_fp8_max_seq = attn_metadata.decode.max_seq_len
+                        l20_fp8_force = (
+                            os.getenv("VLLM_L20_FP8_PAGED_FORCE", "0") == "1"
+                        )
                         l20_fp8_enabled = (
                             os.getenv("VLLM_ENABLE_L20_FP8_PAGED_DECODE", "0") == "1"
                             and current_platform.get_device_capability()
@@ -75,9 +78,16 @@ def main() -> int:
                             and kv_cache_permute.shape[2] == 16
                             and kv_cache_permute.shape[3] == 8
                             and kv_cache_permute.shape[4] == 128
-                            and l20_fp8_batch >= 8
-                            and l20_fp8_max_seq >= 4096
                         )
+                        if l20_fp8_enabled and not l20_fp8_force:
+                            from vllm.v1.attention.ops.l20_paged_split_kv import (
+                                should_use_l20_paged_fp8_split_kv,
+                            )
+
+                            l20_fp8_enabled = should_use_l20_paged_fp8_split_kv(
+                                int(l20_fp8_batch),
+                                int(l20_fp8_max_seq),
+                            )
                         if l20_fp8_enabled:
                             from vllm.v1.attention.ops.l20_paged_split_kv import (
                                 allocate_l20_paged_split_kv_workspace,
