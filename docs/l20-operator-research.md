@@ -364,6 +364,41 @@ The first sudo-collected L20 RoPE/KV sample is checked in at
 1024-token NeoX fused path runs in 29.76 us at 509.62 GB/s, 59.13% DRAM peak,
 70.52% L2 hit, 30.17% active warps, and 77.73% long-scoreboard stall.
 
+### GPU-Side Sampling V1
+
+The first post-RoPE system target is decode sampling, because moving logits to
+CPU creates a PCIe synchronization point on L20. The initial implementation is
+deliberately narrow: `src/l20_stack/ops/triton_sampling.py` supports
+deterministic `top_k=1` greedy sampling with a caller-owned `greedy_sample_out`
+API for serving loops. Qwen-sized vocabularies use a two-stage block argmax:
+parallel 1024-token vocab CTAs produce partial `(max, token)` pairs, then a
+small reduce kernel applies the same smallest-index tie break as
+`torch.argmax`.
+
+Measured on L20 with vocab 151936:
+
+| batch | Triton preallocated | Torch GPU argmax | CPU round-trip argmax | vs CPU round-trip | vs Torch GPU |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 0.0481 ms | 0.0195 ms | 1.1211 ms | 23.3x | 0.40x |
+| 16 | 0.0461 ms | 0.0205 ms | 2.8968 ms | 62.9x | 0.44x |
+| 64 | 0.0471 ms | 0.0297 ms | 10.9325 ms | 232.1x | 0.63x |
+
+A block-size sweep at batch 1 found 1024-token CTAs best or tied best:
+
+| block vocab | blocks/row | Triton preallocated |
+| ---: | ---: | ---: |
+| 512 | 297 | 0.0492 ms |
+| 1024 | 149 | 0.0466 ms |
+| 2048 | 75 | 0.0481 ms |
+| 4096 | 38 | 0.0471 ms |
+| 8192 | 19 | 0.0471 ms |
+
+Conclusion: the GPU-side path eliminates the expensive CPU logits round trip,
+but it does not beat PyTorch's optimized GPU `argmax`. The next useful kernel
+must fuse work that PyTorch/vLLM currently performs as multiple operations,
+especially top-k/top-p filtering and multinomial sampling. Pure greedy argmax is
+now a control path, not the final optimization target.
+
 ### V23 Tensor-Core Hypothesis Check
 
 FlashInfer exposes both CUDA-core decode and a tensor-core path. The wrapper

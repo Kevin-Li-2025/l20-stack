@@ -161,6 +161,15 @@ and bottleneck analysis behind the `7.82x -> marginal service gain` performance
 dilution, is in
 [`docs/l20-serving-case-study.md`](docs/l20-serving-case-study.md).
 
+The next L20-specific system target is GPU-side sampling. A first Triton
+`top_k=1` greedy sampler avoids the PCIe logits round trip and uses a
+preallocated two-stage vocab reduction for Qwen-sized vocabularies. On L20 with
+batch 1/16/64 and vocab 151936, the preallocated path runs in
+48.1/46.1/47.1 us and is 23x/63x/232x faster than forcing logits to CPU.
+However, PyTorch's GPU `argmax` remains faster at 19.5/20.5/29.7 us, so the
+next useful sampling kernel must fuse top-k/top-p/multinomial work rather than
+claim a pure-argmax win.
+
 The first speculative decoding follow-up is an L20 hybrid tree-attention
 prototype for irregular draft-token masks. On the measured L20, the contiguous
 v1 kernel matches both a dense PyTorch reference and repeated decode attention

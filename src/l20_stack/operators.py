@@ -11,6 +11,7 @@ from l20_stack.ops.triton_rmsnorm import (
     rmsnorm_launch_config,
 )
 from l20_stack.ops.triton_rope_kv import rope_kv_launch_config
+from l20_stack.ops.triton_sampling import greedy_sampling_launch_config
 
 
 @dataclass(frozen=True)
@@ -126,6 +127,19 @@ def dequant_matvec_arithmetic_intensity(shape: OperatorShape) -> float:
     return flops / bytes_moved
 
 
+def gpu_sampling_minimum_bytes(shape: OperatorShape) -> int:
+    if shape.rows <= 0 or shape.hidden_size <= 0 or shape.dtype_bytes <= 0:
+        raise ValueError("operator shape dimensions must be positive")
+    # Read logits once and write one int64 token per row. Avoiding CPU transfer
+    # is the point, so the device traffic model stays intentionally minimal.
+    return shape.rows * shape.hidden_size * shape.dtype_bytes + shape.rows * 8
+
+
+def gpu_sampling_arithmetic_intensity(shape: OperatorShape) -> float:
+    # One compare per logit is the useful work for greedy/top-k=1 sampling.
+    return (shape.rows * shape.hidden_size) / gpu_sampling_minimum_bytes(shape)
+
+
 def plan_operator(target: OperatorTarget) -> OperatorPlan:
     name = target.name.lower()
     shape = target.shape
@@ -225,6 +239,30 @@ def plan_operator(target: OperatorTarget) -> OperatorPlan:
                 "benchmark dequant as an isolated final target."
             ),
             launch={"strategy": "not_implemented_yet"},
+        )
+
+    if name == "gpu_sampling":
+        intensity = gpu_sampling_arithmetic_intensity(shape)
+        launch = greedy_sampling_launch_config(shape.hidden_size).to_dict()
+        launch.update(
+            {
+                "minimum_device_bytes": gpu_sampling_minimum_bytes(shape),
+                "target": "avoid_cpu_gpu_logits_roundtrip",
+                "supported_top_k": 1,
+            }
+        )
+        return OperatorPlan(
+            name=name,
+            shape=shape,
+            arithmetic_intensity_flops_per_byte=intensity,
+            roofline_class=classify_roofline(intensity, "fp16"),
+            priority=1,
+            recommendation=(
+                "Use a GPU-side greedy sampler for top_k=1 decode paths before "
+                "moving logits to CPU. Extend this path to top-k multinomial only "
+                "after measuring the deterministic fast path under vLLM."
+            ),
+            launch=launch,
         )
 
     raise ValueError("unsupported operator target: " + target.name)
