@@ -492,3 +492,52 @@ Gate: keep `shared_prefix_gqa_decode_attention` as an explicit experimental
 entry point. The next implementation must add online-softmax merge for
 request-local suffix tokens, then profile `b16/c4096` with Nsight to verify the
 expected reduction in repeated K/V traffic before any vLLM scheduler hook.
+
+Prefix-aware packed decode attention v2 with suffix merge:
+
+```bash
+PYTHONPATH=/home/hhai/l20-stack/src /home/hhai/venvs/vllm-l20/bin/python \
+  scripts/benchmark_shared_prefix_suffix_decode_attention.py \
+  --batches 8,16 \
+  --prefix-lengths 1024,4096 \
+  --suffix-lengths 64,256 \
+  --prefix-block-ts 64,128 \
+  --prefix-block-ms 4,8 \
+  --warmup 8 \
+  --iterations 20 \
+  --output benchmarks/results/l20-shared-prefix-suffix-decode/b8-b16-p1k-p4k-s64-s256-v1.json
+```
+
+The v2 path computes shared-prefix partials as `(m, l, acc)`, computes
+request-local suffix partials with the existing split-KV kernel, and merges both
+regions with a log-sum-exp reduce. This is the first complete prefix+suffix
+semantic path rather than a shared-prefix-only microbenchmark.
+
+```text
+benchmarks/results/l20-shared-prefix-suffix-decode/b8-b16-p1k-p4k-s64-s256-v1.json
+batch prefix suffix baseline full split-KV  prefix+suffix merge  speedup
+8     1024   64     0.07885 ms              0.12288 ms           0.64x
+8     1024   256    0.21813 ms              0.11930 ms           1.83x
+8     4096   64     0.24064 ms              0.15053 ms           1.60x
+8     4096   256    0.29901 ms              0.15258 ms           1.96x
+16    1024   64     0.09830 ms              0.12083 ms           0.81x
+16    1024   256    0.10240 ms              0.11878 ms           0.86x
+16    4096   64     0.42854 ms              0.15462 ms           2.77x
+16    4096   256    0.44698 ms              0.15770 ms           2.83x
+
+benchmarks/results/l20-shared-prefix-suffix-decode/b16-p8k-s64-s256-v1.json
+16    8192   64     0.79974 ms              0.23296 ms           3.43x
+16    8192   256    0.81510 ms              0.23757 ms           3.43x
+```
+
+All rows are correctness-checked against PyTorch SDPA with max absolute error
+at or below `0.001`. The implementation also fixed a real split-KV limitation:
+the reduce kernel now supports non-power-of-two split counts by using a masked
+power-of-two reduction tile, which is required for realistic prefix+suffix
+lengths such as 1024+64.
+
+Updated gate: do not enable this path for 1K shared prefixes. Enablement should
+start at shared prefix length >= 4096 and batch >= 8, with batch 16 as the
+high-confidence target. The next system step is a scheduler-facing prototype:
+detect requests sharing the same prefix-cache block chain, run this packed
+prefix+suffix path, and compare vLLM TPOT/ITL against normal PagedAttention.

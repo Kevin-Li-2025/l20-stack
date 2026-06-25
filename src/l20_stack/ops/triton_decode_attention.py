@@ -15,6 +15,10 @@ except ImportError:  # pragma: no cover
     tl = None
 
 
+def _next_power_of_2(value: int) -> int:
+    return 1 << (value - 1).bit_length()
+
+
 if triton is not None:  # pragma: no cover - requires CUDA
 
     @triton.jit
@@ -263,22 +267,26 @@ if triton is not None:  # pragma: no cover - requires CUDA
         num_q_heads: tl.constexpr,
         head_dim: tl.constexpr,
         NUM_SPLITS: tl.constexpr,
+        BLOCK_SPLITS: tl.constexpr,
     ):
         head_program = tl.program_id(0)
         batch = head_program // num_q_heads
         q_head = head_program % num_q_heads
         dim = tl.arange(0, head_dim)
-        splits = tl.arange(0, NUM_SPLITS)
+        splits = tl.arange(0, BLOCK_SPLITS)
+        split_mask = splits < NUM_SPLITS
         base = head_program * NUM_SPLITS
-        maxima = tl.load(partial_max + base + splits)
+        maxima = tl.load(partial_max + base + splits, mask=split_mask, other=-float("inf"))
         global_max = tl.max(maxima, axis=0)
         correction = tl.exp(maxima - global_max)
-        sums = tl.load(partial_sum + base + splits)
+        sums = tl.load(partial_sum + base + splits, mask=split_mask, other=0.0)
         denominator = tl.sum(sums * correction, axis=0)
         partials = tl.load(
             partial_output
             + (base + splits[:, None]) * head_dim
-            + dim[None, :]
+            + dim[None, :],
+            mask=split_mask[:, None],
+            other=0.0,
         ).to(tl.float32)
         numerator = tl.sum(partials * correction[:, None], axis=0)
         tl.store(
@@ -557,6 +565,142 @@ if triton is not None:  # pragma: no cover - requires CUDA
             mask=row_mask[:, None],
         )
 
+    @triton.jit
+    def _shared_prefix_gqa_partial_kernel(
+        query,
+        key,
+        value,
+        prefix_output,
+        prefix_max,
+        prefix_sum,
+        q_stride_b,
+        q_stride_h,
+        k_stride_t,
+        k_stride_h,
+        v_stride_t,
+        v_stride_h,
+        batch_size: tl.constexpr,
+        prefix_length: tl.constexpr,
+        num_q_heads: tl.constexpr,
+        num_kv_heads: tl.constexpr,
+        head_dim: tl.constexpr,
+        BLOCK_T: tl.constexpr,
+        BLOCK_M: tl.constexpr,
+    ):
+        kv_head = tl.program_id(0)
+        q_block = tl.program_id(1)
+        gqa_ratio: tl.constexpr = num_q_heads // num_kv_heads
+        row = q_block * BLOCK_M + tl.arange(0, BLOCK_M)
+        row_mask = row < (batch_size * gqa_ratio)
+        batch = row // gqa_ratio
+        q_offset = row - batch * gqa_ratio
+        q_head = kv_head * gqa_ratio + q_offset
+        dim = tl.arange(0, head_dim)
+        query_values = tl.load(
+            query
+            + batch[:, None] * q_stride_b
+            + q_head[:, None] * q_stride_h
+            + dim[None, :],
+            mask=row_mask[:, None],
+            other=0.0,
+        )
+        scale = 1.0 / tl.sqrt(float(head_dim))
+        max_score = tl.full((BLOCK_M,), -float("inf"), tl.float32)
+        normalizer = tl.zeros((BLOCK_M,), tl.float32)
+        accumulator = tl.zeros((BLOCK_M, head_dim), tl.float32)
+
+        for start in range(0, prefix_length, BLOCK_T):
+            token = start + tl.arange(0, BLOCK_T)
+            token_mask = token < prefix_length
+            keys = tl.load(
+                key
+                + token[:, None] * k_stride_t
+                + kv_head * k_stride_h
+                + dim[None, :],
+                mask=token_mask[:, None],
+                other=0.0,
+            )
+            scores = tl.dot(query_values, tl.trans(keys)) * scale
+            scores = tl.where(row_mask[:, None] & token_mask[None, :], scores, -float("inf"))
+            tile_max = tl.max(scores, axis=1)
+            next_max = tl.maximum(max_score, tile_max)
+            old_scale = tl.exp(max_score - next_max)
+            probabilities = tl.exp(scores - next_max[:, None])
+            values = tl.load(
+                value
+                + token[:, None] * v_stride_t
+                + kv_head * v_stride_h
+                + dim[None, :],
+                mask=token_mask[:, None],
+                other=0.0,
+            )
+            accumulator = accumulator * old_scale[:, None] + tl.dot(
+                probabilities.to(values.dtype), values
+            )
+            normalizer = normalizer * old_scale + tl.sum(probabilities, axis=1)
+            max_score = next_max
+
+        partial_index = batch * num_q_heads + q_head
+        tl.store(
+            prefix_output + partial_index[:, None] * head_dim + dim[None, :],
+            accumulator,
+            mask=row_mask[:, None],
+        )
+        tl.store(prefix_max + partial_index, max_score, mask=row_mask)
+        tl.store(prefix_sum + partial_index, normalizer, mask=row_mask)
+
+    @triton.jit
+    def _prefix_suffix_gqa_reduce_kernel(
+        prefix_output,
+        prefix_max,
+        prefix_sum,
+        suffix_output,
+        suffix_max,
+        suffix_sum,
+        output,
+        out_stride_b,
+        out_stride_h,
+        num_q_heads: tl.constexpr,
+        head_dim: tl.constexpr,
+        NUM_SUFFIX_SPLITS: tl.constexpr,
+        BLOCK_SUFFIX_SPLITS: tl.constexpr,
+    ):
+        head_program = tl.program_id(0)
+        batch = head_program // num_q_heads
+        q_head = head_program % num_q_heads
+        dim = tl.arange(0, head_dim)
+        splits = tl.arange(0, BLOCK_SUFFIX_SPLITS)
+        split_mask = splits < NUM_SUFFIX_SPLITS
+        prefix_m = tl.load(prefix_max + head_program)
+        suffix_base = head_program * NUM_SUFFIX_SPLITS
+        suffix_m = tl.load(
+            suffix_max + suffix_base + splits,
+            mask=split_mask,
+            other=-float("inf"),
+        )
+        suffix_global_m = tl.max(suffix_m, axis=0)
+        global_m = tl.maximum(prefix_m, suffix_global_m)
+        prefix_l = tl.load(prefix_sum + head_program)
+        suffix_l = tl.load(suffix_sum + suffix_base + splits, mask=split_mask, other=0.0)
+        prefix_scale = tl.exp(prefix_m - global_m)
+        suffix_scale = tl.exp(suffix_m - global_m)
+        denominator = prefix_l * prefix_scale + tl.sum(suffix_l * suffix_scale, axis=0)
+        prefix_acc = tl.load(prefix_output + head_program * head_dim + dim)
+        suffix_acc = tl.load(
+            suffix_output
+            + (suffix_base + splits[:, None]) * head_dim
+            + dim[None, :],
+            mask=split_mask[:, None],
+            other=0.0,
+        )
+        numerator = prefix_acc * prefix_scale + tl.sum(
+            suffix_acc * suffix_scale[:, None], axis=0
+        )
+        tl.store(
+            output + batch * out_stride_b + q_head * out_stride_h + dim,
+            numerator / denominator,
+        )
+
 
 def gqa_decode_attention(query, key, value):
     """Run single-token contiguous-cache GQA attention.
@@ -659,6 +803,147 @@ def shared_prefix_gqa_decode_attention(
     return output
 
 
+def shared_prefix_suffix_gqa_decode_attention(
+    query,
+    prefix_key,
+    prefix_value,
+    suffix_key,
+    suffix_value,
+    prefix_block_t: int = 128,
+    prefix_block_m: int = 4,
+    suffix_split_size: int = 512,
+    suffix_block_t: int = 128,
+    num_warps: int = 4,
+):
+    """Run decode attention over a shared prefix plus per-request suffix.
+
+    Shapes are query=[B,Hq,D], prefix_key/value=[P,Hkv,D], and
+    suffix_key/value=[B,S,Hkv,D]. The implementation packs the shared-prefix
+    computation across requests, computes suffix partials per request, then
+    merges both regions with online-softmax statistics.
+    """
+    if torch is None or triton is None:
+        raise RuntimeError("requires PyTorch and Triton")
+    if (
+        query.ndim != 3
+        or prefix_key.ndim != 3
+        or suffix_key.ndim != 4
+        or prefix_value.shape != prefix_key.shape
+        or suffix_value.shape != suffix_key.shape
+    ):
+        raise ValueError(
+            "expected query=[B,Hq,D], prefix=[P,Hkv,D], suffix=[B,S,Hkv,D]"
+        )
+    batch, num_q_heads, head_dim = query.shape
+    prefix_length, num_kv_heads, prefix_dim = prefix_key.shape
+    suffix_batch, suffix_length, suffix_heads, suffix_dim = suffix_key.shape
+    if (
+        suffix_batch != batch
+        or suffix_heads != num_kv_heads
+        or prefix_dim != head_dim
+        or suffix_dim != head_dim
+        or head_dim != 128
+        or num_q_heads % num_kv_heads
+    ):
+        raise ValueError("requires compatible GQA tensors with head_dim=128")
+    if prefix_block_t not in {32, 64, 128}:
+        raise ValueError("prefix_block_t must be one of 32, 64, 128")
+    if prefix_block_m not in {1, 2, 4, 8}:
+        raise ValueError("prefix_block_m must be one of 1, 2, 4, 8")
+    if suffix_block_t not in {16, 32, 64, 128}:
+        raise ValueError("suffix_block_t must be one of 16, 32, 64, 128")
+    if suffix_split_size % suffix_block_t:
+        raise ValueError("suffix_split_size must be divisible by suffix_block_t")
+    if num_warps not in {1, 2, 4, 8}:
+        raise ValueError("num_warps must be one of 1, 2, 4, 8")
+    num_suffix_splits = triton.cdiv(suffix_length, suffix_split_size)
+    if num_suffix_splits < 1 or num_suffix_splits > 16:
+        raise ValueError("suffix path supports 1 to 16 splits")
+
+    prefix_shape = (batch, num_q_heads)
+    prefix_output = torch.empty(
+        (*prefix_shape, head_dim), device=query.device, dtype=torch.float32
+    )
+    prefix_max = torch.empty(prefix_shape, device=query.device, dtype=torch.float32)
+    prefix_sum = torch.empty_like(prefix_max)
+    suffix_shape = (batch, num_q_heads, num_suffix_splits)
+    suffix_output = torch.empty(
+        (*suffix_shape, head_dim), device=query.device, dtype=torch.float32
+    )
+    suffix_max = torch.empty(suffix_shape, device=query.device, dtype=torch.float32)
+    suffix_sum = torch.empty_like(suffix_max)
+    output = torch.empty_like(query)
+
+    rows_per_kv = batch * (num_q_heads // num_kv_heads)
+    _shared_prefix_gqa_partial_kernel[
+        (num_kv_heads, triton.cdiv(rows_per_kv, prefix_block_m))
+    ](
+        query,
+        prefix_key,
+        prefix_value,
+        prefix_output,
+        prefix_max,
+        prefix_sum,
+        query.stride(0),
+        query.stride(1),
+        prefix_key.stride(0),
+        prefix_key.stride(1),
+        prefix_value.stride(0),
+        prefix_value.stride(1),
+        batch_size=batch,
+        prefix_length=prefix_length,
+        num_q_heads=num_q_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+        BLOCK_T=prefix_block_t,
+        BLOCK_M=prefix_block_m,
+        num_warps=num_warps,
+        num_stages=1,
+    )
+    _gqa_decode_attention_partial_kernel[(num_suffix_splits, batch * num_q_heads)](
+        query,
+        suffix_key,
+        suffix_value,
+        suffix_output,
+        suffix_max,
+        suffix_sum,
+        query.stride(0),
+        query.stride(1),
+        suffix_key.stride(0),
+        suffix_key.stride(1),
+        suffix_key.stride(2),
+        suffix_value.stride(0),
+        suffix_value.stride(1),
+        suffix_value.stride(2),
+        context_length=suffix_length,
+        num_q_heads=num_q_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+        SPLIT_SIZE=suffix_split_size,
+        BLOCK_T=suffix_block_t,
+        num_warps=num_warps,
+        num_stages=1,
+    )
+    _prefix_suffix_gqa_reduce_kernel[(batch * num_q_heads,)](
+        prefix_output,
+        prefix_max,
+        prefix_sum,
+        suffix_output,
+        suffix_max,
+        suffix_sum,
+        output,
+        output.stride(0),
+        output.stride(1),
+        num_q_heads=num_q_heads,
+        head_dim=head_dim,
+        NUM_SUFFIX_SPLITS=num_suffix_splits,
+        BLOCK_SUFFIX_SPLITS=_next_power_of_2(num_suffix_splits),
+        num_warps=4,
+        num_stages=1,
+    )
+    return output
+
+
 def gqa_decode_attention_split_kv(
     query,
     key,
@@ -731,6 +1016,7 @@ def gqa_decode_attention_split_kv(
         num_q_heads=num_q_heads,
         head_dim=head_dim,
         NUM_SPLITS=num_splits,
+        BLOCK_SPLITS=_next_power_of_2(num_splits),
         num_warps=4,
         num_stages=1,
     )
@@ -797,6 +1083,7 @@ def gqa_decode_attention_split_kv_bf16_partials_candidate(
         num_q_heads=num_q_heads,
         head_dim=head_dim,
         NUM_SPLITS=num_splits,
+        BLOCK_SPLITS=_next_power_of_2(num_splits),
         num_warps=4,
         num_stages=1,
     )
@@ -873,6 +1160,7 @@ def gqa_decode_attention_split_kv_tensor_core_candidate(
         num_q_heads=num_q_heads,
         head_dim=head_dim,
         NUM_SPLITS=num_splits,
+        BLOCK_SPLITS=_next_power_of_2(num_splits),
         num_warps=4,
         num_stages=1,
     )
@@ -949,6 +1237,7 @@ def gqa_decode_attention_split_kv_tensor_core_dsplit_candidate(
         num_q_heads=num_q_heads,
         head_dim=head_dim,
         NUM_SPLITS=num_splits,
+        BLOCK_SPLITS=_next_power_of_2(num_splits),
         num_warps=4,
         num_stages=1,
     )
@@ -1049,6 +1338,7 @@ def gqa_decode_attention_fp8_split_kv(
         num_q_heads=num_q_heads,
         head_dim=head_dim,
         NUM_SPLITS=num_splits,
+        BLOCK_SPLITS=_next_power_of_2(num_splits),
         num_warps=4,
         num_stages=1,
     )
