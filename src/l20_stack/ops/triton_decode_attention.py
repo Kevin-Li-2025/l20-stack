@@ -279,7 +279,7 @@ if triton is not None:  # pragma: no cover - requires CUDA
             partial_output
             + (base + splits[:, None]) * head_dim
             + dim[None, :]
-        )
+        ).to(tl.float32)
         numerator = tl.sum(partials * correction[:, None], axis=0)
         tl.store(
             output + batch * out_stride_b + q_head * out_stride_h + dim,
@@ -551,6 +551,72 @@ def gqa_decode_attention_split_kv(
     partial_shape = (batch, num_q_heads, num_splits)
     partial_output = torch.empty(
         (*partial_shape, head_dim), device=query.device, dtype=torch.float32
+    )
+    partial_max = torch.empty(partial_shape, device=query.device, dtype=torch.float32)
+    partial_sum = torch.empty_like(partial_max)
+    output = torch.empty_like(query)
+    _gqa_decode_attention_partial_kernel[(num_splits, batch * num_q_heads)](
+        query,
+        key,
+        value,
+        partial_output,
+        partial_max,
+        partial_sum,
+        query.stride(0),
+        query.stride(1),
+        key.stride(0),
+        key.stride(1),
+        key.stride(2),
+        value.stride(0),
+        value.stride(1),
+        value.stride(2),
+        context_length=context_length,
+        num_q_heads=num_q_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+        SPLIT_SIZE=split_size,
+        BLOCK_T=block_t,
+        num_warps=num_warps,
+        num_stages=1,
+    )
+    _gqa_decode_attention_reduce_kernel[(batch * num_q_heads,)](
+        partial_output,
+        partial_max,
+        partial_sum,
+        output,
+        output.stride(0),
+        output.stride(1),
+        num_q_heads=num_q_heads,
+        head_dim=head_dim,
+        NUM_SPLITS=num_splits,
+        num_warps=4,
+        num_stages=1,
+    )
+    return output
+
+
+def gqa_decode_attention_split_kv_bf16_partials_candidate(
+    query,
+    key,
+    value,
+    split_size: int = 512,
+    block_t: int = 32,
+    num_warps: int = 4,
+):
+    """Experimental split-KV path that stores partial vectors in BF16.
+
+    This keeps the compute boundary identical to the scalar split-KV path while
+    halving partial-output traffic into the reduce kernel. It is not wired into
+    dispatch until correctness and latency are proven on L20.
+    """
+    if torch is None or triton is None:
+        raise RuntimeError("requires PyTorch and Triton")
+    batch, context_length, num_q_heads, num_kv_heads, head_dim, num_splits = (
+        _validate_split_kv_args(query, key, value, split_size, block_t, num_warps)
+    )
+    partial_shape = (batch, num_q_heads, num_splits)
+    partial_output = torch.empty(
+        (*partial_shape, head_dim), device=query.device, dtype=query.dtype
     )
     partial_max = torch.empty(partial_shape, device=query.device, dtype=torch.float32)
     partial_sum = torch.empty_like(partial_max)

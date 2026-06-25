@@ -423,3 +423,26 @@ attempt must share QK scores/online-softmax state across the full head dimension
 instead of recomputing them per D-block, or move effort to reduce-inline /
 epilogue fusion where the current split-KV path already pays a second kernel
 launch.
+
+BF16 partial-output reduce experiment:
+
+```text
+benchmarks/results/l20-decode-attention-bf16-partials/b1-c4096-v1.json
+batch=1, context=4096, split_size=512
+best scalar split-KV: 0.0768 ms
+best BF16 partial-output candidate: 0.0778 ms, correct, 0.99x
+
+benchmarks/results/l20-decode-attention-bf16-partials-ncu/reduce-scalar-b1-c4096-v1/profile.json
+FP32 partial reduce: 3.33 us, DRAM 23.54 GB/s, L2 hit 46.16%
+
+benchmarks/results/l20-decode-attention-bf16-partials-ncu/reduce-b1-c4096-v1/profile.json
+BF16 partial reduce: 3.81 us, DRAM 11.60 GB/s, L2 hit 62.77%
+```
+
+The BF16 partial-output candidate proves the reduce stage's vector traffic can
+be cut, but the kernel gets slower because conversion and scoreboard behavior
+offset the smaller memory footprint. This closes the simplest epilogue
+compression idea: the reduce kernel is too small for partial-vector bandwidth
+alone to be the main limiter. A useful next split-KV optimization needs to
+remove the reduce launch or merge partials inside a different work mapping,
+not just compress the intermediate buffer.

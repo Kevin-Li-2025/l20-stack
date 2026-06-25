@@ -9,6 +9,7 @@ import torch
 
 from l20_stack.ops.triton_decode_attention import (
     gqa_decode_attention_split_kv,
+    gqa_decode_attention_split_kv_bf16_partials_candidate,
     gqa_decode_attention_split_kv_tensor_core_candidate,
     gqa_decode_attention_split_kv_tensor_core_dsplit_candidate,
 )
@@ -28,7 +29,12 @@ def parse_args():
     parser.add_argument("--num-warps", type=int, default=4)
     parser.add_argument(
         "--path",
-        choices=["scalar", "tensor-core-candidate", "tensor-core-dsplit-candidate"],
+        choices=[
+            "scalar",
+            "bf16-partials-candidate",
+            "tensor-core-candidate",
+            "tensor-core-dsplit-candidate",
+        ],
         default="scalar",
     )
     parser.add_argument("--warmup", type=int, default=10)
@@ -66,6 +72,8 @@ def main() -> int:
     if args.path == "tensor-core-candidate":
         function = gqa_decode_attention_split_kv_tensor_core_candidate
         kwargs["block_q"] = args.block_q
+    elif args.path == "bf16-partials-candidate":
+        function = gqa_decode_attention_split_kv_bf16_partials_candidate
     elif args.path == "tensor-core-dsplit-candidate":
         function = gqa_decode_attention_split_kv_tensor_core_dsplit_candidate
         kwargs["block_q"] = args.block_q

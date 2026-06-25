@@ -12,6 +12,7 @@ import torch
 
 from l20_stack.ops.triton_decode_attention import (
     gqa_decode_attention_split_kv,
+    gqa_decode_attention_split_kv_bf16_partials_candidate,
     gqa_decode_attention_split_kv_tensor_core_candidate,
     gqa_decode_attention_split_kv_tensor_core_dsplit_candidate,
 )
@@ -64,6 +65,7 @@ def parse_args():
     parser.add_argument("--split-sizes", default="256,512,1024")
     parser.add_argument("--block-ts", default="16,32,64,128")
     parser.add_argument("--num-warps", default="2,4,8")
+    parser.add_argument("--include-bf16-partials", action="store_true")
     parser.add_argument("--tensor-core-block-qs", default="")
     parser.add_argument("--tensor-core-dsplit-block-ds", default="")
     parser.add_argument("--iterations", type=int, default=80)
@@ -139,6 +141,46 @@ def main() -> int:
                         **summarize(samples),
                     }
                 )
+                if args.include_bf16_partials:
+                    bf16_partial_actual = gqa_decode_attention_split_kv_bf16_partials_candidate(
+                        query,
+                        key,
+                        value,
+                        split_size=split_size,
+                        block_t=block_t,
+                        num_warps=num_warps,
+                    )
+                    bf16_partial_correct = torch.allclose(
+                        bf16_partial_actual, expected, rtol=2e-2, atol=2e-2
+                    )
+                    bf16_partial_samples = latency_ms(
+                        lambda split_size=split_size, block_t=block_t, num_warps=num_warps: (
+                            gqa_decode_attention_split_kv_bf16_partials_candidate(
+                                query,
+                                key,
+                                value,
+                                split_size=split_size,
+                                block_t=block_t,
+                                num_warps=num_warps,
+                            )
+                        ),
+                        warmup=args.warmup,
+                        iterations=args.iterations,
+                    )
+                    reports.append(
+                        {
+                            "path": "bf16_partials_candidate",
+                            "split_size": split_size,
+                            "block_t": block_t,
+                            "block_q": 1,
+                            "num_warps": num_warps,
+                            "correct": bool(bf16_partial_correct),
+                            "max_abs_error": float(
+                                (bf16_partial_actual.float() - expected.float()).abs().max()
+                            ),
+                            **summarize(bf16_partial_samples),
+                        }
+                    )
                 for block_q in parse_ints(args.tensor_core_block_qs):
                     ratio = args.q_heads // args.kv_heads
                     if block_q > ratio:
