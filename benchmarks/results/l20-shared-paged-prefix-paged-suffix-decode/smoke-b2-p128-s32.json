@@ -1,0 +1,94 @@
+{
+  "comparisons": [
+    {
+      "baseline_median_ms": 0.09523200243711472,
+      "batch": 2,
+      "contiguous_median_ms": 0.131071999669075,
+      "contiguous_speedup_vs_baseline": 0.7265625204281037,
+      "paged_median_ms": 0.13312000036239624,
+      "paged_over_contiguous": 0.9846153794490242,
+      "paged_speedup_vs_baseline": 0.7153846317447567,
+      "paged_suffix_median_ms": 0.6973440051078796,
+      "paged_suffix_over_contiguous_suffix": 0.19089574067794915,
+      "paged_suffix_speedup_vs_baseline": 0.13656387914653723,
+      "prefix_length": 128,
+      "suffix_length": 32
+    }
+  ],
+  "gpu": "NVIDIA L20",
+  "reports": [
+    {
+      "batch": 2,
+      "correct": true,
+      "max_abs_error": 0.00390625,
+      "median_ms": 0.09523200243711472,
+      "p10_ms": 0.0870399996638298,
+      "p90_ms": 0.11776000261306763,
+      "path": "per_request_full_split_kv",
+      "prefix_length": 128,
+      "samples_ms": [
+        0.11776000261306763,
+        0.09523200243711472,
+        0.0870399996638298
+      ],
+      "suffix_length": 32
+    },
+    {
+      "batch": 2,
+      "correct": true,
+      "max_abs_error": 0.001953125,
+      "median_ms": 0.131071999669075,
+      "p10_ms": 0.12492799758911133,
+      "p90_ms": 0.14643199741840363,
+      "path": "shared_prefix_suffix_contiguous",
+      "prefix_length": 128,
+      "samples_ms": [
+        0.14643199741840363,
+        0.131071999669075,
+        0.12492799758911133
+      ],
+      "suffix_length": 32
+    },
+    {
+      "batch": 2,
+      "correct": true,
+      "max_abs_error": 0.001953125,
+      "median_ms": 0.13312000036239624,
+      "p10_ms": 0.12492799758911133,
+      "p90_ms": 0.13619199395179749,
+      "path": "shared_prefix_suffix_paged",
+      "prefix_length": 128,
+      "samples_ms": [
+        0.13619199395179749,
+        0.13312000036239624,
+        0.12492799758911133
+      ],
+      "suffix_length": 32
+    },
+    {
+      "batch": 2,
+      "correct": true,
+      "max_abs_error": 0.001953125,
+      "median_ms": 0.6973440051078796,
+      "p10_ms": 0.4976640045642853,
+      "p90_ms": 0.8079040050506592,
+      "path": "shared_prefix_paged_suffix_paged",
+      "prefix_length": 128,
+      "samples_ms": [
+        0.8079040050506592,
+        0.6973440051078796,
+        0.4976640045642853
+      ],
+      "suffix_length": 32
+    }
+  ],
+  "schema_version": 1,
+  "shape": {
+    "dtype": "bfloat16",
+    "head_dim": 128,
+    "kv_heads": 8,
+    "page_size": 16,
+    "q_heads": 16,
+    "random_pages": false
+  }
+}

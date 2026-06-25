@@ -29,6 +29,9 @@ def test_shared_prefix_decode_dispatch_is_env_gated_and_conservative():
     assert "VLLM_L20_SHARED_PREFIX_DECODE_TRACE" in source
     assert "trace_l20_shared_prefix_decode_candidate" in source
     assert "reason_if_not_run=\"paged_suffix_not_implemented\"" in source
+    assert "maybe_l20_shared_prefix_paged_decode" in source
+    assert "should_dispatch_l20_shared_prefix_paged_decode" in source
+    assert "shared_paged_prefix_paged_suffix_gqa_decode_attention" in source
 
 
 def test_vllm_shared_prefix_smoke_uses_vllm_import_path():

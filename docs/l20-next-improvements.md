@@ -667,3 +667,37 @@ The blocker is now precise: current executable kernels support paged shared
 prefix plus contiguous suffix, while real vLLM decode suffix tokens are still in
 the paged KV cache. The next kernel step is paged-suffix scanning/merge, after
 which this trace hook can become an output-producing dispatch path.
+
+Paged suffix kernel:
+
+```bash
+PYTHONPATH=/home/hhai/l20-stack/src \
+  /home/hhai/venvs/vllm-l20/bin/python \
+  scripts/benchmark_shared_paged_prefix_suffix_decode_attention.py \
+  --batches 16 \
+  --prefix-lengths 4096,8192 \
+  --suffix-lengths 64,256 \
+  --prefix-block-t 128 \
+  --prefix-block-m 8 \
+  --baseline-split-size 1024 \
+  --warmup 8 \
+  --iterations 20 \
+  --output benchmarks/results/l20-shared-paged-prefix-paged-suffix-decode/b16-p4k-p8k-s64-s256-shared-prefix-v2.json
+```
+
+```text
+benchmarks/results/l20-shared-paged-prefix-paged-suffix-decode/b16-p4k-p8k-s64-s256-shared-prefix-v2.json
+B16 P4096 S64:  baseline 0.434688 ms, paged suffix 0.236544 ms, 1.84x, correct
+B16 P4096 S256: baseline 0.447488 ms, paged suffix 0.238080 ms, 1.88x, correct
+B16 P8192 S64:  baseline 0.800768 ms, paged suffix 0.319488 ms, 2.51x, correct
+B16 P8192 S256: baseline 0.816128 ms, paged suffix 0.325632 ms, 2.51x, correct
+max_abs_error <= 0.00048828125
+```
+
+This resolves the trace hook's `paged_suffix_not_implemented` blocker at the
+kernel level: both shared prefix and private suffix now read from paged KV
+cache block tables. The result is still not a vLLM serving-speed claim. The
+full paged path is 24-31% slower than the paged-prefix plus contiguous-suffix
+oracle because suffix scanning is a separate paged pass. Keep this path
+experimental until either a small-suffix fused path removes the extra launch or
+real grouped-prefix vLLM ITL shows the remaining overhead is acceptable.

@@ -812,6 +812,105 @@ if triton is not None:  # pragma: no cover - requires CUDA
         tl.store(prefix_max + partial_index, max_score, mask=row_mask)
         tl.store(prefix_sum + partial_index, normalizer, mask=row_mask)
 
+    @triton.jit
+    def _paged_suffix_gqa_partial_kernel(
+        query,
+        key_cache,
+        value_cache,
+        block_tables,
+        seq_lens,
+        suffix_output,
+        suffix_max,
+        suffix_sum,
+        q_stride_b,
+        q_stride_h,
+        kc_stride_p,
+        kc_stride_t,
+        kc_stride_h,
+        vc_stride_p,
+        vc_stride_t,
+        vc_stride_h,
+        bt_stride_b,
+        prefix_length: tl.constexpr,
+        num_q_heads: tl.constexpr,
+        num_kv_heads: tl.constexpr,
+        head_dim: tl.constexpr,
+        PAGE_SIZE: tl.constexpr,
+        SPLIT_SIZE: tl.constexpr,
+        BLOCK_T: tl.constexpr,
+    ):
+        split = tl.program_id(0)
+        head_program = tl.program_id(1)
+        batch = head_program // num_q_heads
+        q_head = head_program % num_q_heads
+        kv_head = q_head // (num_q_heads // num_kv_heads)
+        dim = tl.arange(0, head_dim)
+        query_values = tl.load(
+            query + batch * q_stride_b + q_head * q_stride_h + dim
+        ).to(tl.float32)
+        seq_len = tl.load(seq_lens + batch)
+        scale = 1.0 / tl.sqrt(float(head_dim))
+        max_score = -float("inf")
+        normalizer = 0.0
+        accumulator = tl.zeros((head_dim,), tl.float32)
+        split_start = prefix_length + split * SPLIT_SIZE
+
+        for offset in range(0, SPLIT_SIZE, BLOCK_T):
+            token = split_start + offset + tl.arange(0, BLOCK_T)
+            token_mask = token < tl.minimum(split_start + SPLIT_SIZE, seq_len)
+            logical_page = token // PAGE_SIZE
+            page_offset = token % PAGE_SIZE
+            physical_page = tl.load(
+                block_tables + batch * bt_stride_b + tl.where(token_mask, logical_page, 0),
+                mask=token_mask,
+                other=0,
+            )
+            keys = tl.load(
+                key_cache
+                + physical_page[:, None] * kc_stride_p
+                + page_offset[:, None] * kc_stride_t
+                + kv_head * kc_stride_h
+                + dim[None, :],
+                mask=token_mask[:, None],
+                other=0.0,
+            ).to(tl.float32)
+            scores = tl.sum(keys * query_values[None, :], axis=1) * scale
+            scores = tl.where(token_mask, scores, -float("inf"))
+            tile_max = tl.max(scores, axis=0)
+            next_max = tl.maximum(max_score, tile_max)
+            old_scale = tl.exp(max_score - next_max)
+            probabilities = tl.exp(scores - next_max)
+            values = tl.load(
+                value_cache
+                + physical_page[:, None] * vc_stride_p
+                + page_offset[:, None] * vc_stride_t
+                + kv_head * vc_stride_h
+                + dim[None, :],
+                mask=token_mask[:, None],
+                other=0.0,
+            ).to(tl.float32)
+            accumulator = (
+                accumulator * old_scale
+                + tl.sum(probabilities[:, None] * values, axis=0)
+            )
+            normalizer = normalizer * old_scale + tl.sum(probabilities, axis=0)
+            max_score = next_max
+
+        partial_index = head_program * tl.num_programs(0) + split
+        valid_split = split_start < seq_len
+        tl.store(
+            suffix_output + partial_index * head_dim + dim,
+            tl.where(valid_split, accumulator, 0.0),
+        )
+        tl.store(
+            suffix_max + partial_index,
+            tl.where(valid_split, max_score, -float("inf")),
+        )
+        tl.store(
+            suffix_sum + partial_index,
+            tl.where(valid_split, normalizer, 0.0),
+        )
+
 
 def gqa_decode_attention(query, key, value):
     """Run single-token contiguous-cache GQA attention.
@@ -1183,6 +1282,157 @@ def shared_paged_prefix_suffix_gqa_decode_attention(
         num_q_heads=num_q_heads,
         num_kv_heads=num_kv_heads,
         head_dim=head_dim,
+        SPLIT_SIZE=suffix_split_size,
+        BLOCK_T=suffix_block_t,
+        num_warps=num_warps,
+        num_stages=1,
+    )
+    _prefix_suffix_gqa_reduce_kernel[(batch * num_q_heads,)](
+        prefix_output,
+        prefix_max,
+        prefix_sum,
+        suffix_output,
+        suffix_max,
+        suffix_sum,
+        output,
+        output.stride(0),
+        output.stride(1),
+        num_q_heads=num_q_heads,
+        head_dim=head_dim,
+        NUM_SUFFIX_SPLITS=num_suffix_splits,
+        BLOCK_SUFFIX_SPLITS=_next_power_of_2(num_suffix_splits),
+        num_warps=4,
+        num_stages=1,
+    )
+    return output
+
+
+def shared_paged_prefix_paged_suffix_gqa_decode_attention(
+    query,
+    key_cache,
+    value_cache,
+    block_tables,
+    seq_lens,
+    prefix_length: int,
+    page_size: int = 16,
+    prefix_block_t: int = 128,
+    prefix_block_m: int = 4,
+    suffix_split_size: int = 512,
+    suffix_block_t: int = 128,
+    num_warps: int = 4,
+):
+    """Run decode attention over shared paged prefix and per-request paged suffix."""
+    if torch is None or triton is None:
+        raise RuntimeError("requires PyTorch and Triton")
+    if (
+        query.ndim != 3
+        or key_cache.ndim != 4
+        or value_cache.shape != key_cache.shape
+        or block_tables.ndim != 2
+        or seq_lens.ndim != 1
+    ):
+        raise ValueError(
+            "expected query=[B,Hq,D], cache=[pages,page,Hkv,D], "
+            "block_tables=[B,pages], seq_lens=[B]"
+        )
+    batch, num_q_heads, head_dim = query.shape
+    _, cache_page_size, num_kv_heads, cache_dim = key_cache.shape
+    if (
+        block_tables.shape[0] != batch
+        or seq_lens.shape[0] != batch
+        or cache_dim != head_dim
+        or head_dim != 128
+        or num_q_heads % num_kv_heads
+        or cache_page_size != page_size
+        or page_size != 16
+    ):
+        raise ValueError("requires compatible page-16 GQA tensors with head_dim=128")
+    if block_tables.shape[1] * page_size < int(seq_lens.max().item()):
+        raise ValueError("block_tables do not cover seq_lens")
+    if prefix_length < 1 or prefix_length > int(seq_lens.min().item()):
+        raise ValueError("prefix_length must be positive and no larger than min seq_len")
+    if prefix_block_t not in {32, 64, 128} or prefix_block_t % page_size:
+        raise ValueError("prefix_block_t must be 32, 64, or 128 and divisible by page_size")
+    if prefix_block_m not in {1, 2, 4, 8}:
+        raise ValueError("prefix_block_m must be one of 1, 2, 4, 8")
+    if suffix_block_t not in {16, 32, 64, 128}:
+        raise ValueError("suffix_block_t must be one of 16, 32, 64, 128")
+    if suffix_split_size % suffix_block_t:
+        raise ValueError("suffix_split_size must be divisible by suffix_block_t")
+    if num_warps not in {1, 2, 4, 8}:
+        raise ValueError("num_warps must be one of 1, 2, 4, 8")
+    max_suffix_length = int(seq_lens.max().item()) - prefix_length
+    num_suffix_splits = triton.cdiv(max_suffix_length, suffix_split_size)
+    if num_suffix_splits < 1 or num_suffix_splits > 16:
+        raise ValueError("suffix path supports 1 to 16 splits")
+
+    prefix_shape = (batch, num_q_heads)
+    prefix_output = torch.empty(
+        (*prefix_shape, head_dim), device=query.device, dtype=torch.float32
+    )
+    prefix_max = torch.empty(prefix_shape, device=query.device, dtype=torch.float32)
+    prefix_sum = torch.empty_like(prefix_max)
+    suffix_shape = (batch, num_q_heads, num_suffix_splits)
+    suffix_output = torch.empty(
+        (*suffix_shape, head_dim), device=query.device, dtype=torch.float32
+    )
+    suffix_max = torch.empty(suffix_shape, device=query.device, dtype=torch.float32)
+    suffix_sum = torch.empty_like(suffix_max)
+    output = torch.empty_like(query)
+
+    rows_per_kv = batch * (num_q_heads // num_kv_heads)
+    _shared_paged_prefix_gqa_partial_kernel[
+        (num_kv_heads, triton.cdiv(rows_per_kv, prefix_block_m))
+    ](
+        query,
+        key_cache,
+        value_cache,
+        block_tables[0],
+        prefix_output,
+        prefix_max,
+        prefix_sum,
+        query.stride(0),
+        query.stride(1),
+        key_cache.stride(0),
+        key_cache.stride(1),
+        key_cache.stride(2),
+        value_cache.stride(0),
+        value_cache.stride(1),
+        value_cache.stride(2),
+        batch_size=batch,
+        prefix_length=prefix_length,
+        num_q_heads=num_q_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+        BLOCK_T=prefix_block_t,
+        BLOCK_M=prefix_block_m,
+        PAGE_SIZE=page_size,
+        num_warps=num_warps,
+        num_stages=1,
+    )
+    _paged_suffix_gqa_partial_kernel[(num_suffix_splits, batch * num_q_heads)](
+        query,
+        key_cache,
+        value_cache,
+        block_tables,
+        seq_lens,
+        suffix_output,
+        suffix_max,
+        suffix_sum,
+        query.stride(0),
+        query.stride(1),
+        key_cache.stride(0),
+        key_cache.stride(1),
+        key_cache.stride(2),
+        value_cache.stride(0),
+        value_cache.stride(1),
+        value_cache.stride(2),
+        block_tables.stride(0),
+        prefix_length=prefix_length,
+        num_q_heads=num_q_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+        PAGE_SIZE=page_size,
         SPLIT_SIZE=suffix_split_size,
         BLOCK_T=suffix_block_t,
         num_warps=num_warps,

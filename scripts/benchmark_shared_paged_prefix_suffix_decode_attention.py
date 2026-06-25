@@ -12,6 +12,7 @@ import torch
 
 from l20_stack.ops.triton_decode_attention import (
     gqa_decode_attention_split_kv,
+    shared_paged_prefix_paged_suffix_gqa_decode_attention,
     shared_paged_prefix_suffix_gqa_decode_attention,
     shared_prefix_suffix_gqa_decode_attention,
 )
@@ -70,6 +71,55 @@ def make_paged_prefix(prefix_key, prefix_value, page_size: int, random_pages: bo
     key_cache[block_table.long()] = key_pages
     value_cache[block_table.long()] = value_pages
     return key_cache, value_cache, block_table
+
+
+def make_paged_full(prefix_key, prefix_value, suffix_key, suffix_value, page_size: int, random_pages: bool):
+    batch, suffix_length, num_kv_heads, head_dim = suffix_key.shape
+    prefix_length = prefix_key.shape[0]
+    if prefix_length % page_size or suffix_length % page_size:
+        raise ValueError("prefix_length and suffix_length must be divisible by page_size")
+    prefix_pages = prefix_length // page_size
+    suffix_pages = suffix_length // page_size
+    pages_per_request = prefix_pages + suffix_pages
+    total_pages = prefix_pages + batch * suffix_pages
+    if random_pages:
+        physical = torch.randperm(total_pages, device=prefix_key.device, dtype=torch.int32)
+    else:
+        physical = torch.arange(total_pages, device=prefix_key.device, dtype=torch.int32)
+    shared_prefix_blocks = physical[:prefix_pages]
+    suffix_blocks = physical[prefix_pages:].reshape(batch, suffix_pages)
+    block_tables = torch.cat(
+        [
+            shared_prefix_blocks.unsqueeze(0).expand(batch, -1),
+            suffix_blocks,
+        ],
+        dim=1,
+    ).contiguous()
+    key_cache = torch.empty(
+        total_pages,
+        page_size,
+        num_kv_heads,
+        head_dim,
+        device=prefix_key.device,
+        dtype=prefix_key.dtype,
+    )
+    value_cache = torch.empty_like(key_cache)
+    key_cache[shared_prefix_blocks.long()] = prefix_key.reshape(
+        prefix_pages, page_size, num_kv_heads, head_dim
+    )
+    value_cache[shared_prefix_blocks.long()] = prefix_value.reshape(
+        prefix_pages, page_size, num_kv_heads, head_dim
+    )
+    for batch_index in range(batch):
+        key_cache[suffix_blocks[batch_index].long()] = suffix_key[batch_index].reshape(
+            suffix_pages, page_size, num_kv_heads, head_dim
+        )
+        value_cache[suffix_blocks[batch_index].long()] = suffix_value[batch_index].reshape(
+            suffix_pages, page_size, num_kv_heads, head_dim
+        )
+    total_length = prefix_length + suffix_length
+    seq_lens = torch.full((batch,), total_length, device=prefix_key.device, dtype=torch.int32)
+    return key_cache, value_cache, block_tables, seq_lens
 
 
 def reference(query, prefix_key, prefix_value, suffix_key, suffix_value):
@@ -151,6 +201,14 @@ def main() -> int:
                     args.page_size,
                     args.random_pages,
                 )
+                full_key_cache, full_value_cache, block_tables, seq_lens = make_paged_full(
+                    prefix_key,
+                    prefix_value,
+                    suffix_key,
+                    suffix_value,
+                    args.page_size,
+                    args.random_pages,
+                )
                 expected = reference(
                     query, prefix_key, prefix_value, suffix_key, suffix_value
                 )
@@ -204,6 +262,20 @@ def main() -> int:
                         suffix_block_t=args.suffix_block_t,
                         num_warps=args.num_warps,
                     ),
+                    "shared_prefix_paged_suffix_paged": lambda: shared_paged_prefix_paged_suffix_gqa_decode_attention(
+                        query,
+                        full_key_cache,
+                        full_value_cache,
+                        block_tables,
+                        seq_lens,
+                        prefix_length,
+                        page_size=args.page_size,
+                        prefix_block_t=args.prefix_block_t,
+                        prefix_block_m=args.prefix_block_m,
+                        suffix_split_size=args.suffix_split_size,
+                        suffix_block_t=args.suffix_block_t,
+                        num_warps=args.num_warps,
+                    ),
                 }
                 shape_reports = []
                 for name, function in candidates.items():
@@ -238,6 +310,11 @@ def main() -> int:
                     for item in shape_reports
                     if item["path"] == "shared_prefix_suffix_paged"
                 )
+                paged_suffix = next(
+                    item
+                    for item in shape_reports
+                    if item["path"] == "shared_prefix_paged_suffix_paged"
+                )
                 comparisons.append(
                     {
                         "batch": batch,
@@ -246,6 +323,7 @@ def main() -> int:
                         "baseline_median_ms": baseline["median_ms"],
                         "contiguous_median_ms": contiguous["median_ms"],
                         "paged_median_ms": paged["median_ms"],
+                        "paged_suffix_median_ms": paged_suffix["median_ms"],
                         "contiguous_speedup_vs_baseline": (
                             baseline["median_ms"] / contiguous["median_ms"]
                         ),
@@ -254,6 +332,12 @@ def main() -> int:
                         ),
                         "paged_over_contiguous": (
                             contiguous["median_ms"] / paged["median_ms"]
+                        ),
+                        "paged_suffix_speedup_vs_baseline": (
+                            baseline["median_ms"] / paged_suffix["median_ms"]
+                        ),
+                        "paged_suffix_over_contiguous_suffix": (
+                            paged["median_ms"] / paged_suffix["median_ms"]
                         ),
                     }
                 )

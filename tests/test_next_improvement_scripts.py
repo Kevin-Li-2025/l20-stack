@@ -110,5 +110,9 @@ def test_decode_attention_has_isolated_tensor_core_candidate():
     assert "per_request_full_split_kv" in suffix_source
     assert "shared_paged_prefix_suffix_gqa_decode_attention" in op_source
     assert "_shared_paged_prefix_gqa_partial_kernel" in op_source
+    assert "shared_paged_prefix_paged_suffix_gqa_decode_attention" in op_source
+    assert "_paged_suffix_gqa_partial_kernel" in op_source
     assert "shared_prefix_suffix_paged" in paged_suffix_source
+    assert "shared_prefix_paged_suffix_paged" in paged_suffix_source
     assert "paged_over_contiguous" in paged_suffix_source
+    assert "paged_suffix_speedup_vs_baseline" in paged_suffix_source
