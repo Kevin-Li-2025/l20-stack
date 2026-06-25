@@ -1,0 +1,75 @@
+{
+  "comparisons": [
+    {
+      "baseline_median_ms": 0.09318400174379349,
+      "batch": 2,
+      "contiguous_median_ms": 0.13619199395179749,
+      "contiguous_speedup_vs_baseline": 0.6842105695050926,
+      "paged_median_ms": 0.45772799849510193,
+      "paged_over_contiguous": 0.2975391376528496,
+      "paged_speedup_vs_baseline": 0.2035794228235104,
+      "prefix_length": 128,
+      "suffix_length": 32
+    }
+  ],
+  "gpu": "NVIDIA L20",
+  "reports": [
+    {
+      "batch": 2,
+      "correct": true,
+      "max_abs_error": 0.00390625,
+      "median_ms": 0.09318400174379349,
+      "p10_ms": 0.0870399996638298,
+      "p90_ms": 0.11366400122642517,
+      "path": "per_request_full_split_kv",
+      "prefix_length": 128,
+      "samples_ms": [
+        0.11366400122642517,
+        0.09318400174379349,
+        0.0870399996638298
+      ],
+      "suffix_length": 32
+    },
+    {
+      "batch": 2,
+      "correct": true,
+      "max_abs_error": 0.001953125,
+      "median_ms": 0.13619199395179749,
+      "p10_ms": 0.12390399724245071,
+      "p90_ms": 0.159743994474411,
+      "path": "shared_prefix_suffix_contiguous",
+      "prefix_length": 128,
+      "samples_ms": [
+        0.159743994474411,
+        0.13619199395179749,
+        0.12390399724245071
+      ],
+      "suffix_length": 32
+    },
+    {
+      "batch": 2,
+      "correct": true,
+      "max_abs_error": 0.001953125,
+      "median_ms": 0.45772799849510193,
+      "p10_ms": 0.41471999883651733,
+      "p90_ms": 0.4638719856739044,
+      "path": "shared_prefix_suffix_paged",
+      "prefix_length": 128,
+      "samples_ms": [
+        0.45772799849510193,
+        0.4638719856739044,
+        0.41471999883651733
+      ],
+      "suffix_length": 32
+    }
+  ],
+  "schema_version": 1,
+  "shape": {
+    "dtype": "bfloat16",
+    "head_dim": 128,
+    "kv_heads": 8,
+    "page_size": 16,
+    "q_heads": 16,
+    "random_pages": false
+  }
+}

@@ -541,3 +541,52 @@ start at shared prefix length >= 4096 and batch >= 8, with batch 16 as the
 high-confidence target. The next system step is a scheduler-facing prototype:
 detect requests sharing the same prefix-cache block chain, run this packed
 prefix+suffix path, and compare vLLM TPOT/ITL against normal PagedAttention.
+
+Paged shared-prefix follow-up:
+
+```bash
+PYTHONPATH=/home/hhai/l20-stack/src /home/hhai/venvs/vllm-l20/bin/python \
+  scripts/benchmark_shared_paged_prefix_suffix_decode_attention.py \
+  --batches 8,16 \
+  --prefix-lengths 4096,8192 \
+  --suffix-lengths 64,256 \
+  --prefix-block-t 128 \
+  --prefix-block-m 8 \
+  --baseline-split-size 1024 \
+  --warmup 8 \
+  --iterations 20 \
+  --output benchmarks/results/l20-shared-paged-prefix-suffix-decode/b8-b16-p4k-p8k-s64-s256-contig-v1.json
+```
+
+This version replaces the contiguous shared prefix with a vLLM-shaped page-16
+NHD KV cache plus a shared 1D prefix block table. It keeps the same suffix merge
+logic, so the comparison isolates page-table and page-layout overhead.
+
+```text
+benchmarks/results/l20-shared-paged-prefix-suffix-decode/b8-b16-p4k-p8k-s64-s256-contig-v1.json
+batch prefix suffix baseline full split-KV  contiguous merge  paged merge  paged speedup
+8     4096   64     0.25037 ms              0.15155 ms        0.15821 ms   1.58x
+8     4096   256    0.31181 ms              0.15360 ms        0.15974 ms   1.95x
+8     8192   64     0.43264 ms              0.30259 ms        0.24269 ms   1.78x
+8     8192   256    0.43981 ms              0.23194 ms        0.24166 ms   1.82x
+16    4096   64     0.43520 ms              0.15821 ms        0.16282 ms   2.67x
+16    4096   256    0.44750 ms              0.15974 ms        0.16486 ms   2.71x
+16    8192   64     0.80128 ms              0.23501 ms        0.24525 ms   3.27x
+16    8192   256    0.81715 ms              0.23859 ms        0.24678 ms   3.31x
+```
+
+Random page order stays close to contiguous pages:
+
+```text
+benchmarks/results/l20-shared-paged-prefix-suffix-decode/b16-p4k-p8k-s64-s256-random-v1.json
+16    4096   64     paged 0.16179 ms, 2.69x over baseline, 0.962x vs contiguous
+16    4096   256    paged 0.16486 ms, 2.71x over baseline, 0.960x vs contiguous
+16    8192   64     paged 0.24422 ms, 3.27x over baseline, 0.954x vs contiguous
+16    8192   256    paged 0.24781 ms, 3.29x over baseline, 0.955x vs contiguous
+```
+
+All paged rows are correctness-checked against PyTorch SDPA. The page-table
+overhead is about 3-5% in the high-confidence B16 cases, which is small enough
+to justify a vLLM prototype. The next gate is no longer a synthetic contiguous
+layout; it is a scheduler hook that groups requests by shared prefix-cache block
+chain and reports real TPOT/ITL.

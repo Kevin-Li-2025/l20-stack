@@ -83,6 +83,9 @@ def test_decode_attention_has_isolated_tensor_core_candidate():
     suffix_source = Path(
         "scripts/benchmark_shared_prefix_suffix_decode_attention.py"
     ).read_text()
+    paged_suffix_source = Path(
+        "scripts/benchmark_shared_paged_prefix_suffix_decode_attention.py"
+    ).read_text()
     assert "gqa_decode_attention_split_kv_tensor_core_candidate" in op_source
     assert "gqa_decode_attention_split_kv_tensor_core_dsplit_candidate" in op_source
     assert "gqa_decode_attention_split_kv_bf16_partials_candidate" in op_source
@@ -105,3 +108,7 @@ def test_decode_attention_has_isolated_tensor_core_candidate():
     assert "_prefix_suffix_gqa_reduce_kernel" in op_source
     assert "shared_prefix_suffix_merge" in suffix_source
     assert "per_request_full_split_kv" in suffix_source
+    assert "shared_paged_prefix_suffix_gqa_decode_attention" in op_source
+    assert "_shared_paged_prefix_gqa_partial_kernel" in op_source
+    assert "shared_prefix_suffix_paged" in paged_suffix_source
+    assert "paged_over_contiguous" in paged_suffix_source
