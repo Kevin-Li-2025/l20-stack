@@ -395,3 +395,31 @@ memory footprint before expanding it, for example by splitting QK and PV tiling
 or lowering the live `(BLOCK_Q, head_dim)` accumulator pressure. Do not wire this
 path into vLLM dispatch until it beats scalar split-KV on both b1/c4096 and
 b16/c4096 with stable p50/p90.
+
+D-split low-register follow-up:
+
+```text
+benchmarks/results/l20-decode-attention-tc-dsplit/b1-c4096-sweep-v1.json
+batch=1, context=4096, split_size=512
+best scalar split-KV: 0.0758 ms
+best grouped-Q tl.dot candidate: 0.0809 ms
+best grouped-Q D-split candidate: 0.0819 ms
+
+benchmarks/results/l20-decode-attention-tc-dsplit-ncu/b1-c4096-dsplit-v1/profile.json
+_gqa_decode_attention_tc_dsplit_partial_kernel
+duration 32.99 us, DRAM 589.11 GB/s, L2 hit 34.29%
+active warps 11.62%, reg/thread 128, Tensor pipe v2 17.81%
+```
+
+The D-split experiment did exactly what it was designed to test: it reduced
+register pressure from 150 to 128, raised active warps from 8.33% to 11.62%, and
+restored L2 hit rate from 1.77% to 34.29%. It still does not win full latency,
+because splitting the output dimension repeats the QK/softmax work for each
+D-block. That makes this design useful as a diagnosis, but not as the next
+implementation path.
+
+Updated gate: do not continue with D-split as written. The next Tensor-Core
+attempt must share QK scores/online-softmax state across the full head dimension
+instead of recomputing them per D-block, or move effort to reduce-inline /
+epilogue fusion where the current split-KV path already pays a second kernel
+launch.

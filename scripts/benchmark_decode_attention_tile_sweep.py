@@ -13,6 +13,7 @@ import torch
 from l20_stack.ops.triton_decode_attention import (
     gqa_decode_attention_split_kv,
     gqa_decode_attention_split_kv_tensor_core_candidate,
+    gqa_decode_attention_split_kv_tensor_core_dsplit_candidate,
 )
 
 
@@ -64,6 +65,7 @@ def parse_args():
     parser.add_argument("--block-ts", default="16,32,64,128")
     parser.add_argument("--num-warps", default="2,4,8")
     parser.add_argument("--tensor-core-block-qs", default="")
+    parser.add_argument("--tensor-core-dsplit-block-ds", default="")
     parser.add_argument("--iterations", type=int, default=80)
     parser.add_argument("--warmup", type=int, default=30)
     parser.add_argument("--output", type=Path)
@@ -182,6 +184,53 @@ def main() -> int:
                             **summarize(tc_samples),
                         }
                     )
+                    for block_d in parse_ints(args.tensor_core_dsplit_block_ds):
+                        dsplit_actual = (
+                            gqa_decode_attention_split_kv_tensor_core_dsplit_candidate(
+                                query,
+                                key,
+                                value,
+                                split_size=split_size,
+                                block_t=block_t,
+                                block_q=block_q,
+                                block_d=block_d,
+                                num_warps=num_warps,
+                            )
+                        )
+                        dsplit_correct = torch.allclose(
+                            dsplit_actual, expected, rtol=2e-2, atol=2e-2
+                        )
+                        dsplit_samples = latency_ms(
+                            lambda split_size=split_size, block_t=block_t, block_q=block_q, block_d=block_d, num_warps=num_warps: (
+                                gqa_decode_attention_split_kv_tensor_core_dsplit_candidate(
+                                    query,
+                                    key,
+                                    value,
+                                    split_size=split_size,
+                                    block_t=block_t,
+                                    block_q=block_q,
+                                    block_d=block_d,
+                                    num_warps=num_warps,
+                                )
+                            ),
+                            warmup=args.warmup,
+                            iterations=args.iterations,
+                        )
+                        reports.append(
+                            {
+                                "path": "tensor_core_dsplit_candidate",
+                                "split_size": split_size,
+                                "block_t": block_t,
+                                "block_q": block_q,
+                                "block_d": block_d,
+                                "num_warps": num_warps,
+                                "correct": bool(dsplit_correct),
+                                "max_abs_error": float(
+                                    (dsplit_actual.float() - expected.float()).abs().max()
+                                ),
+                                **summarize(dsplit_samples),
+                            }
+                        )
     result = {
         "schema_version": 1,
         "gpu": torch.cuda.get_device_name(),

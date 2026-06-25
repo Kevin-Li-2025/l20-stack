@@ -10,6 +10,7 @@ import torch
 from l20_stack.ops.triton_decode_attention import (
     gqa_decode_attention_split_kv,
     gqa_decode_attention_split_kv_tensor_core_candidate,
+    gqa_decode_attention_split_kv_tensor_core_dsplit_candidate,
 )
 
 
@@ -23,10 +24,11 @@ def parse_args():
     parser.add_argument("--split-size", type=int, default=512)
     parser.add_argument("--block-t", type=int, default=32)
     parser.add_argument("--block-q", type=int, default=2)
+    parser.add_argument("--block-d", type=int, default=64)
     parser.add_argument("--num-warps", type=int, default=4)
     parser.add_argument(
         "--path",
-        choices=["scalar", "tensor-core-candidate"],
+        choices=["scalar", "tensor-core-candidate", "tensor-core-dsplit-candidate"],
         default="scalar",
     )
     parser.add_argument("--warmup", type=int, default=10)
@@ -64,6 +66,10 @@ def main() -> int:
     if args.path == "tensor-core-candidate":
         function = gqa_decode_attention_split_kv_tensor_core_candidate
         kwargs["block_q"] = args.block_q
+    elif args.path == "tensor-core-dsplit-candidate":
+        function = gqa_decode_attention_split_kv_tensor_core_dsplit_candidate
+        kwargs["block_q"] = args.block_q
+        kwargs["block_d"] = args.block_d
     for _ in range(args.warmup):
         function(query, key, value, **kwargs)
     torch.cuda.synchronize()
@@ -77,7 +83,14 @@ def main() -> int:
             "context": args.context,
             "split_size": args.split_size,
             "block_t": args.block_t,
-            "block_q": args.block_q if args.path == "tensor-core-candidate" else None,
+            "block_q": (
+                args.block_q
+                if args.path in {"tensor-core-candidate", "tensor-core-dsplit-candidate"}
+                else None
+            ),
+            "block_d": (
+                args.block_d if args.path == "tensor-core-dsplit-candidate" else None
+            ),
             "num_warps": args.num_warps,
         }
     )
