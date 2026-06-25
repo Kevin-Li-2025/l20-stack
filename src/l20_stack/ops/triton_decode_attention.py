@@ -473,6 +473,90 @@ if triton is not None:  # pragma: no cover - requires CUDA
             tl.store(partial_max + partial_base, max_score, mask=q_mask)
             tl.store(partial_sum + partial_base, normalizer, mask=q_mask)
 
+    @triton.jit
+    def _shared_prefix_gqa_attention_kernel(
+        query,
+        key,
+        value,
+        output,
+        q_stride_b,
+        q_stride_h,
+        k_stride_t,
+        k_stride_h,
+        v_stride_t,
+        v_stride_h,
+        o_stride_b,
+        o_stride_h,
+        batch_size: tl.constexpr,
+        prefix_length: tl.constexpr,
+        num_q_heads: tl.constexpr,
+        num_kv_heads: tl.constexpr,
+        head_dim: tl.constexpr,
+        BLOCK_T: tl.constexpr,
+        BLOCK_M: tl.constexpr,
+    ):
+        kv_head = tl.program_id(0)
+        q_block = tl.program_id(1)
+        gqa_ratio: tl.constexpr = num_q_heads // num_kv_heads
+        row = q_block * BLOCK_M + tl.arange(0, BLOCK_M)
+        row_mask = row < (batch_size * gqa_ratio)
+        batch = row // gqa_ratio
+        q_offset = row - batch * gqa_ratio
+        q_head = kv_head * gqa_ratio + q_offset
+        dim = tl.arange(0, head_dim)
+        query_values = tl.load(
+            query
+            + batch[:, None] * q_stride_b
+            + q_head[:, None] * q_stride_h
+            + dim[None, :],
+            mask=row_mask[:, None],
+            other=0.0,
+        )
+        scale = 1.0 / tl.sqrt(float(head_dim))
+        max_score = tl.full((BLOCK_M,), -float("inf"), tl.float32)
+        normalizer = tl.zeros((BLOCK_M,), tl.float32)
+        accumulator = tl.zeros((BLOCK_M, head_dim), tl.float32)
+
+        for start in range(0, prefix_length, BLOCK_T):
+            token = start + tl.arange(0, BLOCK_T)
+            token_mask = token < prefix_length
+            keys = tl.load(
+                key
+                + token[:, None] * k_stride_t
+                + kv_head * k_stride_h
+                + dim[None, :],
+                mask=token_mask[:, None],
+                other=0.0,
+            )
+            scores = tl.dot(query_values, tl.trans(keys)) * scale
+            scores = tl.where(row_mask[:, None] & token_mask[None, :], scores, -float("inf"))
+            tile_max = tl.max(scores, axis=1)
+            next_max = tl.maximum(max_score, tile_max)
+            old_scale = tl.exp(max_score - next_max)
+            probabilities = tl.exp(scores - next_max[:, None])
+            values = tl.load(
+                value
+                + token[:, None] * v_stride_t
+                + kv_head * v_stride_h
+                + dim[None, :],
+                mask=token_mask[:, None],
+                other=0.0,
+            )
+            accumulator = accumulator * old_scale[:, None] + tl.dot(
+                probabilities.to(values.dtype), values
+            )
+            normalizer = normalizer * old_scale + tl.sum(probabilities, axis=1)
+            max_score = next_max
+
+        tl.store(
+            output
+            + batch[:, None] * o_stride_b
+            + q_head[:, None] * o_stride_h
+            + dim[None, :],
+            accumulator / normalizer[:, None],
+            mask=row_mask[:, None],
+        )
+
 
 def gqa_decode_attention(query, key, value):
     """Run single-token contiguous-cache GQA attention.
@@ -512,6 +596,64 @@ def gqa_decode_attention(query, key, value):
         head_dim=head_dim,
         BLOCK_T=block_t,
         num_warps=4,
+        num_stages=1,
+    )
+    return output
+
+
+def shared_prefix_gqa_decode_attention(
+    query,
+    key,
+    value,
+    block_t: int = 128,
+    block_m: int = 4,
+    num_warps: int = 4,
+):
+    """Run decode attention for many queries sharing one contiguous KV prefix.
+
+    Shapes are query=[B,Hq,D], key/value=[T,Hkv,D]. This is an experimental
+    prefix-aware candidate; it only computes the shared-prefix attention output
+    and does not include per-request suffix merging.
+    """
+    if torch is None or triton is None:
+        raise RuntimeError("requires PyTorch and Triton")
+    if query.ndim != 3 or key.ndim != 3 or value.shape != key.shape:
+        raise ValueError("expected query=[B,Hq,D], key/value=[T,Hkv,D]")
+    batch, num_q_heads, head_dim = query.shape
+    prefix_length, num_kv_heads, key_dim = key.shape
+    if key_dim != head_dim or head_dim != 128 or num_q_heads % num_kv_heads:
+        raise ValueError("requires compatible GQA tensors with head_dim=128")
+    if block_t not in {32, 64, 128}:
+        raise ValueError("block_t must be one of 32, 64, 128")
+    if block_m not in {1, 2, 4, 8}:
+        raise ValueError("block_m must be one of 1, 2, 4, 8")
+    if num_warps not in {1, 2, 4, 8}:
+        raise ValueError("num_warps must be one of 1, 2, 4, 8")
+    output = torch.empty_like(query)
+    rows_per_kv = batch * (num_q_heads // num_kv_heads)
+    _shared_prefix_gqa_attention_kernel[
+        (num_kv_heads, triton.cdiv(rows_per_kv, block_m))
+    ](
+        query,
+        key,
+        value,
+        output,
+        query.stride(0),
+        query.stride(1),
+        key.stride(0),
+        key.stride(1),
+        value.stride(0),
+        value.stride(1),
+        output.stride(0),
+        output.stride(1),
+        batch_size=batch,
+        prefix_length=prefix_length,
+        num_q_heads=num_q_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+        BLOCK_T=block_t,
+        BLOCK_M=block_m,
+        num_warps=num_warps,
         num_stages=1,
     )
     return output

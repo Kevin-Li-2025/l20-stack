@@ -446,3 +446,49 @@ compression idea: the reduce kernel is too small for partial-vector bandwidth
 alone to be the main limiter. A useful next split-KV optimization needs to
 remove the reduce launch or merge partials inside a different work mapping,
 not just compress the intermediate buffer.
+
+Prefix-aware packed decode attention v1:
+
+```bash
+PYTHONPATH=/home/hhai/l20-stack/src /home/hhai/venvs/vllm-l20/bin/python \
+  scripts/benchmark_shared_prefix_decode_attention.py \
+  --batches 4,8,16 \
+  --contexts 1024,4096,8192 \
+  --shared-block-ts 64,128 \
+  --shared-block-ms 2,4,8 \
+  --shared-num-warps 4 \
+  --warmup 10 \
+  --iterations 40 \
+  --output benchmarks/results/l20-shared-prefix-decode/b4-b16-c1k-c8k-v1.json
+```
+
+This experiment targets the exact workload that normal split-KV decode wastes
+on L20: multiple active requests reading the same long system prompt or cached
+prefix from GDDR6. The v1 kernel only handles a contiguous shared prefix and
+does not yet merge per-request suffix tokens.
+
+```text
+benchmarks/results/l20-shared-prefix-decode/b4-b16-c1k-c8k-v1.json
+batch context baseline split-KV  shared-prefix best  speedup
+4     1024    0.07680 ms         0.05120 ms          1.50x
+4     4096    0.09830 ms         0.11059 ms          0.89x
+4     8192    0.13824 ms         0.18739 ms          0.74x
+8     1024    0.07782 ms         0.05427 ms          1.43x
+8     4096    0.14080 ms         0.12134 ms          1.16x
+8     8192    0.20941 ms         0.19149 ms          1.09x
+16    1024    0.09523 ms         0.05427 ms          1.75x
+16    4096    0.20890 ms         0.11008 ms          1.90x
+16    8192    0.35635 ms         0.18842 ms          1.89x
+```
+
+The result is the first clean positive signal after the tensor-core and partial
+reduce dead ends: packing shared-prefix requests wins when the batch is large
+enough to amortize the wider `(request, GQA-group)` tile. It also proves the
+dispatch boundary must be conservative. Batch 4 long-context cases are slower,
+so this path should only be considered for shared-prefix decode with at least
+batch 8, and batch 16 is the robust target.
+
+Gate: keep `shared_prefix_gqa_decode_attention` as an explicit experimental
+entry point. The next implementation must add online-softmax merge for
+request-local suffix tokens, then profile `b16/c4096` with Nsight to verify the
+expected reduction in repeated K/V traffic before any vLLM scheduler hook.

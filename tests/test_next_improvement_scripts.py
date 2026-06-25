@@ -79,6 +79,7 @@ def test_decode_attention_has_isolated_tensor_core_candidate():
     op_source = Path("src/l20_stack/ops/triton_decode_attention.py").read_text()
     sweep_source = Path("scripts/benchmark_decode_attention_tile_sweep.py").read_text()
     profile_source = Path("scripts/profile_decode_attention_ncu.py").read_text()
+    shared_source = Path("scripts/benchmark_shared_prefix_decode_attention.py").read_text()
     assert "gqa_decode_attention_split_kv_tensor_core_candidate" in op_source
     assert "gqa_decode_attention_split_kv_tensor_core_dsplit_candidate" in op_source
     assert "gqa_decode_attention_split_kv_bf16_partials_candidate" in op_source
@@ -92,3 +93,7 @@ def test_decode_attention_has_isolated_tensor_core_candidate():
     assert '"tensor-core-candidate"' in profile_source
     assert '"tensor-core-dsplit-candidate"' in profile_source
     assert '"bf16-partials-candidate"' in profile_source
+    assert "shared_prefix_gqa_decode_attention" in op_source
+    assert "_shared_prefix_gqa_attention_kernel" in op_source
+    assert "shared_prefix_packed" in shared_source
+    assert "per_request_split_kv" in shared_source

@@ -1,0 +1,65 @@
+{
+  "comparisons": [
+    {
+      "baseline_median_ms": 0.09932799637317657,
+      "batch": 2,
+      "best_shared_block_m": 2,
+      "best_shared_block_t": 64,
+      "best_shared_median_ms": 0.17100800573825836,
+      "best_shared_num_warps": 4,
+      "context": 512,
+      "speedup": 0.5808382826544749
+    }
+  ],
+  "gpu": "NVIDIA L20",
+  "reports": [
+    {
+      "batch": 2,
+      "block_m": 1,
+      "block_t": 128,
+      "context": 512,
+      "correct": true,
+      "max_abs_error": 0.0009765625,
+      "median_ms": 0.09932799637317657,
+      "num_warps": 4,
+      "p10_ms": 0.08191999793052673,
+      "p90_ms": 0.10956799983978271,
+      "path": "per_request_split_kv",
+      "samples_ms": [
+        0.10751999914646149,
+        0.09932799637317657,
+        0.0870399996638298,
+        0.10956799983978271,
+        0.08191999793052673
+      ]
+    },
+    {
+      "batch": 2,
+      "block_m": 2,
+      "block_t": 64,
+      "context": 512,
+      "correct": true,
+      "max_abs_error": 0.0009765625,
+      "median_ms": 0.17100800573825836,
+      "num_warps": 4,
+      "p10_ms": 0.1525759994983673,
+      "p90_ms": 0.2027519941329956,
+      "path": "shared_prefix_packed",
+      "samples_ms": [
+        0.2027519941329956,
+        0.16179199516773224,
+        0.18534399569034576,
+        0.17100800573825836,
+        0.1525759994983673
+      ]
+    }
+  ],
+  "schema_version": 1,
+  "shape": {
+    "dtype": "bfloat16",
+    "head_dim": 128,
+    "kv_heads": 8,
+    "q_heads": 16,
+    "shared_prefix_only": true
+  }
+}
