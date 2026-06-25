@@ -209,3 +209,28 @@ With prefix caching enabled, FP8 KV is roughly tied on median TTFT and still
 slightly slower on E2E. The next experiment should push to longer resident
 prefixes and more turns, then measure whether late-turn TTFT scales better for
 FP8 before implementing a custom INT8/4-bit KV cache.
+
+8K shared-GPU pressure result:
+
+```text
+benchmarks/results/l20-kv-pressure/qwen3-pressure-8k-v1/kv-pressure-summary.json
+Qwen3-0.6B, max_model_len=16384, turns=8, prefix_chars=8192, output_tokens=16
+prefix_cache=0
+BF16/auto KV: median TTFT 55.99 ms, median E2E 242.67 ms
+FP8 KV:       median TTFT 67.32 ms, median E2E 267.20 ms
+```
+
+Without prefix caching, FP8 KV regresses at 8K. That means the 4K no-cache TTFT
+win is not stable enough to justify a custom FP8 kernel by itself.
+
+```text
+benchmarks/results/l20-kv-pressure/qwen3-pressure-8k-prefix-v1/kv-pressure-summary.json
+same shape, prefix_cache=1
+BF16/auto KV: median TTFT 47.96 ms, median E2E 238.20 ms
+FP8 KV:       median TTFT 38.33 ms, median E2E 233.88 ms
+```
+
+With prefix caching enabled, FP8 KV improves median TTFT by about 20% and also
+slightly improves median E2E. This is now the strongest serving-level evidence
+for continuing the L20 KV-compression line: the target workload should be
+cached long prefixes with repeated short turns, not raw no-cache decode.

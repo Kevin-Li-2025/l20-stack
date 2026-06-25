@@ -1,0 +1,69 @@
+{
+  "reports": [
+    {
+      "first_turn_ttft_ms": 105.06890597753227,
+      "last_turn_ttft_ms": 63.750418019481,
+      "late_over_first_ttft": 0.6067486610464305,
+      "max_ttft_ms": 105.06890597753227,
+      "median_e2e_ms": 242.66814801376313,
+      "median_ttft_ms": 55.98881497280672,
+      "metadata": {
+        "attention_backend": "FLASHINFER",
+        "calculate_kv_scales": "1",
+        "enforce_eager": "1",
+        "extra_vllm_args": "--gpu-memory-utilization 0.42 --max-num-seqs 1 --max-num-batched-tokens 4096",
+        "flashinfer_sampler": "0",
+        "kv_cache_dtype": "auto",
+        "max_model_len": 16384,
+        "max_tokens": 16,
+        "model": "/home/hhai/models/Qwen3-0.6B",
+        "port": 8050,
+        "prefix_caching": "0",
+        "prefix_chars": 8192,
+        "schema_version": 1,
+        "served_name": "qwen3-0.6b-l20",
+        "temperature": 0,
+        "turns": 8
+      },
+      "path": "benchmarks/results/l20-kv-pressure/qwen3-pressure-8k-v1/kv-auto-prefix-0",
+      "status": "ok",
+      "turns_completed": 8
+    },
+    {
+      "first_turn_ttft_ms": 107.41605306975543,
+      "last_turn_ttft_ms": 67.6883599953726,
+      "late_over_first_ttft": 0.6301512489144999,
+      "max_ttft_ms": 107.41605306975543,
+      "median_e2e_ms": 267.20220100833103,
+      "median_ttft_ms": 67.31635896721855,
+      "metadata": {
+        "attention_backend": "FLASHINFER",
+        "calculate_kv_scales": "1",
+        "enforce_eager": "1",
+        "extra_vllm_args": "--gpu-memory-utilization 0.42 --max-num-seqs 1 --max-num-batched-tokens 4096",
+        "flashinfer_sampler": "0",
+        "kv_cache_dtype": "fp8",
+        "max_model_len": 16384,
+        "max_tokens": 16,
+        "model": "/home/hhai/models/Qwen3-0.6B",
+        "port": 8051,
+        "prefix_caching": "0",
+        "prefix_chars": 8192,
+        "schema_version": 1,
+        "served_name": "qwen3-0.6b-l20",
+        "temperature": 0,
+        "turns": 8
+      },
+      "path": "benchmarks/results/l20-kv-pressure/qwen3-pressure-8k-v1/kv-fp8-prefix-0",
+      "status": "ok",
+      "turns_completed": 8
+    }
+  ],
+  "schema_version": 1,
+  "summary": {
+    "best_median_ttft_ms": 55.98881497280672,
+    "failed_runs": 0,
+    "ok_runs": 2,
+    "total_runs": 2
+  }
+}
