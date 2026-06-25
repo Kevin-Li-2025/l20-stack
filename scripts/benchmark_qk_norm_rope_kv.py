@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import statistics
+import sys
 from pathlib import Path
 
 
@@ -21,9 +22,16 @@ def main() -> int:
     import torch
     import triton
     from vllm import _custom_ops
-    from vllm.v1.attention.ops.l20_qk_norm_rope_kv import (
-        l20_qk_norm_rope_and_cache,
-    )
+    try:
+        from vllm.v1.attention.ops.l20_qk_norm_rope_kv import (
+            l20_qk_norm_rope_and_cache,
+        )
+        import_source = "vllm"
+    except ModuleNotFoundError:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "integrations/vllm"))
+        from l20_qk_norm_rope_kv import l20_qk_norm_rope_and_cache
+
+        import_source = "repo"
 
     q_heads, kv_heads, head_dim = 16, 8, 128
     reports = []
@@ -176,7 +184,12 @@ def main() -> int:
                 "diagnostics": diagnostics,
             }
         )
-    result = {"schema_version": 1, "gpu": torch.cuda.get_device_name(), "reports": reports}
+    result = {
+        "schema_version": 1,
+        "gpu": torch.cuda.get_device_name(),
+        "import_source": import_source,
+        "reports": reports,
+    }
     serialized = json.dumps(result, indent=2, sort_keys=True)
     print(serialized)
     if args.output:

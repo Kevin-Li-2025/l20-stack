@@ -31,6 +31,10 @@ extra_vllm_pythonpath=${VLLM_SOURCE_TREE:-"$HOME/vllm-l20-upstream"}
 python_bin=${PYTHON:-python}
 mkdir -p "$output_dir"
 
+python_dir=$(dirname "$("$python_bin" -c 'import sys; print(sys.executable)')")
+if [[ -x "$python_dir/vllm" || -x "$python_dir/ninja" ]]; then
+  export PATH="$python_dir:$PATH"
+fi
 export PYTHONPATH="$extra_vllm_pythonpath${PYTHONPATH:+:$PYTHONPATH}"
 export VLLM_USE_FLASHINFER_SAMPLER="$use_flashinfer_sampler"
 
@@ -45,8 +49,44 @@ print(f"export CUDACXX={shlex.quote(env.nvcc)}")
 print(f"export PATH={shlex.quote(env.cuda_home + '/bin')}:$PATH")
 PY
 )"
-  PYTHONPATH="$(pwd)/src:$PYTHONPATH" "$python_bin" scripts/prewarm_flashinfer_sampling.py \
-    >"$output_dir/flashinfer-prewarm.json"
+  if ! PYTHONPATH="$(pwd)/src:$PYTHONPATH" "$python_bin" scripts/prewarm_flashinfer_sampling.py \
+    >"$output_dir/flashinfer-prewarm.json" 2>"$output_dir/flashinfer-prewarm.stderr"; then
+    "$python_bin" - "$output_dir" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+output_dir = Path(sys.argv[1])
+prewarm_path = output_dir / "flashinfer-prewarm.json"
+stderr_path = output_dir / "flashinfer-prewarm.stderr"
+try:
+    prewarm = json.loads(prewarm_path.read_text(encoding="utf-8"))
+except json.JSONDecodeError:
+    prewarm = {
+        "schema_version": 1,
+        "status": "error",
+        "error": prewarm_path.read_text(encoding="utf-8", errors="replace")[-4000:],
+    }
+result = {
+    "schema_version": 1,
+    "sampler_mode": "flashinfer",
+    "prewarm_failed": True,
+    "flashinfer_sampling_available": False,
+    "cpu_fallback_suspected": False,
+    "prewarm": prewarm,
+    "stderr_tail": stderr_path.read_text(encoding="utf-8", errors="replace")[-4000:],
+    "notes": [
+        "FlashInfer sampling JIT failed before vLLM serving started.",
+        "No FlashInfer stochastic serving ITL claim should be made from this run.",
+    ],
+}
+(output_dir / "sampling-path.json").write_text(
+    json.dumps(result, indent=2, sort_keys=True) + "\n",
+    encoding="utf-8",
+)
+PY
+    exit 1
+  fi
 fi
 
 compilation_config='{"mode":3,"splitting_ops":[],"cudagraph_mode":"FULL","pass_config":{"fuse_rope_kvcache":false}}'
@@ -70,17 +110,47 @@ cleanup() {
 }
 trap cleanup EXIT
 
+write_sampling_failure_report() {
+  local reason=$1
+  PYTHONPATH="$(pwd)/src:$PYTHONPATH" "$python_bin" scripts/inspect_vllm_sampling_path.py \
+    --log "$server_log" \
+    --output "$output_dir/sampling-path.json" >/dev/null || true
+  "$python_bin" - "$output_dir/sampling-path.json" "$reason" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+reason = sys.argv[2]
+if path.exists():
+    report = json.loads(path.read_text(encoding="utf-8"))
+else:
+    report = {"schema_version": 1, "matches": {}, "match_counts": {}}
+report["server_start_failed"] = True
+report["server_start_failure_reason"] = reason
+report.setdefault("notes", []).append(
+    "The server did not become healthy, so this run has no valid serving ITL result."
+)
+path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+}
+
 for _ in $(seq 1 180); do
   if curl -fsS "http://127.0.0.1:$port/health" >/dev/null; then
     break
   fi
   if ! kill -0 "$server_pid" 2>/dev/null; then
+    write_sampling_failure_report "server_process_exited_before_health"
     tail -160 "$server_log" >&2
     exit 1
   fi
   sleep 5
 done
-curl -fsS "http://127.0.0.1:$port/health" >/dev/null
+if ! curl -fsS "http://127.0.0.1:$port/health" >/dev/null; then
+  write_sampling_failure_report "health_check_timeout"
+  tail -160 "$server_log" >&2
+  exit 1
+fi
 
 for concurrency in $concurrencies; do
   for input_tokens in $inputs; do

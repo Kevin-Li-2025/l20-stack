@@ -125,6 +125,8 @@ production paths unless their policy function enables them.
   LongSpec-style irregular attention.
 - `docs/l20-qlora-research.md` covers QLoRA capacity and kernel-coding
   training results.
+- `docs/l20-next-improvements.md` turns the next five optimization directions
+  into executable scripts, gates, and benchmark outputs.
 - `docs/roadmap.md` contains the broader v0.1 to v1.0 roadmap.
 
 ## Repository Policy

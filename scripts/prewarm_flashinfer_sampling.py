@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import traceback
 
 import torch
 
@@ -22,34 +23,45 @@ def parse_args():
 
 def main() -> int:
     args = parse_args()
-    if not torch.cuda.is_available():
-        raise RuntimeError("CUDA is required")
-    env = configure_flashinfer_cuda13_env(required=True)
-    import flashinfer
-    import flashinfer.sampling as sampling
+    try:
+        if not torch.cuda.is_available():
+            raise RuntimeError("CUDA is required")
+        env = configure_flashinfer_cuda13_env(required=True)
+        import flashinfer
+        import flashinfer.sampling as sampling
 
-    logits = torch.randn((args.batch, args.vocab), device="cuda", dtype=torch.float16)
-    seed = torch.full((args.batch,), 12345, device="cuda", dtype=torch.int64)
-    offset = torch.zeros((args.batch,), device="cuda", dtype=torch.int64)
-    output = sampling.top_k_top_p_sampling_from_logits(
-        logits,
-        args.top_k,
-        args.top_p,
-        filter_apply_order="top_k_first",
-        deterministic=True,
-        seed=seed,
-        offset=offset,
-    )
-    torch.cuda.synchronize()
-    result = {
-        "schema_version": 1,
-        "hardware": torch.cuda.get_device_name(),
-        "flashinfer_version": getattr(flashinfer, "__version__", "unknown"),
-        "flashinfer_cuda_env": env.to_dict(),
-        "output_shape": list(output.shape),
-        "output_dtype": str(output.dtype),
-        "status": "ok",
-    }
+        logits = torch.randn((args.batch, args.vocab), device="cuda", dtype=torch.float16)
+        seed = torch.full((args.batch,), 12345, device="cuda", dtype=torch.int64)
+        offset = torch.zeros((args.batch,), device="cuda", dtype=torch.int64)
+        output = sampling.top_k_top_p_sampling_from_logits(
+            logits,
+            args.top_k,
+            args.top_p,
+            filter_apply_order="top_k_first",
+            deterministic=True,
+            seed=seed,
+            offset=offset,
+        )
+        torch.cuda.synchronize()
+        result = {
+            "schema_version": 1,
+            "hardware": torch.cuda.get_device_name(),
+            "flashinfer_version": getattr(flashinfer, "__version__", "unknown"),
+            "flashinfer_cuda_env": env.to_dict(),
+            "output_shape": list(output.shape),
+            "output_dtype": str(output.dtype),
+            "status": "ok",
+        }
+    except Exception as error:
+        result = {
+            "schema_version": 1,
+            "status": "error",
+            "error_type": type(error).__name__,
+            "error": str(error),
+            "traceback_tail": traceback.format_exc().splitlines()[-40:],
+        }
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 1
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 

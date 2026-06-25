@@ -6,9 +6,18 @@ def test_sampling_campaign_switches_flashinfer_sampler():
 
     assert "SAMPLER_MODE: flashinfer|torch" in source
     assert "VLLM_USE_FLASHINFER_SAMPLER=\"$use_flashinfer_sampler\"" in source
+    assert "python_dir=$(dirname" in source
+    assert '"$python_dir/ninja"' in source
     assert "export CUDA_HOME=" in source
     assert "export CUDACXX=" in source
     assert "scripts/prewarm_flashinfer_sampling.py" in source
+    assert "flashinfer-prewarm.stderr" in source
+    assert "prewarm_failed" in source
+    assert "No FlashInfer stochastic serving ITL claim" in source
+    assert "write_sampling_failure_report" in source
+    assert "server_start_failed" in source
+    assert "server_process_exited_before_health" in source
+    assert "health_check_timeout" in source
     assert "--temperature \"$temperature\"" in source
     assert "--top-p \"$top_p\"" in source
     assert "--top-k \"$top_k\"" in source
@@ -24,3 +33,11 @@ def test_sampling_path_inspector_reports_cpu_fallback_evidence():
     assert '"fallback"' in source
     assert '"cpu"' in source
     assert "cpu_fallback_suspected" in source
+
+
+def test_flashinfer_prewarm_reports_structured_errors():
+    source = Path("scripts/prewarm_flashinfer_sampling.py").read_text()
+
+    assert '"status": "error"' in source
+    assert "traceback_tail" in source
+    assert "return 1" in source
