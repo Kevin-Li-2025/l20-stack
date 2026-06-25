@@ -10,6 +10,10 @@ def test_shared_prefix_decode_installer_copies_ops_into_vllm_namespace():
     assert "VLLM_SOURCE_TREE" in source
     assert "--uninstall" in source
     assert ".l20-shared-prefix-backup" in source
+    assert "trace_l20_shared_prefix_decode_candidate" in source
+    assert "native decode trace hook" in source
+    assert "attn_metadata.decode.block_tables" in source
+    assert "attn_metadata.decode.seq_lens" in source
 
 
 def test_shared_prefix_decode_dispatch_is_env_gated_and_conservative():
@@ -22,6 +26,9 @@ def test_shared_prefix_decode_dispatch_is_env_gated_and_conservative():
     assert "find_l20_shared_prefix_groups" in source
     assert "shared_paged_prefix_suffix_gqa_decode_attention" in source
     assert "len(groups) == 1 and len(groups[0]) == query.shape[0]" in source
+    assert "VLLM_L20_SHARED_PREFIX_DECODE_TRACE" in source
+    assert "trace_l20_shared_prefix_decode_candidate" in source
+    assert "reason_if_not_run=\"paged_suffix_not_implemented\"" in source
 
 
 def test_vllm_shared_prefix_smoke_uses_vllm_import_path():

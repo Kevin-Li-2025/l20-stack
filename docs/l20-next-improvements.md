@@ -622,3 +622,48 @@ batch by identical prefix block chain, and the vLLM import path calls the L20
 paged prefix+suffix kernel correctly. The remaining work is the real backend
 hook: feed prefix-cache block tables and suffix KV from vLLM's decode metadata,
 then compare TPOT/ITL with tracing enabled.
+
+Backend trace hook:
+
+```bash
+VLLM_SOURCE_TREE=/home/hhai/vllm-l20-upstream \
+PYTHONPATH=/home/hhai/l20-stack:/home/hhai/l20-stack/src:/home/hhai/vllm-l20-upstream \
+  /home/hhai/venvs/vllm-l20/bin/python integrations/vllm/install_l20_shared_prefix_decode.py
+```
+
+The installer now also patches the FlashInfer backend's native decode path with
+a trace-only hook:
+
+```text
+trace_l20_shared_prefix_decode_candidate(
+    decode_query,
+    kv_cache_permute,
+    attn_metadata.decode.block_tables,
+    attn_metadata.decode.seq_lens,
+    page_size=kv_cache_permute.shape[2],
+)
+```
+
+Validation:
+
+```text
+benchmarks/results/l20-shared-prefix-vllm-dispatch/smoke-b8-p4k-s64-trace.json
+should_dispatch: true
+trace_candidate: true
+correct: true
+max_abs_error: 0.00048828125
+
+benchmarks/results/l20-shared-prefix-vllm-dispatch/trace-smoke.jsonl
+event: shared_prefix_decode_candidate
+eligible: true
+candidate_prefix: 4096
+group_sizes: [8]
+reason_if_not_run: paged_suffix_not_implemented
+```
+
+This is deliberately not an end-to-end speed claim. It proves the backend can
+load the patch and observe real decode metadata through the vLLM import path.
+The blocker is now precise: current executable kernels support paged shared
+prefix plus contiguous suffix, while real vLLM decode suffix tokens are still in
+the paged KV cache. The next kernel step is paged-suffix scanning/merge, after
+which this trace hook can become an output-producing dispatch path.

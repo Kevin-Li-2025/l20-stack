@@ -52,6 +52,7 @@ def main() -> int:
         find_l20_shared_prefix_groups,
         maybe_l20_shared_prefix_decode,
         should_dispatch_l20_shared_prefix_decode,
+        trace_l20_shared_prefix_decode_candidate,
     )
 
     torch.manual_seed(20260626)
@@ -83,6 +84,12 @@ def main() -> int:
         block_tables,
         prefix_lengths,
     )
+    trace_candidate = trace_l20_shared_prefix_decode_candidate(
+        query,
+        key_cache,
+        block_tables,
+        prefix_lengths,
+    )
     actual = maybe_l20_shared_prefix_decode(
         query,
         key_cache,
@@ -104,6 +111,7 @@ def main() -> int:
         "suffix_length": args.suffix_length,
         "groups": groups,
         "should_dispatch": bool(should_dispatch),
+        "trace_candidate": bool(trace_candidate),
         "correct": bool(torch.allclose(actual, expected, rtol=2e-2, atol=2e-2)),
         "max_abs_error": float((actual.float() - expected.float()).abs().max()),
     }

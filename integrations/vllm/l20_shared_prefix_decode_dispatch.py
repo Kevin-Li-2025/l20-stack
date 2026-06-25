@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import os
+import json
+import time
 from collections import defaultdict
+from pathlib import Path
 from typing import Sequence
 
 import torch
@@ -14,6 +17,18 @@ from vllm.v1.attention.ops.l20_decode_attention import (
 
 def l20_shared_prefix_decode_enabled() -> bool:
     return os.getenv("VLLM_ENABLE_L20_SHARED_PREFIX_DECODE", "0") == "1"
+
+
+def l20_shared_prefix_trace(event: str, **fields) -> None:
+    path = os.getenv("VLLM_L20_SHARED_PREFIX_DECODE_TRACE")
+    if not path:
+        return
+    payload = {"event": event, "ts": time.time(), **fields}
+    try:
+        with Path(path).open("a", encoding="utf-8") as trace_file:
+            trace_file.write(json.dumps(payload, sort_keys=True) + "\n")
+    except OSError:
+        return
 
 
 def _to_int_list(values: torch.Tensor | Sequence[int]) -> list[int]:
@@ -144,3 +159,76 @@ def maybe_l20_shared_prefix_decode(
         suffix_block_t=suffix_block_t,
         num_warps=4,
     )
+
+
+def trace_l20_shared_prefix_decode_candidate(
+    query: torch.Tensor,
+    key_cache: torch.Tensor,
+    block_tables: torch.Tensor,
+    seq_lens: torch.Tensor | Sequence[int],
+    *,
+    page_size: int = 16,
+    min_batch: int = 8,
+    min_prefix_length: int = 4096,
+) -> bool:
+    """Trace whether a real vLLM decode batch has a shared-prefix candidate.
+
+    This is intentionally trace-only. Real decode suffix tokens live in the
+    paged KV cache, while the first executable kernel prototype takes a
+    contiguous per-request suffix. The trace tells us when a backend hook would
+    be eligible once paged-suffix scanning is implemented.
+    """
+    if not l20_shared_prefix_decode_enabled():
+        return False
+    if block_tables.ndim != 2 or query.ndim != 3:
+        l20_shared_prefix_trace(
+            "shared_prefix_decode_skip",
+            reason="shape",
+            query_shape=list(query.shape),
+            block_tables_shape=list(block_tables.shape),
+        )
+        return False
+    lengths = _to_int_list(seq_lens)
+    if len(lengths) != block_tables.shape[0]:
+        l20_shared_prefix_trace(
+            "shared_prefix_decode_skip",
+            reason="seq_lens_shape",
+            seq_lens_len=len(lengths),
+            batch=int(block_tables.shape[0]),
+        )
+        return False
+    min_seq_len = min(lengths) if lengths else 0
+    candidate_prefix = (min_seq_len // page_size) * page_size
+    if candidate_prefix < min_prefix_length:
+        l20_shared_prefix_trace(
+            "shared_prefix_decode_skip",
+            reason="prefix_too_short",
+            batch=int(query.shape[0]),
+            candidate_prefix=int(candidate_prefix),
+            min_prefix_length=int(min_prefix_length),
+        )
+        return False
+    candidate_lengths = [candidate_prefix] * len(lengths)
+    groups = find_l20_shared_prefix_groups(
+        block_tables,
+        candidate_lengths,
+        min_batch=min_batch,
+        min_prefix_length=min_prefix_length,
+        page_size=page_size,
+    )
+    eligible = len(groups) == 1 and len(groups[0]) == query.shape[0]
+    l20_shared_prefix_trace(
+        "shared_prefix_decode_candidate",
+        eligible=bool(eligible),
+        batch=int(query.shape[0]),
+        q_heads=int(query.shape[1]),
+        kv_heads=int(key_cache.shape[2]) if key_cache.ndim == 4 else None,
+        head_dim=int(query.shape[-1]),
+        page_size=int(page_size),
+        candidate_prefix=int(candidate_prefix),
+        max_seq_len=max(lengths) if lengths else 0,
+        min_seq_len=min_seq_len,
+        group_sizes=[len(group) for group in groups],
+        reason_if_not_run="paged_suffix_not_implemented",
+    )
+    return eligible
