@@ -141,6 +141,21 @@ PREFIX_CACHING=1 MAX_MODEL_LEN=4096 ENFORCE_EAGER=1 \
   MODEL SERVED_NAME benchmarks/results/l20-kv-pressure/prefix-cache
 ```
 
+BF16/FP8 matrix wrapper:
+
+```bash
+KV_DTYPES="auto fp8" PREFIX_MODES="0 1" \
+MAX_MODEL_LEN=2048 TURNS=4 PREFIX_CHARS=4096 OUTPUT_TOKENS=16 \
+VLLM_EXTRA_ARGS="--gpu-memory-utilization 0.45 --max-num-seqs 1 --max-num-batched-tokens 1024" \
+scripts/run_vllm_l20_kv_pressure_matrix.sh \
+  MODEL SERVED_NAME benchmarks/results/l20-kv-pressure/qwen3-matrix-v1
+```
+
+The matrix writes one subdirectory per `kv_cache_dtype × prefix_caching` pair
+and finishes with `kv-pressure-summary.json`, including success rows and
+server-start failures. This is the first required end-to-end gate before
+building INT8/4-bit/adaptive KV-cache kernels.
+
 Goal: model the workload that matters for L20 GDDR6: long resident prefixes,
 many short turns, and increasing KV-cache pressure. This is the prerequisite
 for testing INT8/4-bit/adaptive KV-cache policies without confusing kernel
@@ -153,3 +168,18 @@ Current blocker: the first real vLLM smoke on the shared L20 failed during
 server warmup with CUDA OOM while another non-l20-stack GPU service was running.
 The benchmark harness is ready, but this result is an environment-capacity
 blocker rather than evidence for or against the KV-pressure method.
+
+Tiny shared-GPU smoke:
+
+```text
+benchmarks/results/l20-kv-pressure/qwen3-tiny-summary-v1.json
+Qwen3-0.6B, max_model_len=512, turns=1, prefix_chars=256, output_tokens=4
+BF16/auto KV: TTFT 81.19 ms, E2E 106.75 ms
+FP8 KV:       TTFT 88.06 ms, E2E 115.61 ms
+```
+
+This is only a startup-capable sanity check. It shows that both BF16 and vLLM
+FP8 KV-cache serving paths can run on the current shared L20 with aggressive
+memory limits, but the context is too short for FP8 KV bandwidth savings to
+amortize scale/quant overhead. The next meaningful run must increase turns and
+prefix length on a clean GPU window.

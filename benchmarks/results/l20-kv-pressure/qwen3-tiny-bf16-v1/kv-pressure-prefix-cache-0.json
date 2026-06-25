@@ -1,0 +1,24 @@
+{
+  "base_url": "http://127.0.0.1:8021",
+  "max_tokens": 4,
+  "model": "qwen3-0.6b-l20",
+  "prefix_chars": 256,
+  "reports": [
+    {
+      "e2e_ms": 106.74950294196606,
+      "generated_chars": 8,
+      "prompt_chars": 345,
+      "stream_chunks": 3,
+      "ttft_ms": 81.19324396830052,
+      "turn": 0
+    }
+  ],
+  "schema_version": 1,
+  "summary": {
+    "first_turn_ttft_ms": 81.19324396830052,
+    "last_turn_ttft_ms": 81.19324396830052,
+    "max_ttft_ms": 81.19324396830052,
+    "total_e2e_ms": 106.74950294196606
+  },
+  "turns": 1
+}

@@ -20,15 +20,26 @@ def test_spec_acceptance_summary_extracts_acceptance_evidence():
 def test_multiturn_kv_pressure_uses_streaming_openai_endpoint():
     source = Path("scripts/benchmark_multiturn_kv_pressure.py").read_text()
     runner = Path("scripts/run_vllm_l20_kv_pressure_campaign.sh").read_text()
+    matrix = Path("scripts/run_vllm_l20_kv_pressure_matrix.sh").read_text()
+    summary = Path("scripts/summarize_kv_pressure.py").read_text()
     assert '"/v1/completions"' in source
     assert '"stream": True' in source
     assert "ttft_ms" in source
     assert "prefix_chars" in source
     assert "PREFIX_CACHING" in runner
+    assert "KV_CACHE_DTYPE" in runner
+    assert "CALCULATE_KV_SCALES" in runner
+    assert "FLASHINFER_SAMPLER" in runner
+    assert "kv-pressure-failure.json" in runner
     assert "MAX_MODEL_LEN" in runner
     assert "--enforce-eager" in runner
     assert "kv-pressure-prefix-cache" in runner
     assert 'export PATH="$python_dir:$PATH"' in runner
+    assert "KV_DTYPES" in matrix
+    assert "auto fp8" in matrix
+    assert "summarize_kv_pressure.py" in matrix
+    assert "late_over_first_ttft" in summary
+    assert "best_median_ttft_ms" in summary
 
 
 def test_next_improvement_doc_tracks_all_five_workstreams():
