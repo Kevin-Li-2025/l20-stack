@@ -33,6 +33,8 @@ def test_multiturn_kv_pressure_uses_streaming_openai_endpoint():
     assert "kv-pressure-failure.json" in runner
     assert "NCU_OUTPUT_PREFIX" in runner
     assert "--section MemoryWorkloadAnalysis" in runner
+    assert "ncu-status.json" in runner
+    assert "ERR_NVGPUCTRPERM" in runner
     assert "MAX_MODEL_LEN" in runner
     assert "--enforce-eager" in runner
     assert "kv-pressure-prefix-cache" in runner

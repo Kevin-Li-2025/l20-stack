@@ -55,6 +55,14 @@ PV, and rescale in the same paged attention kernel boundary.
 Gate: do not enable `should_use_l20_paged_fp8_split_kv` until a real vLLM FP8
 KV-cache ITL run beats the FlashInfer baseline.
 
+External baseline: vLLM's 2026 FP8 KV-cache study frames the expected win as a
+lower decode ITL slope from reduced KV-cache traffic, with reported strong
+results on Hopper/Blackwell paths. The same writeup also calls out fixed
+overheads, model structure, head dimension, sliding-window layers, and
+accumulation/register-pressure tradeoffs as cases where FP8 does not translate
+into end-to-end speed. Our L20 data fits the latter pattern: first-token or
+single-run wins appear, but repeated median TTFT and E2E do not hold up yet.
+
 ## 3. vLLM FlashInfer Sampling Route Hardening
 
 Current entry:
@@ -299,3 +307,12 @@ scripts/run_vllm_l20_kv_pressure_campaign.sh \
 
 Use this to compare BF16/auto and FP8 runs on DRAM throughput, L2 traffic,
 active warps, and long-scoreboard stalls before writing a new kernel.
+
+Current Nsight status: the L20 host has Nsight Compute installed
+(`/usr/local/cuda-13.0/bin/ncu`), but profiling vLLM attention kernels currently
+fails with `ERR_NVGPUCTRPERM`. That means the user can run the serving workload,
+but cannot read GPU performance counters such as DRAM bytes, L2 sectors, active
+warps, or long-scoreboard stalls. The campaign writes `ncu-status.json` whenever
+`NCU_OUTPUT_PREFIX` is set, so this blocker is explicit. A valid Nsight diagnosis
+requires an admin to enable GPU performance counters for non-root users or a run
+under an account with counter access.

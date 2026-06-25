@@ -29,6 +29,7 @@ ncu_output_prefix=${NCU_OUTPUT_PREFIX:-}
 ncu_kernel_name=${NCU_KERNEL_NAME:-regex:.*(flashinfer|paged|attention|decode).*}
 ncu_launch_skip=${NCU_LAUNCH_SKIP:-20}
 ncu_launch_count=${NCU_LAUNCH_COUNT:-5}
+ncu_bin=${NCU_BIN:-ncu}
 mkdir -p "$output_dir"
 python_dir=$(dirname "$("$python_bin" -c 'import sys; print(sys.executable)')")
 if [[ -x "$python_dir/vllm" || -x "$python_dir/ninja" ]]; then
@@ -56,9 +57,17 @@ fi
 extra_args=(${extra_vllm_args})
 server_prefix=()
 if [[ -n "$ncu_output_prefix" ]]; then
+  if ! command -v "$ncu_bin" >/dev/null 2>&1; then
+    for candidate in /usr/local/cuda-13.0/bin/ncu /opt/nvidia/nsight-compute/*/ncu; do
+      if [[ -x "$candidate" ]]; then
+        ncu_bin="$candidate"
+        break
+      fi
+    done
+  fi
   mkdir -p "$(dirname "$ncu_output_prefix")"
   server_prefix=(
-    ncu
+    "$ncu_bin"
     --target-processes all
     --kernel-name "$ncu_kernel_name"
     --launch-skip "$ncu_launch_skip"
@@ -100,6 +109,7 @@ payload = {
     "extra_vllm_args": os.environ.get("VLLM_EXTRA_ARGS", ""),
     "ncu_output_prefix": "$ncu_output_prefix",
     "ncu_kernel_name": "$ncu_kernel_name" if "$ncu_output_prefix" else None,
+    "ncu_bin": "$ncu_bin" if "$ncu_output_prefix" else None,
     "ncu_launch_skip": "$ncu_launch_skip" if "$ncu_output_prefix" else None,
     "ncu_launch_count": "$ncu_launch_count" if "$ncu_output_prefix" else None,
 }
@@ -183,3 +193,36 @@ PYTHONPATH="$(pwd)/src:$PYTHONPATH" "$python_bin" \
   --max-tokens "$max_tokens" \
   --temperature "$temperature" \
   --output "$output_dir/kv-pressure-prefix-cache-${prefix_caching}.json"
+
+if [[ -n "$ncu_output_prefix" ]]; then
+  "$python_bin" - "$output_dir" "$ncu_output_prefix" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+output_dir = Path(sys.argv[1])
+prefix = Path(sys.argv[2])
+log_text = (output_dir / "server.log").read_text(encoding="utf-8", errors="replace")
+report_path = prefix.with_suffix(".ncu-rep")
+status = "ok" if report_path.exists() else "missing_report"
+reason = None
+if "ERR_NVGPUCTRPERM" in log_text:
+    status = "permission_denied"
+    reason = "ERR_NVGPUCTRPERM"
+elif "No kernels were profiled" in log_text:
+    status = "no_kernels_profiled"
+    reason = "kernel_filter_or_launch_window"
+result = {
+    "schema_version": 1,
+    "status": status,
+    "reason": reason,
+    "ncu_output_prefix": str(prefix),
+    "ncu_report_exists": report_path.exists(),
+    "server_log_tail": log_text[-3000:],
+}
+(output_dir / "ncu-status.json").write_text(
+    json.dumps(result, indent=2, sort_keys=True) + "\n",
+    encoding="utf-8",
+)
+PY
+fi
