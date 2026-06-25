@@ -286,6 +286,96 @@ if triton is not None:  # pragma: no cover - requires CUDA
             numerator / denominator,
         )
 
+    @triton.jit
+    def _gqa_decode_attention_tc_partial_kernel(
+        query,
+        key,
+        value,
+        partial_output,
+        partial_max,
+        partial_sum,
+        q_stride_b,
+        q_stride_h,
+        k_stride_b,
+        k_stride_t,
+        k_stride_h,
+        v_stride_b,
+        v_stride_t,
+        v_stride_h,
+        context_length: tl.constexpr,
+        num_q_heads: tl.constexpr,
+        num_kv_heads: tl.constexpr,
+        head_dim: tl.constexpr,
+        SPLIT_SIZE: tl.constexpr,
+        BLOCK_T: tl.constexpr,
+        BLOCK_Q: tl.constexpr,
+    ):
+        split = tl.program_id(0)
+        kv_program = tl.program_id(1)
+        q_group = tl.program_id(2)
+        batch = kv_program // num_kv_heads
+        kv_head = kv_program % num_kv_heads
+        gqa_ratio: tl.constexpr = num_q_heads // num_kv_heads
+        q_offsets = q_group * BLOCK_Q + tl.arange(0, BLOCK_Q)
+        q_mask = q_offsets < gqa_ratio
+        q_heads = kv_head * gqa_ratio + q_offsets
+        dim = tl.arange(0, head_dim)
+        query_values = tl.load(
+            query
+            + batch * q_stride_b
+            + q_heads[:, None] * q_stride_h
+            + dim[None, :],
+            mask=q_mask[:, None],
+            other=0.0,
+        )
+        scale = 1.0 / tl.sqrt(float(head_dim))
+        max_score = tl.full((BLOCK_Q,), -float("inf"), tl.float32)
+        normalizer = tl.zeros((BLOCK_Q,), tl.float32)
+        accumulator = tl.zeros((BLOCK_Q, head_dim), tl.float32)
+        split_start = split * SPLIT_SIZE
+
+        for offset in range(0, SPLIT_SIZE, BLOCK_T):
+            token = split_start + offset + tl.arange(0, BLOCK_T)
+            token_mask = token < tl.minimum(split_start + SPLIT_SIZE, context_length)
+            keys = tl.load(
+                key
+                + batch * k_stride_b
+                + token[:, None] * k_stride_t
+                + kv_head * k_stride_h
+                + dim[None, :],
+                mask=token_mask[:, None],
+                other=0.0,
+            )
+            scores = tl.dot(query_values, tl.trans(keys)) * scale
+            scores = tl.where(q_mask[:, None] & token_mask[None, :], scores, -float("inf"))
+            tile_max = tl.max(scores, axis=1)
+            next_max = tl.maximum(max_score, tile_max)
+            old_scale = tl.exp(max_score - next_max)
+            probabilities = tl.exp(scores - next_max[:, None])
+            values = tl.load(
+                value
+                + batch * v_stride_b
+                + token[:, None] * v_stride_t
+                + kv_head * v_stride_h
+                + dim[None, :],
+                mask=token_mask[:, None],
+                other=0.0,
+            )
+            accumulator = accumulator * old_scale[:, None] + tl.dot(
+                probabilities.to(values.dtype), values
+            )
+            normalizer = normalizer * old_scale + tl.sum(probabilities, axis=1)
+            max_score = next_max
+
+        partial_base = (batch * num_q_heads + q_heads) * tl.num_programs(0) + split
+        tl.store(
+            partial_output + partial_base[:, None] * head_dim + dim[None, :],
+            accumulator,
+            mask=q_mask[:, None],
+        )
+        tl.store(partial_max + partial_base, max_score, mask=q_mask)
+        tl.store(partial_sum + partial_base, normalizer, mask=q_mask)
+
 
 def gqa_decode_attention(query, key, value):
     """Run single-token contiguous-cache GQA attention.
@@ -389,6 +479,82 @@ def gqa_decode_attention_split_kv(
         head_dim=head_dim,
         SPLIT_SIZE=split_size,
         BLOCK_T=block_t,
+        num_warps=num_warps,
+        num_stages=1,
+    )
+    _gqa_decode_attention_reduce_kernel[(batch * num_q_heads,)](
+        partial_output,
+        partial_max,
+        partial_sum,
+        output,
+        output.stride(0),
+        output.stride(1),
+        num_q_heads=num_q_heads,
+        head_dim=head_dim,
+        NUM_SPLITS=num_splits,
+        num_warps=4,
+        num_stages=1,
+    )
+    return output
+
+
+def gqa_decode_attention_split_kv_tensor_core_candidate(
+    query,
+    key,
+    value,
+    split_size: int = 512,
+    block_t: int = 64,
+    block_q: int = 2,
+    num_warps: int = 4,
+):
+    """Experimental split-KV decode attention that groups Q heads for tl.dot.
+
+    This path is intentionally not used by dispatch. It exists to measure
+    whether grouped-Q Tensor-Core tiling is viable on L20 before replacing the
+    scalar split-KV path.
+    """
+    if torch is None or triton is None:
+        raise RuntimeError("requires PyTorch and Triton")
+    batch, context_length, num_q_heads, num_kv_heads, head_dim, num_splits = (
+        _validate_split_kv_args(query, key, value, split_size, block_t, num_warps)
+    )
+    gqa_ratio = num_q_heads // num_kv_heads
+    if block_q not in {1, 2, 4, 8, 16}:
+        raise ValueError("block_q must be one of 1, 2, 4, 8, 16")
+    if block_q > gqa_ratio:
+        raise ValueError("block_q must not exceed the GQA ratio")
+    q_groups = triton.cdiv(gqa_ratio, block_q)
+    partial_shape = (batch, num_q_heads, num_splits)
+    partial_output = torch.empty(
+        (*partial_shape, head_dim), device=query.device, dtype=torch.float32
+    )
+    partial_max = torch.empty(partial_shape, device=query.device, dtype=torch.float32)
+    partial_sum = torch.empty_like(partial_max)
+    output = torch.empty_like(query)
+    _gqa_decode_attention_tc_partial_kernel[
+        (num_splits, batch * num_kv_heads, q_groups)
+    ](
+        query,
+        key,
+        value,
+        partial_output,
+        partial_max,
+        partial_sum,
+        query.stride(0),
+        query.stride(1),
+        key.stride(0),
+        key.stride(1),
+        key.stride(2),
+        value.stride(0),
+        value.stride(1),
+        value.stride(2),
+        context_length=context_length,
+        num_q_heads=num_q_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+        SPLIT_SIZE=split_size,
+        BLOCK_T=block_t,
+        BLOCK_Q=block_q,
         num_warps=num_warps,
         num_stages=1,
     )

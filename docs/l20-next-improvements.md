@@ -353,3 +353,45 @@ still scalar/LSU dominated and does not use Tensor Cores. The next serious
 kernel implementation should either introduce a Tensor-Core tiled QK/PV path
 for shapes where occupancy survives, or reduce register pressure enough to raise
 resident warps before trying more FP8/4-bit KV-cache variants.
+
+Tensor-Core candidate follow-up:
+
+```text
+benchmarks/results/l20-decode-attention-tc/smoke-b1-c512.json
+batch=1, context=512, q_heads=16, kv_heads=8
+scalar split-KV: 0.0922 ms
+grouped-Q tl.dot candidate: 0.0850 ms, correct, 1.08x
+
+benchmarks/results/l20-decode-attention-tc/b1-c4096-v1.json
+batch=1, context=4096
+best scalar split-KV: 0.0758 ms
+best grouped-Q tl.dot candidate: 0.0804 ms, correct, 0.94x
+
+benchmarks/results/l20-decode-attention-tc/b16-c4096-v1.json
+batch=16, context=4096
+best scalar split-KV: 0.4214 ms
+best grouped-Q tl.dot candidate: 0.4285 ms, correct, 0.98x
+```
+
+The candidate proves that grouped Q heads can trigger Tensor Cores on L20, but
+the current tile is not a dispatch win. Nsight for the candidate:
+
+```text
+benchmarks/results/l20-decode-attention-tc-ncu/b1-c4096-tc-v1/profile.json
+_gqa_decode_attention_tc_partial_kernel, batch=1, context=4096
+duration 32.03 us, DRAM 586.32 GB/s, L2 hit 1.77%
+active warps 8.33%, reg/thread 150, Tensor pipe v2 12.47%
+```
+
+Compared with the scalar partial kernel, the tensor-core candidate reduces
+partial-kernel time from 47.68 us to 32.03 us and raises DRAM throughput from
+405.81 to 586.32 GB/s. The cost is severe: registers rise from 72 to 150,
+active warps fall from 11.77% to 8.33%, and L2 hit rate collapses from 50.50%
+to 1.77%. This explains why the full split+reduce latency does not improve.
+
+Gate: keep `gqa_decode_attention_split_kv_tensor_core_candidate` experimental
+only. The next implementation should reduce the candidate's register/shared
+memory footprint before expanding it, for example by splitting QK and PV tiling
+or lowering the live `(BLOCK_Q, head_dim)` accumulator pressure. Do not wire this
+path into vLLM dispatch until it beats scalar split-KV on both b1/c4096 and
+b16/c4096 with stable p50/p90.

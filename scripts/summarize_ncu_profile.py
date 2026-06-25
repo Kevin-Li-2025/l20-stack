@@ -20,6 +20,14 @@ METRIC_ALIASES = {
     "dram_pct": ["dram__throughput.avg.pct_of_peak_sustained_elapsed"],
     "l2_pct": ["lts__throughput.avg.pct_of_peak_sustained_elapsed"],
     "sm_pct": ["sm__throughput.avg.pct_of_peak_sustained_elapsed"],
+    "tensor_pipe_pct": [
+        "sm__pipe_tensor_cycles_active.avg.pct_of_peak_sustained_elapsed",
+        "sm__pipe_tensor_cycles_active.sum.pct_of_peak_sustained_elapsed",
+    ],
+    "tensor_pipe_v2_pct": [
+        "sm__pipe_tensor_cycles_active_v2.avg.pct_of_peak_sustained_elapsed",
+        "sm__pipe_tensor_cycles_active_v2.sum.pct_of_peak_sustained_elapsed",
+    ],
     "active_warps_pct": [
         "sm__warps_active.avg.pct_of_peak_sustained_active",
         "sm__warps_active.avg.pct_of_peak_sustained_elapsed",
@@ -238,6 +246,8 @@ def summarize_kernel(kernel, metrics):
         "l2_sector_hit_rate_pct": extracted["l2_sector_hit_rate_pct"],
         "l1_sector_hit_rate_pct": extracted["l1_sector_hit_rate_pct"],
         "sm_throughput_utilization_pct": extracted["sm_pct"],
+        "tensor_pipe_utilization_pct": extracted["tensor_pipe_pct"],
+        "tensor_pipe_v2_utilization_pct": extracted["tensor_pipe_v2_pct"],
         "active_warps_pct": extracted["active_warps_pct"],
         "registers_per_thread": extracted["registers_per_thread"],
         "waves_per_sm": extracted["waves_per_sm"],
@@ -254,8 +264,8 @@ def render_markdown(summary):
     lines = [
         "# Nsight Roofline Summary",
         "",
-        "| Kernel | AI FLOP/B | Roofline | DRAM GB/s | DRAM % | L2 % | L1 hit % | SM % | Active warps % | Reg/thread | Long scoreboard % | Sector excess |",
-        "|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Kernel | AI FLOP/B | Roofline | DRAM GB/s | DRAM % | L2 % | L1 hit % | SM % | Tensor % | Active warps % | Reg/thread | Long scoreboard % | Sector excess |",
+        "|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for kernel in summary["kernels"]:
 
@@ -267,7 +277,7 @@ def render_markdown(summary):
             return f"{value:.{digits}f}"
 
         lines.append(
-            "| {name} | {ai} | {roofline} | {gbps} | {dram} | {l2} | {l1hit} | {sm} | {warps} | {regs} | {long} | {sector} |".format(
+            "| {name} | {ai} | {roofline} | {gbps} | {dram} | {l2} | {l1hit} | {sm} | {tensor} | {warps} | {regs} | {long} | {sector} |".format(
                 name=kernel["kernel_name"],
                 ai=fmt(kernel["arithmetic_intensity_flops_per_byte"]),
                 roofline=kernel["roofline_class"] or "n/a",
@@ -276,6 +286,7 @@ def render_markdown(summary):
                 l2=fmt(kernel["l2_throughput_utilization_pct"]),
                 l1hit=fmt(kernel["l1_sector_hit_rate_pct"]),
                 sm=fmt(kernel["sm_throughput_utilization_pct"]),
+                tensor=fmt(kernel["tensor_pipe_v2_utilization_pct"]),
                 warps=fmt(kernel["active_warps_pct"]),
                 regs=fmt(kernel["registers_per_thread"], digits=0),
                 long=fmt(kernel["stall_long_scoreboard_pct"]),

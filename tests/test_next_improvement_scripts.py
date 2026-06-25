@@ -71,3 +71,16 @@ def test_ncu_summary_accepts_cuda_13_stall_metric_names():
     source = Path("scripts/summarize_ncu_profile.py").read_text()
     assert "smsp__average_warps_issue_stalled_long_scoreboard_per_issue_active.ratio" in source
     assert "smsp__average_warps_issue_stalled_short_scoreboard_per_issue_active.ratio" in source
+    assert "tensor_pipe_utilization_pct" in source
+    assert "sm__pipe_tensor_cycles_active_v2" in source
+
+
+def test_decode_attention_has_isolated_tensor_core_candidate():
+    op_source = Path("src/l20_stack/ops/triton_decode_attention.py").read_text()
+    sweep_source = Path("scripts/benchmark_decode_attention_tile_sweep.py").read_text()
+    profile_source = Path("scripts/profile_decode_attention_ncu.py").read_text()
+    assert "gqa_decode_attention_split_kv_tensor_core_candidate" in op_source
+    assert "tl.dot(query_values, tl.trans(keys))" in op_source
+    assert "path\": \"tensor_core_candidate\"" in sweep_source
+    assert "--tensor-core-block-qs" in sweep_source
+    assert '"tensor-core-candidate"' in profile_source
