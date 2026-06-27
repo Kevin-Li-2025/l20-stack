@@ -1,19 +1,36 @@
 # vLLM Upstream Patch
 
-The repository now carries an apply-ready vLLM patch based on tag `v0.23.0`
-and commit `0fc695fc6d1d82e9a5ac6835ac8e4e1c83703665`:
+The current upstream-facing branch is:
+
+```text
+Kevin-Li-2025/vllm:kevin/l20-sm89-paged-decode-rfc
+commit bb1ae10f04f1a80e8389df2b38fdbc7acf66f38e
+base vllm-project/vllm main 9fd00ee006ccd4996bbc756397b039343d2fde94
+```
+
+The corresponding current-main patch is:
+
+```text
+integrations/vllm/vllm-main-l20-paged-decode-rfc.patch
+```
+
+The original `v0.23.0` patch is still checked in as historical validation
+evidence, but it no longer applies cleanly to current `main` because CUDA ops
+have moved from the legacy `_C` extension into `_C_stable_libtorch`:
 
 ```text
 integrations/vllm/vllm-v0.23.0-l20-paged-decode.patch
 ```
 
-The corresponding fork commit is
-`6efb66d4eedf6b410abc8e74db027ee8dca2d8ff`.
+That older fork commit was
+`6efb66d4eedf6b410abc8e74db027ee8dca2d8ff`, based on tag `v0.23.0` /
+`0fc695fc6d1d82e9a5ac6835ac8e4e1c83703665`.
 
 ## Patch Scope
 
-- add the SM89 paged-decode CUDA source to vLLM's `_C` extension;
-- register `_C::l20_paged_decode_split_out`;
+- add the SM89 paged-decode CUDA source to vLLM's stable libtorch extension;
+- register `_C::l20_paged_decode_split_out` through
+  `STABLE_TORCH_LIBRARY` / `_C_stable_libtorch`;
 - expose the op through `vllm._custom_ops` with FakeTensor support;
 - extend native FlashInfer decode metadata with block tables and sequence
   lengths;
@@ -23,7 +40,42 @@ The corresponding fork commit is
 - preserve FlashInfer for every unsupported shape and CUDA Graph capture;
 - add four randomized correctness cases and one FakeTensor test.
 
-## L20 Validation
+## Current Main Rebase Status
+
+Plain `git apply --check` of the `v0.23.0` patch against current `main` failed
+only at the native registration layer:
+
+```text
+CMakeLists.txt
+csrc/ops.h
+csrc/torch_bindings.cpp
+```
+
+The CUDA source, test, `vllm/_custom_ops.py`, and FlashInfer backend hunks still
+applied cleanly or with offset. The new RFC branch adapts those registration
+points to the current stable ABI layout:
+
+```text
+csrc/libtorch_stable/attention/l20_paged_decode.cu
+csrc/libtorch_stable/ops.h
+csrc/libtorch_stable/torch_bindings.cpp
+```
+
+Local verification completed:
+
+```text
+git diff --check
+PYTHONPYCACHEPREFIX=/tmp/vllm-l20-pycache \
+  /usr/bin/python3 -m py_compile \
+  vllm/_custom_ops.py tests/v1/attention/test_l20_paged_decode.py
+```
+
+The branch is ready for an RFC or draft PR. It is not merge-ready until the
+current-main branch is built on the L20 host and the GPU correctness/smoke
+tests are rerun. The first remote L20 retry after the rebase timed out on SSH,
+so CUDA build, Compute Sanitizer, and serving smoke are still pending.
+
+## Historical L20 Validation
 
 The `_C` namespace fragment compiled and registered on the L20. The upstream
 test file passes `5/5` cases, and Qwen2.5-Coder-1.5B completes a real
@@ -43,7 +95,13 @@ The remote host has intermittent GitHub connectivity. CUTLASS and
 vLLM FlashAttention are therefore supplied through `VLLM_CUTLASS_SRC_DIR` and
 `VLLM_FLASH_ATTN_SRC_DIR` instead of being fetched during CMake configuration.
 
-Apply the patch from a clean vLLM `v0.23.0` checkout:
+Apply the current RFC patch from a clean vLLM `main` checkout:
+
+```bash
+git apply /path/to/vllm-main-l20-paged-decode-rfc.patch
+```
+
+Apply the historical patch from a clean vLLM `v0.23.0` checkout:
 
 ```bash
 git apply /path/to/vllm-v0.23.0-l20-paged-decode.patch

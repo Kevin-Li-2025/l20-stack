@@ -34,6 +34,23 @@ def test_upstream_patch_uses_vllm_native_extension():
     assert "DeviceCapability(8, 9)" in patch
 
 
+def test_current_main_upstream_patch_uses_stable_libtorch_extension():
+    patch = Path(
+        "integrations/vllm/vllm-main-l20-paged-decode-rfc.patch"
+    ).read_text()
+    doc = Path("docs/vllm-upstream-patch.md").read_text()
+    assert "bb1ae10f04f1a80e8389df2b38fdbc7acf66f38e" in doc
+    assert "9fd00ee006ccd4996bbc756397b039343d2fde94" in doc
+    assert "kevin/l20-sm89-paged-decode-rfc" in doc
+    assert "csrc/libtorch_stable/attention/l20_paged_decode.cu" in patch
+    assert "STABLE_TORCH_LIBRARY" in patch
+    assert "_C_stable_libtorch" in doc
+    assert "csrc/attention/l20_paged_decode.cu" not in patch
+    assert "torch::stable::Tensor" in patch
+    assert "tests/v1/attention/test_l20_paged_decode.py" in patch
+    assert "DeviceCapability(8, 9)" in patch
+
+
 def test_cuda13_upstream_build_is_reproducible():
     source = Path("scripts/build_vllm_cuda13_l20.sh").read_text()
     assert "CUDAToolkit_ROOT" in source
