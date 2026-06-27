@@ -171,3 +171,40 @@ Hugging Face. The cached random Llama fixture has head size 4, which vLLM's
 Triton attention backend rejects. Llama end-to-end validation therefore remains
 open; kernel-level correctness already covers both NeoX and interleaved RoPE at
 head dimensions 64 and 128.
+
+## FlashInfer Paged Decode RFC Serving Check
+
+A later vLLM RFC branch wired the SM89 L20 paged decode path into real
+FlashInfer serving and compared it with the same server using the path disabled.
+This experiment used Qwen3-1.7B, FP16, one L20, 1024-token random prompts,
+64 generated tokens, 24 prompts at 1 RPS, and the OpenAI `/v1/completions`
+endpoint.
+
+The benchmark had to run with `--enforce-eager` because the experimental path is
+guarded away during CUDA graph capture. It also required CUDA 13 `nvcc` and the
+venv `ninja` binary for FlashInfer sampling JIT. The CLI flag
+`--attention-backend FLASHINFER` was required; an environment variable alone
+selected FlashAttention on this branch.
+
+Mean of two HTTP serving runs:
+
+| Metric | FlashInfer baseline | L20 paged decode | Delta |
+| --- | ---: | ---: | ---: |
+| Output throughput | 61.6918 tok/s | 61.7436 tok/s | +0.084% |
+| Mean TTFT | 75.378 ms | 75.155 ms | -0.295% |
+| Median TTFT | 74.406 ms | 73.431 ms | -1.311% |
+| P99 TTFT | 97.915 ms | 103.940 ms | +6.153% |
+| Mean ITL | 13.621 ms | 13.600 ms | -0.154% |
+| Median ITL | 13.441 ms | 13.209 ms | -1.727% |
+| P99 ITL | 28.687 ms | 22.206 ms | -22.591% |
+
+This confirms that the custom path can execute inside real vLLM FlashInfer
+serving, but it is not a large model-level win at this boundary. Throughput and
+mean ITL are effectively flat; median ITL is slightly better; P99 ITL improved
+in both runs but should be treated as a small-sample signal, not a stable tail
+latency claim. The next useful serving step is CUDA-graph-safe integration or a
+larger fused boundary, not more tuning of this isolated paged decode hook.
+
+Raw artifact:
+
+- `benchmarks/results/l20-vllm-serving-rfc/`
