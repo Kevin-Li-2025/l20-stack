@@ -11,7 +11,8 @@ def test_sampling_campaign_switches_flashinfer_sampler():
     assert "--uninstall" in source
     assert "prewarm_l20_topk_topp_sampling.py" in source
     assert "L20_TRACE" in source
-    assert "--batch 4" in source
+    assert "for prewarm_batch in 2 3 4" in source
+    assert '--batch "$prewarm_batch"' in source
     assert "l20-topk-topp-summary.json" in source
     assert "python_dir=$(dirname" in source
     assert '"$python_dir/ninja"' in source
@@ -60,4 +61,6 @@ def test_l20_prewarm_covers_vllm_rng_sampler_kernel():
     assert "expanded_idx_mapping" in source
     assert "seeds" in source
     assert "positions" in source
+    assert "for dtype in (torch.float16, torch.float32)" in source
+    assert "warmed_dtypes" in source
     assert "vllm_rng_output_shape" in source

@@ -140,12 +140,15 @@ result = {
 PY
     exit 1
   fi
-  PYTHONPATH="$(pwd)/src:$PYTHONPATH" "$python_bin" scripts/prewarm_l20_topk_topp_sampling.py \
-    --batch 4 \
-    --vocab 151936 \
-    --top-k "$top_k" \
-    --top-p "$top_p" \
-    >"$output_dir/l20-prewarm-b4.json" 2>"$output_dir/l20-prewarm-b4.stderr" || true
+  for prewarm_batch in 2 3 4; do
+    PYTHONPATH="$(pwd)/src:$PYTHONPATH" "$python_bin" scripts/prewarm_l20_topk_topp_sampling.py \
+      --batch "$prewarm_batch" \
+      --vocab 151936 \
+      --top-k "$top_k" \
+      --top-p "$top_p" \
+      >"$output_dir/l20-prewarm-b${prewarm_batch}.json" \
+      2>"$output_dir/l20-prewarm-b${prewarm_batch}.stderr" || true
+  done
 fi
 
 compilation_config='{"mode":3,"splitting_ops":[],"cudagraph_mode":"FULL","pass_config":{"fuse_rope_kvcache":false}}'

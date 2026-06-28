@@ -64,7 +64,7 @@ PATCH_POINTS = (
         "path": "vllm/v1/sample/ops/topk_topp_sampler.py",
         "needles": (
             "def forward_cuda(",
-            "return flashinfer_sample(logits.contiguous(), k, p, generators), None",
+            "return flashinfer_sample(",
             "def flashinfer_sample(",
         ),
         "role": "current CUDA sampler path; it does not receive request position or seed tensors",
@@ -144,6 +144,8 @@ def detect_rng_metadata_gap(source: Path) -> dict:
         "sampling_metadata.seeds" in sampler
         or "sampling_metadata.seed" in sampler
         or "sampling_metadata.positions" in sampler
+        or "sampling_metadata.l20_seeds" in sampler
+        or "sampling_metadata.l20_positions" in sampler
     )
     ops_accepts_rng_state = (
         "expanded_idx_mapping" in ops

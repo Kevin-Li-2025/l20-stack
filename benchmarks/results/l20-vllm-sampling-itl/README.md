@@ -66,6 +66,41 @@ The updated boundary scout in
 seed or position tensors. A real state-preserving sampler requires extending
 that metadata path before another serving ITL claim is meaningful.
 
+## Active Metadata Hook
+
+Follow-up artifacts:
+
+- `../l20-vllm-compiled-sampler-scout-v2/`
+- `qwen25-coder-1p5b-l20-vllm-rng-active-smoke-c1c4-i512-o32-r1/`
+- `qwen25-coder-1p5b-l20-vllm-rng-active-prewarm-b1234-c1c4-i512-o32-r1/`
+
+The active vLLM v1 path was extended from `gpu_input_batch.py` through
+`SamplingMetadata`, `sample/sampler.py`, and `TopKTopPSampler.forward_cuda` so
+the custom sampler receives request-index, seed, and position tensors.
+
+Path result:
+
+| Artifact | Eligible events | Fallback events | Main fallback reason |
+| --- | ---: | ---: | --- |
+| active smoke | 773 / 775 | 2 | `outside_l20_profitability_gate` |
+| active prewarm b1-b4 | 773 / 775 | 2 | `outside_l20_profitability_gate` |
+
+Serving result:
+
+| Mode | Concurrency | Median ITL ms | Output tok/s | Notes |
+| --- | ---: | ---: | ---: | --- |
+| L20 active metadata | 1 | 6.985 | 128.9 | first active hook smoke |
+| L20 active metadata | 4 | 7.738 | 388.3 | first active hook smoke |
+| L20 active metadata + b1-b4 prewarm | 1 | 6.871 | 132.1 | fp16/fp32 prewarm |
+| L20 active metadata + b1-b4 prewarm | 4 | 7.632 | 388.2 | fp16/fp32 prewarm |
+
+Conclusion: the metadata blocker is solved. The custom sampler now really runs
+on the active vLLM serving path, but the result is still a serving regression
+versus clean FlashInfer. External prewarm reduces some noise but does not remove
+vLLM's inference-time Triton JIT warning; this needs an in-process warmup,
+compiled sampler integration, or logits-epilogue fusion before another
+performance claim is justified.
+
 ## Path Evidence
 
 The trace run records `4251 / 4253` eligible events, so the negative result is

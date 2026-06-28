@@ -30,45 +30,61 @@ def main() -> int:
     try:
         if not torch.cuda.is_available():
             raise RuntimeError("CUDA is required")
-        logits = torch.randn((args.batch, args.vocab), device="cuda", dtype=torch.float16)
-        uniforms = torch.rand((args.batch,), device="cuda", dtype=torch.float32)
-        uniform_output = topk_topp_sample_from_uniform(
-            logits,
-            uniforms,
-            top_k=args.top_k,
-            top_p=args.top_p,
-        )
         config = topk_topp_sampling_launch_config(
             args.vocab,
             args.top_k,
             batch=args.batch,
         )
         partial_shape = (args.batch, config.blocks_per_row, args.top_k)
-        partial_values = torch.empty(partial_shape, device="cuda", dtype=torch.float32)
-        partial_tokens = torch.empty(partial_shape, device="cuda", dtype=torch.int64)
-        vllm_rng_output = torch.empty((args.batch,), device="cuda", dtype=torch.int64)
-        expanded_idx_mapping = torch.arange(args.batch, device="cuda", dtype=torch.int64)
-        seeds = torch.full((args.batch,), 12345, device="cuda", dtype=torch.int64)
-        positions = torch.arange(args.batch, device="cuda", dtype=torch.int64)
-        topk_topp_sample_with_vllm_rng_out(
-            logits,
-            vllm_rng_output,
-            partial_values=partial_values,
-            partial_tokens=partial_tokens,
-            expanded_idx_mapping=expanded_idx_mapping,
-            seeds=seeds,
-            positions=positions,
-            top_k=args.top_k,
-            top_p=args.top_p,
-        )
+        warmed_dtypes = []
+        for dtype in (torch.float16, torch.float32):
+            logits = torch.randn((args.batch, args.vocab), device="cuda", dtype=dtype)
+            uniforms = torch.rand((args.batch,), device="cuda", dtype=torch.float32)
+            uniform_output = topk_topp_sample_from_uniform(
+                logits,
+                uniforms,
+                top_k=args.top_k,
+                top_p=args.top_p,
+            )
+            partial_values = torch.empty(
+                partial_shape, device="cuda", dtype=torch.float32
+            )
+            partial_tokens = torch.empty(
+                partial_shape, device="cuda", dtype=torch.int64
+            )
+            vllm_rng_output = torch.empty(
+                (args.batch,), device="cuda", dtype=torch.int64
+            )
+            expanded_idx_mapping = torch.arange(
+                args.batch, device="cuda", dtype=torch.int64
+            )
+            seeds = torch.full((args.batch,), 12345, device="cuda", dtype=torch.int64)
+            positions = torch.arange(args.batch, device="cuda", dtype=torch.int64)
+            topk_topp_sample_with_vllm_rng_out(
+                logits,
+                vllm_rng_output,
+                partial_values=partial_values,
+                partial_tokens=partial_tokens,
+                expanded_idx_mapping=expanded_idx_mapping,
+                seeds=seeds,
+                positions=positions,
+                top_k=args.top_k,
+                top_p=args.top_p,
+            )
+            warmed_dtypes.append(
+                {
+                    "logits_dtype": str(dtype),
+                    "uniform_output_shape": list(uniform_output.shape),
+                    "uniform_output_dtype": str(uniform_output.dtype),
+                    "vllm_rng_output_shape": list(vllm_rng_output.shape),
+                    "vllm_rng_output_dtype": str(vllm_rng_output.dtype),
+                }
+            )
         torch.cuda.synchronize()
         result = {
             "schema_version": 1,
             "hardware": torch.cuda.get_device_name(),
-            "uniform_output_shape": list(uniform_output.shape),
-            "uniform_output_dtype": str(uniform_output.dtype),
-            "vllm_rng_output_shape": list(vllm_rng_output.shape),
-            "vllm_rng_output_dtype": str(vllm_rng_output.dtype),
+            "warmed_dtypes": warmed_dtypes,
             "status": "ok",
         }
     except Exception as error:
