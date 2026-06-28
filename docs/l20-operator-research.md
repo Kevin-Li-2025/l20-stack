@@ -151,7 +151,7 @@ stored under `benchmarks/results/l20-*`.
 For the Qwen3 shape (16 Q heads, 8 KV heads, head dimension 128), the combined
 Q/K norm, RoPE, and cache-write kernel is correct against vLLM's
 `fused_qk_norm_rope` followed by `reshape_and_cache_flash`. It reduces latency
-by 1.28x to 1.48x for 1 to 64 tokens. This is the strongest direct integration
+by 1.26x to 1.47x for 1 to 64 tokens. This is the strongest direct integration
 target because its baseline is the production vLLM operation boundary.
 
 The INT4 kernel is correct for the tested 1024 to 4096 dimensions and is 7.88x

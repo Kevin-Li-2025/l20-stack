@@ -113,6 +113,23 @@ def test_paged_decode_rfc_campaign_tracks_o2_and_flashinfer():
     assert "AttentionBackendEnum.FLASHINFER" in summary
 
 
+def test_paged_decode_rfc_campaign_preserves_compilation_config_json():
+    campaign = Path("scripts/run_vllm_l20_paged_decode_rfc_campaign.sh").read_text()
+    assert "compilation_config=${COMPILATION_CONFIG:-" in campaign
+    assert '--compilation-config "$compilation_config"' in campaign
+    assert '--compilation-config "${COMPILATION_CONFIG:-' not in campaign
+
+
+def test_qk_norm_serving_smoke_compares_o2_fusion_gate():
+    source = Path("scripts/run_vllm_l20_qk_norm_rope_serving_smoke.sh").read_text()
+    assert "enable_qk_norm_rope_fusion" in source
+    assert "qk-off" in source
+    assert "qk-on" in source
+    assert "cudagraph_mode" in source
+    assert "qk-serving-summary.json" in source
+    assert "flashinfer_sampling" in source
+
+
 def test_decode_attention_has_isolated_tensor_core_candidate():
     op_source = Path("src/l20_stack/ops/triton_decode_attention.py").read_text()
     sweep_source = Path("scripts/benchmark_decode_attention_tile_sweep.py").read_text()

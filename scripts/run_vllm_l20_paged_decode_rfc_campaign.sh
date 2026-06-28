@@ -40,6 +40,7 @@ attention_backend=${ATTENTION_BACKEND:-FLASHINFER}
 python_bin=${PYTHON:-python}
 trace=${TRACE:-0}
 extra_vllm_args=${VLLM_EXTRA_ARGS:-}
+compilation_config=${COMPILATION_CONFIG:-'{"mode":3,"cudagraph_mode":"FULL"}'}
 mkdir -p "$output_dir"
 output_dir=$(cd "$output_dir" && pwd)
 
@@ -74,7 +75,7 @@ server_args=(
 if [[ "$execution_mode" == "eager" ]]; then
   server_args+=(--enforce-eager)
 else
-  server_args+=(--compilation-config "${COMPILATION_CONFIG:-{\"mode\":3,\"cudagraph_mode\":\"FULL\"}}")
+  server_args+=(--compilation-config "$compilation_config")
 fi
 if [[ -n "$extra_vllm_args" ]]; then
   # shellcheck disable=SC2206

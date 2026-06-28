@@ -27,16 +27,37 @@ Qwen3-style shapes.
 L20 result so far:
 
 ```text
-benchmarks/results/l20-qk-norm-rope-kv/qwen3-next-v1.json
-tokens 1:  0.00920 ms baseline -> 0.00699 ms fused, 1.32x, correct
-tokens 8:  0.00961 ms baseline -> 0.00735 ms fused, 1.31x, correct
-tokens 16: 0.00992 ms baseline -> 0.00722 ms fused, 1.37x, correct
-tokens 32: 0.01036 ms baseline -> 0.00757 ms fused, 1.37x, correct
-tokens 64: 0.01147 ms baseline -> 0.00891 ms fused, 1.29x, correct
+benchmarks/results/l20-qk-norm-rope-kv/qwen3-next-v2.json
+tokens 1:  0.00939 ms baseline -> 0.00639 ms fused, 1.47x, correct
+tokens 8:  0.00974 ms baseline -> 0.00667 ms fused, 1.46x, correct
+tokens 16: 0.00993 ms baseline -> 0.00770 ms fused, 1.29x, correct
+tokens 32: 0.01054 ms baseline -> 0.00808 ms fused, 1.30x, correct
+tokens 64: 0.01165 ms baseline -> 0.00926 ms fused, 1.26x, correct
 ```
 
 This is a real low-token microbenchmark win on L20. It is not yet an end-to-end
 ITL claim; the next gate is a vLLM decode run with the fused path enabled.
+
+A first O2 serving smoke with vLLM's native `enable_qk_norm_rope_fusion` gate
+enabled on Qwen3-0.6B produced the following paired result:
+
+```text
+benchmarks/results/l20-qk-norm-rope-serving/qwen3-0p6b-o2-smoke-v1/
+output throughput: +0.007%
+mean ITL:           -3.339%
+median ITL:         -2.765%
+p99 ITL:            -6.884%
+mean TTFT:          +6.983%
+```
+
+This smoke shows that the Q/K norm + RoPE boundary can move real decode ITL
+under O2/CUDA graph settings, but it is not yet the L20 three-way fused kernel.
+The current compiler-pass gap is structural: vLLM has one pass for Q/K
+RMSNorm+RoPE and another pass for RoPE+KV cache update, and these pattern
+replacements do not compose into a single side-effecting Q/K norm + Q/K RoPE +
+KV write op. The upstreamable implementation should add a custom op following
+the `unified_kv_cache_update` dependency style, then register a single pattern
+that matches `qkv -> split -> q/k norm -> rotary -> attention cache update`.
 
 The paged-decode RFC path now has an O2/CUDA graph serving smoke across
 Qwen3-0.6B, Qwen3-1.7B, and Qwen2.5-Coder-1.5B:

@@ -33,6 +33,7 @@ those negative results because they are the useful part of the L20 study.
 | Area | Status | L20 result |
 | --- | --- | --- |
 | RoPE + KV-cache append | Strong kernel win, small serving win | Paged append is 2.37x-7.82x faster than FlashInfer/vLLM write-path baselines on measured cases, but full vLLM ITL improves only about 0.46%-0.72% under the safe gate. |
+| Q/K norm + RoPE + KV write | Promising larger boundary | The L20 fused microkernel is correct and 1.26x-1.47x faster than vLLM's fused QK-norm/RoPE plus cache-write boundary for 1-64 tokens. A first Qwen3-0.6B O2 serving smoke with vLLM's native QK fusion gate shows mean ITL -3.34%, but it needs more runs before becoming a serving claim. |
 | Residual RMSNorm | Shape-gated | Custom fused path is useful only above the measured hidden-size crossover; smaller shapes stay on the baseline path. |
 | GPU sampling | Real serving signal | FlashInfer top-k/top-p sampling improves Qwen2.5-Coder-1.5B ITL by about 2%-6% in the measured c1/c4/c16 regimes. |
 | FP8 KV-cache decode | Correct, not production-ready | Fused FP8 dequant beats materializing K/V, but current CUDA/Triton split-decode kernels are still slower than BF16 predequantized attention, so vLLM dispatch is disabled. |
@@ -88,6 +89,17 @@ FP8 paged decode CUDA experiment:
 PYTHONPATH=src python scripts/benchmark_cuda_paged_fp8_decode.py \
   --output benchmarks/results/l20-cuda-fp8-paged-decode/qwen3.json \
   --batches 8 --contexts 4096 --q-heads 16 --kv-heads 8
+```
+
+Q/K norm + RoPE serving smoke:
+
+```bash
+PYTHON=/home/hhai/venvs/vllm-l20/bin/python \
+PYTHONPATH=/home/hhai/vllm-l20-rfc:/home/hhai/l20-stack \
+scripts/run_vllm_l20_qk_norm_rope_serving_smoke.sh \
+  /home/hhai/models/Qwen3-0.6B qwen3-0p6b \
+  benchmarks/results/l20-qk-norm-rope-serving/qwen3-0p6b-o2-rerun \
+  /home/hhai/vllm-l20-rfc
 ```
 
 Speculative verifier and LongSpec-style tree attention:

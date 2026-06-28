@@ -1,0 +1,39 @@
+{
+  "changes_pct": {
+    "mean_itl_ms": -3.339,
+    "mean_ttft_ms": 6.983,
+    "median_itl_ms": -2.765,
+    "output_throughput": 0.007,
+    "p99_itl_ms": -6.884
+  },
+  "log_evidence": {
+    "qk-off": {
+      "compiled_graph_count": 3,
+      "cudagraph_disabled": false,
+      "qk_phrase_count": 2
+    },
+    "qk-on": {
+      "compiled_graph_count": 3,
+      "cudagraph_disabled": false,
+      "qk_phrase_count": 2
+    }
+  },
+  "rows": {
+    "qk-off": {
+      "mean_itl_ms": 2.6529472845140845,
+      "mean_ttft_ms": 32.96772070461884,
+      "median_itl_ms": 2.760766539722681,
+      "output_throughput": 15.858853442644358,
+      "p99_itl_ms": 3.2515338552184403
+    },
+    "qk-on": {
+      "mean_itl_ms": 2.564353790755073,
+      "mean_ttft_ms": 35.26971864630468,
+      "median_itl_ms": 2.684427425265312,
+      "output_throughput": 15.859904183063067,
+      "p99_itl_ms": 3.0276997899636626
+    }
+  },
+  "schema_version": 1,
+  "summary": "Manual O2 serving smoke captured from the L20 run output. Re-run scripts/run_vllm_l20_qk_norm_rope_serving_smoke.sh to regenerate this file with raw per-run JSON artifacts."
+}

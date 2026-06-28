@@ -236,3 +236,25 @@ write, or FP8 KV dequantization fused inside the attention kernel.
 Raw artifact:
 
 - `benchmarks/results/l20-vllm-paged-decode-o2/`
+
+## Q/K Norm + RoPE Serving Smoke
+
+The larger Q/K norm boundary has two separate artifacts:
+
+- `benchmarks/results/l20-qk-norm-rope-kv/qwen3-next-v2.json` measures the
+  L20 Triton kernel that fuses Q RMSNorm, K RMSNorm, NeoX RoPE, and KV-cache
+  writes. It is correct against vLLM's `fused_qk_norm_rope` followed by
+  `reshape_and_cache_flash`, and reaches 1.26x to 1.47x speedup for 1 to 64
+  tokens on the L20.
+- `benchmarks/results/l20-qk-norm-rope-serving/qwen3-0p6b-o2-smoke-v1/`
+  measures vLLM's native `enable_qk_norm_rope_fusion` gate under O2/CUDA graph
+  settings on Qwen3-0.6B. In a one-run smoke it changed output throughput by
+  +0.007%, mean ITL by -3.339%, median ITL by -2.765%, P99 ITL by -6.884%, and
+  mean TTFT by +6.983%.
+
+This is useful but not a final serving claim for the L20 three-way kernel. The
+current vLLM graph has separate compiler passes for Q/K RMSNorm+RoPE and
+RoPE+KV-cache update. The L20 upstream candidate needs one side-effecting
+custom op, modeled after `torch.ops.vllm.unified_kv_cache_update`, so the graph
+can match and replace the whole `qkv -> q/k norm -> q/k RoPE -> KV write`
+boundary while preserving the dependency into attention.
