@@ -110,6 +110,7 @@ Current entry:
 ```bash
 scripts/run_vllm_l20_sampling_campaign.sh MODEL SERVED_NAME flashinfer OUTPUT_DIR
 scripts/run_vllm_l20_sampling_campaign.sh MODEL SERVED_NAME torch OUTPUT_DIR
+scripts/run_vllm_l20_sampling_campaign.sh MODEL SERVED_NAME l20 OUTPUT_DIR
 ```
 
 Goal: make stochastic serving reliably stay on FlashInfer sampling, including
@@ -172,9 +173,18 @@ The first kernel implementation is intentionally still outside vLLM:
 `scripts/benchmark_l20_topk_topp_sampling.py` compares a self-written L20
 two-stage top-k/top-p sampler against PyTorch, CPU round-trip, and FlashInfer.
 It uses caller-provided GPU uniforms so correctness can be exact before wiring
-the path to vLLM's RNG/Philox state. The gate for a serving patch is simple:
-beat or explain the FlashInfer fused sampler baseline on L20, then connect the
-same algorithm at the traced logits boundary.
+the path to vLLM's RNG/Philox state.
+
+That gate has now run through real serving. The vLLM hook in
+`integrations/vllm/install_l20_topk_topp_sampler.py` reaches the custom path
+for 4251/4253 trace events, but the no-trace performance run regresses median
+ITL by 32.36% at concurrency 1 and 32.06% at concurrency 4 versus clean
+FlashInfer. This rejects the standalone sampler hook as a serving optimization.
+The useful next step is not more standalone top-k tuning; it is either a
+compiled vLLM sampler integration with seed/offset state and CUDA graph capture,
+or a logits/LM-head epilogue that avoids materializing full logits before
+top-k/top-p/multinomial. Artifacts live under
+`benchmarks/results/l20-vllm-sampling-itl/`.
 
 ## 4. Spec Decode Acceptance-Rate Study
 

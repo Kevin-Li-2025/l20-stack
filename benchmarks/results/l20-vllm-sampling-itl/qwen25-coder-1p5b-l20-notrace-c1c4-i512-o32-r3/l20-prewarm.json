@@ -1,0 +1,9 @@
+{
+  "hardware": "NVIDIA L20",
+  "output_dtype": "torch.int64",
+  "output_shape": [
+    1
+  ],
+  "schema_version": 1,
+  "status": "ok"
+}

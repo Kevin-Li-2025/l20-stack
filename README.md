@@ -35,7 +35,7 @@ those negative results because they are the useful part of the L20 study.
 | RoPE + KV-cache append | Strong kernel win, small serving win | Paged append is 2.37x-7.82x faster than FlashInfer/vLLM write-path baselines on measured cases, but full vLLM ITL improves only about 0.46%-0.72% under the safe gate. |
 | Q/K norm + RoPE + KV write | Proven O2 hook, small serving win | The L20 fused microkernel is correct and 1.26x-1.47x faster than vLLM's fused QK-norm/RoPE plus cache-write boundary for 1-64 tokens. With vLLM compile cache disabled, Nsight Systems now captures 1,260 custom kernel instances in a Qwen3-0.6B O2 i512/o16 serving run. Median ITL improves 4.52% in the paired 3-run matrix, but the custom kernel is only 1.6% of GPU kernel time, so the end-to-end win is Amdahl-limited. |
 | Residual RMSNorm | Shape-gated | Custom fused path is useful only above the measured hidden-size crossover; smaller shapes stay on the baseline path. |
-| GPU sampling | Custom L20 win for small decode batch | The self-written two-stage top-k/top-p sampler beats FlashInfer 0.6.12 by 1.51x at batch 1 and 1.17x at batch 4 on Qwen-sized vocab. It loses from batch 8 upward, so the measured dispatch gate is custom for batch <=4 and FlashInfer otherwise. |
+| GPU sampling | Micro win, serving loss | The self-written two-stage top-k/top-p sampler beats FlashInfer 0.6.12 by 1.51x at batch 1 and 1.17x at batch 4 in isolation, but a real Qwen2.5-Coder-1.5B vLLM ITL campaign regresses median ITL by about 32% at concurrency 1 and 4. The standalone hook stays experimental and disabled. |
 | LM-head top-k boundary | Negative but useful | A Qwen2.5-Coder-1.5B-shaped probe shows chunked no-full-logits top-k is still 1.10x-2.28x slower than full logits + `torch.topk`, and the best experimental Triton direct top-1 path is 1.02x slower than full logits top-1. A real win likely needs GEMM epilogue integration, not a standalone replacement kernel. |
 | Serving optimization ceiling | Active gate | NSYS family summaries show GEMM/GEMV reaches 62.10% of GPU kernel time, while standalone sampling reaches only 3.42% and the current custom Q/K/RoPE/KV kernel 1.58%. The next P0 target is a production GEMM/GEMV epilogue or upstream logits boundary, not another isolated sampler or QK microkernel. |
 | FP8 KV-cache decode | Correct, not production-ready | Fused FP8 dequant beats materializing K/V, but current CUDA/Triton split-decode kernels are still slower than BF16 predequantized attention, so vLLM dispatch is disabled. |
@@ -219,6 +219,8 @@ larger there than for standalone sampler kernels or another isolated Q/K/RoPE/KV
 microkernel. The trace matrix shows about 94.7% decode eligibility across
 Qwen3-0.6B, Qwen3-1.7B, and Qwen2.5-Coder-1.5B. The current kernel step is
 `scripts/benchmark_l20_topk_topp_sampling.py`, a narrow L20 two-stage
-top-k/top-p sampler prototype. It must beat or explain the FlashInfer baseline
-before any serving integration claim. P1 work is then the vLLM logits-boundary
-integration and CUDA graph/launch/memcpy reduction around the sampler boundary.
+top-k/top-p sampler prototype. It wins as a microbenchmark but loses real vLLM
+serving in `benchmarks/results/l20-vllm-sampling-itl/`, because the standalone
+hook adds RNG, Python gate, and uncaptured Triton launches. P1 work should move
+to a compiled sampler/logits epilogue boundary instead of enabling this hook by
+default.

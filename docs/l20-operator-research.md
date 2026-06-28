@@ -532,15 +532,47 @@ and avoid CPU-side sampling fallbacks.
 
 The first vLLM serving pass now tests that integration boundary directly.
 `scripts/run_vllm_l20_sampling_campaign.sh` starts vLLM with either
-`VLLM_USE_FLASHINFER_SAMPLER=0` or `1`, uses local
+`VLLM_USE_FLASHINFER_SAMPLER=0`, `1`, or the opt-in `l20` sampler hook, uses local
 `/home/hhai/models/Qwen2.5-Coder-1.5B-Instruct`, and sends stochastic
 `temperature=0.8`, `top_p=0.9`, `top_k=50` requests through
 `vllm bench serve`. The FlashInfer path must export CUDA 13 for the server
 process too, not only for a prewarm subprocess; otherwise vLLM's engine process
 falls back to `/usr/bin/nvcc` and reproduces the same
 `BlockAdjacentDifference::FlagHeads` compile failure. The campaign script now
-exports `CUDA_HOME`, `CUDACXX`, and `PATH` before launching the server and then
-records a log scan with `scripts/inspect_vllm_sampling_path.py`.
+exports `CUDA_HOME`, `CUDACXX`, and `PATH` before launching the server, controls
+`--generation-config vllm`, and then records a log scan with
+`scripts/inspect_vllm_sampling_path.py`.
+
+The self-written L20 sampler was then wired into vLLM through
+`integrations/vllm/install_l20_topk_topp_sampler.py`. This patches the
+FlashInfer top-k/top-p sampler boundary and uses the custom Triton path only
+when the measured profitability gate says batch <= 4, vocab <= 262144,
+`top_k <= 64`, and homogeneous top-k/top-p params. A trace-enabled proof run
+recorded 4251 eligible events out of 4253, so the serving result below is not a
+fallback artifact.
+
+Real serving does not preserve the microbenchmark win. Qwen2.5-Coder-1.5B,
+input 512, output 32, 32 prompts, 3 runs, FlashInfer attention:
+
+| mode | concurrency | median ITL | mean ITL | output tok/s | median TTFT |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| FlashInfer clean | 1 | 5.060 ms | 5.037 ms | 171.0 | 29.0 ms |
+| L20 no-trace | 1 | 6.697 ms | 6.707 ms | 133.9 | 36.0 ms |
+| FlashInfer clean | 4 | 5.721 ms | 6.042 ms | 512.4 | 69.7 ms |
+| L20 no-trace | 4 | 7.555 ms | 7.593 ms | 400.0 | 89.0 ms |
+
+Against clean FlashInfer, the no-trace custom hook regresses median ITL by
+32.36% at concurrency 1 and 32.06% at concurrency 4, while output throughput
+drops about 21.7%-21.9%. The result identifies the missing integration work:
+the serving hook adds random-uniform generation, Python gate/scalar checks, and
+two standalone Triton launches outside vLLM's compiled sampler/CUDA graph. This
+is why the standalone hook remains experimental and disabled. Future sampler
+work should target the compiled sampler/logits epilogue boundary rather than
+enabling this standalone replacement. Artifacts:
+`benchmarks/results/l20-vllm-sampling-itl/qwen25-coder-1p5b-summary.json`,
+`benchmarks/results/l20-vllm-sampling-itl/qwen25-coder-1p5b-flashinfer-clean-c1c4-i512-o32-r3/`,
+and
+`benchmarks/results/l20-vllm-sampling-itl/qwen25-coder-1p5b-l20-notrace-c1c4-i512-o32-r3/`.
 
 On L20 with vLLM 0.23.1rc1, FlashInfer attention, prefix caching disabled,
 input length 512, output length 32, and 24 requests per row:

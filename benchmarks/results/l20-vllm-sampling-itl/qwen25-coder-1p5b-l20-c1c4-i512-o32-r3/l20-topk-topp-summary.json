@@ -1,0 +1,17 @@
+{
+  "eligible_events": 4251,
+  "eligible_fraction": 0.9995297437103221,
+  "fallback_events": 2,
+  "logits_shape_counts": {
+    "1x151936": 3387,
+    "256x151936": 2,
+    "2x151936": 3,
+    "3x151936": 117,
+    "4x151936": 744
+  },
+  "reason_counts": {
+    "outside_l20_profitability_gate": 2
+  },
+  "schema_version": 1,
+  "total_events": 4253
+}
