@@ -151,8 +151,12 @@ def test_qk_norm_rope_kv_has_serving_nsys_timeline_entrypoint():
 
 def test_sampling_has_serving_nsys_timeline_entrypoint():
     source = Path("scripts/run_vllm_l20_sampling_nsys_timeline.sh").read_text()
-    assert "SAMPLER_MODE must be flashinfer or torch" in source
+    assert "SAMPLER_MODE must be flashinfer, torch, or l20" in source
     assert "VLLM_USE_FLASHINFER_SAMPLER" in source
+    assert "VLLM_L20_TOPK_TOPP_SAMPLER" in source
+    assert "VLLM_L20_TOPK_TOPP_SAMPLER_TRACE" in source
+    assert "install_l20_topk_topp_sampler.py" in source
+    assert "prewarm_l20_topk_topp_sampling.py" in source
     assert "configure_flashinfer_cuda13_env" in source
     assert "prewarm_flashinfer_sampling.py" in source
     assert "--temperature" in source
@@ -163,10 +167,14 @@ def test_sampling_has_serving_nsys_timeline_entrypoint():
     assert "cuda_gpu_kern_sum" in source
     assert "cuda_gpu_trace" in source
     assert "inspect_vllm_sampling_path.py" in source
+    assert "summarize_nsys_kernel_families.py" in source
     assert "--match-label sampler" in source
     assert "--match-kernel gumbel" in source
+    assert "--match-kernel _topk_topp_reduce_sample_seed_kernel" in source
+    assert "--match-kernel _topk_topp_partial_kernel" in source
     assert "matched_kernel_instance_count" in source
     assert "REQUIRE_SAMPLER_KERNEL" in source
+    assert "l20-topk-topp-summary.json" in source
 
 
 def test_serving_optimization_ceiling_tracks_next_target():

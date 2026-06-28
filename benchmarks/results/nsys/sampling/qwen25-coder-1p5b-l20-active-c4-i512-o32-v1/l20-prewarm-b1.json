@@ -1,0 +1,29 @@
+{
+  "hardware": "NVIDIA L20",
+  "schema_version": 1,
+  "status": "ok",
+  "warmed_dtypes": [
+    {
+      "logits_dtype": "torch.float16",
+      "uniform_output_dtype": "torch.int64",
+      "uniform_output_shape": [
+        1
+      ],
+      "vllm_rng_output_dtype": "torch.int64",
+      "vllm_rng_output_shape": [
+        1
+      ]
+    },
+    {
+      "logits_dtype": "torch.float32",
+      "uniform_output_dtype": "torch.int64",
+      "uniform_output_shape": [
+        1
+      ],
+      "vllm_rng_output_dtype": "torch.int64",
+      "vllm_rng_output_shape": [
+        1
+      ]
+    }
+  ]
+}

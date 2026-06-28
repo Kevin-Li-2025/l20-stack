@@ -109,7 +109,12 @@ def find_report_csv(input_dir: Path, report: str) -> Path:
 
 
 def classify_kernel(name: str) -> str:
-    if "_l20_" in name or "l20_" in name:
+    if (
+        "_l20_" in name
+        or "l20_" in name
+        or "_topk_topp_partial_kernel" in name
+        or "_topk_topp_reduce_sample_seed_kernel" in name
+    ):
         return "custom_l20"
     if "flashinfer::sampling::" in name:
         return "flashinfer_sampling"

@@ -7,7 +7,7 @@ usage: scripts/run_vllm_l20_sampling_nsys_timeline.sh \
   MODEL SERVED_NAME SAMPLER_MODE OUTPUT_DIR VLLM_SOURCE_DIR
 
 Runs one real vLLM stochastic serving profile under Nsight Systems for sampler
-path evidence. SAMPLER_MODE must be flashinfer or torch.
+path evidence. SAMPLER_MODE must be flashinfer, torch, or l20.
 
 Important environment:
   NSYS_BIN              Optional explicit path to nsys.
@@ -25,8 +25,9 @@ Important environment:
   MAX_MODEL_LEN         vLLM max model length. Defaults to 2048.
   GPU_MEMORY_UTILIZATION Defaults to 0.70.
   L20_NSYS_TMPDIR       Short writable tmpdir. Defaults to $HOME/tmp/l20-nsys.
+  L20_TRACE             Set to 1 to record L20 sampler eligibility trace.
   REQUIRE_SAMPLER_KERNEL Set to 0 to allow zero matched sampler kernels.
-                         Defaults to 1 for flashinfer and 0 for torch.
+                         Defaults to 1 for flashinfer/l20 and 0 for torch.
 EOF
   exit 2
 fi
@@ -39,8 +40,9 @@ vllm_source_dir=$5
 
 case "$sampler_mode" in
   flashinfer) use_flashinfer_sampler=1 ;;
+  l20) use_flashinfer_sampler=1 ;;
   torch) use_flashinfer_sampler=0 ;;
-  *) echo "SAMPLER_MODE must be flashinfer or torch" >&2; exit 2 ;;
+  *) echo "SAMPLER_MODE must be flashinfer, torch, or l20" >&2; exit 2 ;;
 esac
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -59,9 +61,10 @@ max_model_len=${MAX_MODEL_LEN:-2048}
 gpu_memory_utilization=${GPU_MEMORY_UTILIZATION:-0.70}
 attention_backend=${ATTENTION_BACKEND:-FLASHINFER}
 extra_vllm_args=${VLLM_EXTRA_ARGS:-}
+l20_trace=${L20_TRACE:-0}
 require_sampler_kernel=${REQUIRE_SAMPLER_KERNEL:-}
 if [[ -z "$require_sampler_kernel" ]]; then
-  if [[ "$sampler_mode" == "flashinfer" ]]; then
+  if [[ "$sampler_mode" == "flashinfer" || "$sampler_mode" == "l20" ]]; then
     require_sampler_kernel=1
   else
     require_sampler_kernel=0
@@ -112,7 +115,7 @@ python_dir=$(dirname "$("$python_bin" -c 'import sys; print(sys.executable)')")
 export PATH="$python_dir:$PATH"
 export PYTHONPATH="$vllm_source_dir:$repo_root/src${PYTHONPATH:+:$PYTHONPATH}"
 
-if [[ "$sampler_mode" == "flashinfer" ]]; then
+if [[ "$sampler_mode" == "flashinfer" || "$sampler_mode" == "l20" ]]; then
   eval "$("$python_bin" - <<'PY'
 import shlex
 from l20_stack.flashinfer_env import configure_flashinfer_cuda13_env
@@ -127,6 +130,20 @@ PY
   "$python_bin" "$repo_root/scripts/prewarm_flashinfer_sampling.py" \
     >"$output_dir/flashinfer-prewarm.json" \
     2>"$output_dir/flashinfer-prewarm.stderr"
+fi
+
+if [[ "$sampler_mode" == "l20" ]]; then
+  "$python_bin" "$repo_root/integrations/vllm/install_l20_topk_topp_sampler.py" \
+    --vllm-source "$vllm_source_dir" >/dev/null
+  for prewarm_batch in 1 2 3 4; do
+    "$python_bin" "$repo_root/scripts/prewarm_l20_topk_topp_sampling.py" \
+      --batch "$prewarm_batch" \
+      --vocab 151936 \
+      --top-k "$top_k" \
+      --top-p "$top_p" \
+      >"$output_dir/l20-prewarm-b${prewarm_batch}.json" \
+      2>"$output_dir/l20-prewarm-b${prewarm_batch}.stderr" || true
+  done
 fi
 
 compilation_config='{"mode":3,"splitting_ops":[],"cudagraph_mode":"FULL","pass_config":{"fuse_rope_kvcache":false}}'
@@ -189,14 +206,25 @@ payload = {
     "cuda_home": os.environ.get("CUDA_HOME"),
     "cudacxx": os.environ.get("CUDACXX"),
     "require_sampler_kernel": "$require_sampler_kernel" != "0",
+    "l20_trace": "$l20_trace" == "1",
 }
 open(path, "w", encoding="utf-8").write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
 PY
+
+l20_trace_path=""
+if [[ "$sampler_mode" == "l20" && "$l20_trace" == "1" ]]; then
+  l20_trace_path="$output_dir/l20-topk-topp-trace.jsonl"
+  rm -f "$l20_trace_path"
+fi
 
 cleanup() {
   if [[ -n "${nsys_pid:-}" ]] && kill -0 "$nsys_pid" 2>/dev/null; then
     kill -- "-$nsys_pid" 2>/dev/null || true
     wait "$nsys_pid" 2>/dev/null || true
+  fi
+  if [[ "$sampler_mode" == "l20" ]]; then
+    "$python_bin" "$repo_root/integrations/vllm/install_l20_topk_topp_sampler.py" \
+      --vllm-source "$vllm_source_dir" --uninstall >/dev/null || true
   fi
 }
 trap cleanup EXIT
@@ -246,6 +274,8 @@ setsid "$nsys_bin" profile \
   env \
     PYTHONPATH="$PYTHONPATH" \
     VLLM_USE_FLASHINFER_SAMPLER="$use_flashinfer_sampler" \
+    VLLM_L20_TOPK_TOPP_SAMPLER="$([[ "$sampler_mode" == "l20" ]] && echo 1 || echo 0)" \
+    VLLM_L20_TOPK_TOPP_SAMPLER_TRACE="$l20_trace_path" \
     "$python_bin" -m vllm.entrypoints.cli.main serve "${server_args[@]}" \
   >"$server_log" 2>>"$nsys_log" &
 nsys_pid=$!
@@ -307,6 +337,10 @@ PY
 
 wait "$nsys_pid"
 trap - EXIT
+if [[ "$sampler_mode" == "l20" ]]; then
+  "$python_bin" "$repo_root/integrations/vllm/install_l20_topk_topp_sampler.py" \
+    --vllm-source "$vllm_source_dir" --uninstall >/dev/null || true
+fi
 
 profile_rep="$profile_prefix.nsys-rep"
 if [[ ! -f "$profile_rep" ]]; then
@@ -339,7 +373,45 @@ cd "$repo_root"
   --match-kernel topp \
   --match-kernel topk \
   --match-kernel TopP \
-  --match-kernel TopK
+  --match-kernel TopK \
+  --match-kernel _topk_topp_reduce_sample_seed_kernel \
+  --match-kernel _topk_topp_partial_kernel
+
+"$python_bin" scripts/summarize_nsys_kernel_families.py \
+  --input-dir "$stats_dir" \
+  --output-json "$output_dir/kernel-family-summary.json" \
+  --output-md "$output_dir/kernel-family-summary.md"
+
+if [[ "$sampler_mode" == "l20" && -n "$l20_trace_path" && -f "$l20_trace_path" ]]; then
+  "$python_bin" - "$l20_trace_path" "$output_dir/l20-topk-topp-summary.json" <<'PY'
+import json
+import sys
+from collections import Counter
+from pathlib import Path
+
+trace_path = Path(sys.argv[1])
+out_path = Path(sys.argv[2])
+rows = [json.loads(line) for line in trace_path.read_text().splitlines() if line.strip()]
+eligible = sum(1 for row in rows if row.get("eligible"))
+reasons = Counter(reason for row in rows for reason in row.get("reasons", []))
+shapes = Counter(
+    "x".join(map(str, row.get("metadata", {}).get("logits_shape", [])))
+    for row in rows
+)
+summary = {
+    "schema_version": 1,
+    "total_events": len(rows),
+    "eligible_events": eligible,
+    "fallback_events": len(rows) - eligible,
+    "eligible_fraction": eligible / len(rows) if rows else 0.0,
+    "reason_counts": dict(reasons.most_common()),
+    "logits_shape_counts": {
+        key: value for key, value in shapes.most_common() if key
+    },
+}
+out_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+PY
+fi
 
 "$python_bin" - "$output_dir/timeline-summary.json" "$require_sampler_kernel" <<'PY'
 import json

@@ -87,6 +87,14 @@ class L20KernelProfileTest(unittest.TestCase):
             module.classify_kernel("void flashinfer::sampling::TopPSamplingFromProbKernel"),
             "flashinfer_sampling",
         )
+        self.assertEqual(
+            module.classify_kernel("_topk_topp_partial_kernel"),
+            "custom_l20",
+        )
+        self.assertEqual(
+            module.classify_kernel("_topk_topp_reduce_sample_seed_kernel"),
+            "custom_l20",
+        )
         self.assertEqual(module.classify_kernel("_topk_topp_kernel"), "sampler_other")
         self.assertEqual(module.classify_kernel("_temperature_kernel"), "sampler_other")
         self.assertEqual(module.classify_kernel("_min_p_kernel"), "sampler_other")
