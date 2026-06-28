@@ -16,8 +16,9 @@ Current smoke:
 | Qwen3-0.6B | O2 QK fusion on vs off | +0.007% | -3.339% | -2.765% | -6.884% | +6.983% |
 
 The ITL direction is useful, but this run has only one paired serving sample.
-The result should be treated as a smoke signal until regenerated with more runs
-and raw per-run JSON artifacts.
+The result should be treated as a smoke signal until regenerated with more runs.
+Raw per-run JSON and run configs are checked in under
+`qwen3-0p6b-o2-smoke-v1/qk-off/` and `qwen3-0p6b-o2-smoke-v1/qk-on/`.
 
 Regenerate:
 
