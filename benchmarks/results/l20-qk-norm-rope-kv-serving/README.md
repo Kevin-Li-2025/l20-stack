@@ -28,9 +28,30 @@ failed attempts found and fixed three integration issues:
 - Passing `key=None,value=None` into FlashInfer attention failed; the working
   contract passes fused Q/K/V and only skips the duplicate KV-cache update.
 
-## Mini Matrix
+## O2 Compile-Cache-Disabled R3
 
-Both mini matrices use one NVIDIA L20, vLLM O2, FlashInfer attention and
+`qwen3-0p6b-o2-disable-cache-c1-i512-o16-r3-v1/` is the strongest current
+serving artifact because it is paired with a positive Nsight Systems timeline.
+It uses one NVIDIA L20, vLLM O2, FlashInfer attention and sampling, compile
+cache disabled, input length 512, output length 16, `REQUEST_RATE=inf`, max
+concurrency 1, three runs per variant, and 16 prompts per run.
+
+| Variant | Output tok/s | Mean ITL | Median ITL | P99 ITL | Mean TTFT |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Custom off | 237.246 | 2.657 ms | 2.747 ms | 3.082 ms | 27.282 ms |
+| Custom on | 239.579 | 2.534 ms | 2.623 ms | 3.099 ms | 28.348 ms |
+| Change | +0.983% | -4.649% | -4.516% | +0.557% | +3.907% |
+
+The stable signal is low-single-digit decode latency improvement. TTFT and p99
+latency do not improve in this small matrix, so they should not be described as
+wins. The companion timeline under
+`benchmarks/results/nsys/qk-norm-rope-kv/qwen3-0p6b-o2-disable-cache-c1-i512-o16-v1/`
+shows 1,260 custom kernel instances and a 1.6% GPU-kernel-time share, explaining
+why the serving gain is Amdahl-limited.
+
+## Earlier Mini Matrix
+
+These mini matrices use one NVIDIA L20, vLLM O2, FlashInfer attention and
 sampling, input length 512, output length 32, `REQUEST_RATE=inf`, two runs per
 shape, and 16 prompts per run.
 
@@ -49,16 +70,16 @@ Per-shape notes:
   c1/c4, while mean/median ITL stayed essentially flat.
 
 The result is an env-gated O2 serving comparison, but it is not sufficient proof
-that the custom L20 three-way kernel executed in the production graph.  A later
-serving-level Nsight Systems timeline found zero
-`_l20_qk_norm_rope_kv_kernel` instances for the Qwen3-0.6B O2 path.  Until the
-timeline shows nonzero custom kernel instances, this should be described as a
-promising hook experiment, not an industry-leading serving kernel.
+that the custom L20 three-way kernel executed in the production graph. A later
+compile-cache-disabled timeline fixed that evidence gap for Qwen3-0.6B
+i512/o16, so the older mini matrix should be treated as directional rather than
+the primary proof artifact.
 
 ## Artifacts
 
 - `qwen3-0p6b-o2-mini-v1/qk-rope-kv-serving-summary.json`
 - `qwen3-1p7b-o2-mini-v1/qk-rope-kv-serving-summary.json`
+- `qwen3-0p6b-o2-disable-cache-c1-i512-o16-r3-v1/qk-rope-kv-serving-summary.json`
 - Raw per-run serving reports live under each `qk-kv-off/` and `qk-kv-on/`
   directory.
 
@@ -70,8 +91,13 @@ deterministic kernel-counter profiles are checked in under
 
 Nsight Systems is also available at
 `/opt/nvidia/nsight-compute/2025.3.1/host/target-linux-x64/nsys`.  The first
-serving-level timeline is checked in under
+serving-level zero-hit timeline is checked in under
 `benchmarks/results/nsys/qk-norm-rope-kv/qwen3-0p6b-o2-c1-i512-v1/`.  It
 captured 23,379 CUDA GPU kernel instances, 36,331 kernel launch API calls, 121
-CUDA graph launches, and 0 custom QK/RoPE/KV kernel instances.  That 0-count is
-the current integration blocker.
+CUDA graph launches, and 0 custom QK/RoPE/KV kernel instances.
+
+The corrected compile-cache-disabled timeline is checked in under
+`benchmarks/results/nsys/qk-norm-rope-kv/qwen3-0p6b-o2-disable-cache-c1-i512-o16-v1/`.
+It captured 17,995 CUDA GPU kernel instances, 28,987 kernel launch API calls,
+121 CUDA graph launches, and 1,260 custom QK/RoPE/KV kernel instances. This is
+the current serving-level path proof.
