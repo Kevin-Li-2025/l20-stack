@@ -638,7 +638,13 @@ SM89/L20, TP=1, single-token decode, no prefill, no grammar/structured output,
 no speculative rejection, no logprobs, no min-p, no penalties, no logit bias,
 and no bad-words masking. The hook exists to measure the real serving
 eligibility rate for an LM-head epilogue or upstream logits boundary; it is not
-a performance result by itself.
+a performance result by itself. The campaign entry point is
+`scripts/run_vllm_l20_logits_boundary_trace_campaign.sh`, which records raw
+serving reports, `logits-boundary-trace.jsonl`, `logits-boundary-summary.json`,
+and `campaign-summary.json`. A high decode-path eligible fraction is the gate
+for implementing a production GEMM/GEMV epilogue; a low fraction means the next
+work should expand the safe request surface or pick a different serving
+boundary.
 
 ### V23 Tensor-Core Hypothesis Check
 

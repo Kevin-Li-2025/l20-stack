@@ -20,6 +20,7 @@ IMPORT_LINE = (
 )
 
 IMPORT_MARKER = "from vllm.v1.worker.gpu.structured_outputs import StructuredOutputsWorker\n"
+V2_IMPORT_MARKER = "from vllm.v1.worker.gpu_input_batch import CachedRequestState, InputBatch\n"
 
 SAMPLE_PATCH_POINT = """        sample_hidden_states = hidden_states[input_batch.logits_indices]
         logits = self.model.compute_logits(sample_hidden_states)
@@ -35,6 +36,29 @@ SAMPLE_PATCHED = """        sample_hidden_states = hidden_states[input_batch.log
             sample_hidden_states,
             logits,
         )
+        if grammar_output is not None:
+"""
+
+V2_SAMPLE_PATCH_POINT = """        # Clear ephemeral state.
+        self.execute_model_state = None
+
+        # Apply structured output bitmasks if present.
+        if grammar_output is not None:
+"""
+
+V2_SAMPLE_PATCHED = """        # Clear ephemeral state.
+        self.execute_model_state = None
+
+        maybe_trace_l20_logits_boundary(
+            self,
+            self.input_batch,
+            grammar_output,
+            sample_hidden_states,
+            logits,
+            scheduler_output,
+        )
+
+        # Apply structured output bitmasks if present.
         if grammar_output is not None:
 """
 
@@ -81,27 +105,59 @@ def patch_model_runner(source: str) -> str:
     )
 
 
-def install(package: Path) -> None:
-    model_runner = package / "v1" / "worker" / "gpu" / "model_runner.py"
-    helper = package / "v1" / "worker" / "gpu" / "l20_logits_boundary_trace.py"
-    backup = model_runner.with_suffix(".py.l20-logits-boundary-trace-backup")
-    if not model_runner.exists():
-        raise RuntimeError(f"missing vLLM model_runner.py: {model_runner}")
-    if not backup.exists():
-        shutil.copy2(model_runner, backup)
-    shutil.copy2(Path(__file__).with_name("l20_logits_boundary_trace.py"), helper)
-    model_runner.write_text(
-        patch_model_runner(model_runner.read_text(encoding="utf-8")),
-        encoding="utf-8",
+def patch_gpu_model_runner(source: str) -> str:
+    source = replace_once(
+        source,
+        V2_IMPORT_MARKER,
+        V2_IMPORT_MARKER + IMPORT_LINE,
+        "v2 gpu_model_runner trace import",
+    )
+    return replace_once(
+        source,
+        V2_SAMPLE_PATCH_POINT,
+        V2_SAMPLE_PATCHED,
+        "GPUModelRunner.sample_tokens logits boundary",
     )
 
 
-def uninstall(package: Path) -> None:
-    model_runner = package / "v1" / "worker" / "gpu" / "model_runner.py"
+def _install_target(path: Path, patcher) -> bool:
+    if not path.exists():
+        return False
+    backup = path.with_suffix(".py.l20-logits-boundary-trace-backup")
+    if not backup.exists():
+        shutil.copy2(path, backup)
+    path.write_text(patcher(path.read_text(encoding="utf-8")), encoding="utf-8")
+    return True
+
+
+def _restore_target(path: Path) -> bool:
+    backup = path.with_suffix(".py.l20-logits-boundary-trace-backup")
+    if not backup.exists():
+        return False
+    shutil.copy2(backup, path)
+    return True
+
+
+def install(package: Path) -> None:
+    targets = [
+        (package / "v1" / "worker" / "gpu" / "model_runner.py", patch_model_runner),
+        (package / "v1" / "worker" / "gpu_model_runner.py", patch_gpu_model_runner),
+    ]
     helper = package / "v1" / "worker" / "gpu" / "l20_logits_boundary_trace.py"
-    backup = model_runner.with_suffix(".py.l20-logits-boundary-trace-backup")
-    if backup.exists():
-        shutil.copy2(backup, model_runner)
+    shutil.copy2(Path(__file__).with_name("l20_logits_boundary_trace.py"), helper)
+    patched = [path for path, patcher in targets if _install_target(path, patcher)]
+    if not patched:
+        raise RuntimeError(f"missing supported vLLM model runner under: {package}")
+
+
+def uninstall(package: Path) -> None:
+    targets = [
+        package / "v1" / "worker" / "gpu" / "model_runner.py",
+        package / "v1" / "worker" / "gpu_model_runner.py",
+    ]
+    helper = package / "v1" / "worker" / "gpu" / "l20_logits_boundary_trace.py"
+    for target in targets:
+        _restore_target(target)
     helper.unlink(missing_ok=True)
 
 

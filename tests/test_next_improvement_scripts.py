@@ -177,6 +177,12 @@ def test_serving_optimization_ceiling_tracks_next_target():
     ).read_text()
     trace_helper = Path("integrations/vllm/l20_logits_boundary_trace.py").read_text()
     trace_summary = Path("scripts/summarize_l20_logits_boundary_trace.py").read_text()
+    trace_campaign = Path(
+        "scripts/run_vllm_l20_logits_boundary_trace_campaign.sh"
+    ).read_text()
+    campaign_summary = Path(
+        "scripts/summarize_l20_logits_boundary_campaign.py"
+    ).read_text()
     readme = Path("README.md").read_text()
     doc = Path("docs/l20-next-improvements.md").read_text()
     report = Path("benchmarks/results/l20-serving-optimization-ceiling/README.md").read_text()
@@ -192,6 +198,9 @@ def test_serving_optimization_ceiling_tracks_next_target():
     assert "maybe_trace_l20_logits_boundary" in trace_installer
     assert "VLLM_L20_LOGITS_BOUNDARY_TRACE" in trace_helper
     assert "eligible_fraction" in trace_summary
+    assert "logits-boundary-trace.jsonl" in trace_campaign
+    assert "campaign-summary.json" in trace_campaign
+    assert "serving_report_count" in campaign_summary
     assert "production GEMM/GEMV epilogue" in report
     assert "standalone sampling kernels" in report
     assert "GPUModelRunner.sample" in scout_report
@@ -200,8 +209,10 @@ def test_serving_optimization_ceiling_tracks_next_target():
     assert "benchmarks/results/l20-vllm-logits-boundary-scout/README.md" in readme
     assert "install_l20_logits_boundary_trace.py" in readme
     assert "summarize_l20_logits_boundary_trace.py" in readme
+    assert "run_vllm_l20_logits_boundary_trace_campaign.sh" in readme
     assert "upstream GEMM/GEMV epilogue" in doc
     assert "install_l20_logits_boundary_trace.py" in doc
+    assert "run_vllm_l20_logits_boundary_trace_campaign.sh" in doc
 
 
 def test_paged_decode_rfc_campaign_tracks_o2_and_flashinfer():

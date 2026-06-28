@@ -77,15 +77,80 @@ def _array_min(value: Any) -> float | None:
         return None
 
 
-def _mapped_np(state: Any, field: str, idx_mapping_np: Any) -> Any:
+def _active_num_reqs(input_batch: Any) -> int | None:
+    return _safe_int(getattr(input_batch, "num_reqs", None))
+
+
+def _slice_active(value: Any, num_reqs: int | None) -> Any:
+    if value is None or num_reqs is None:
+        return value
+    try:
+        return value[:num_reqs]
+    except Exception:
+        return value
+
+
+def _mapped_np(
+    state: Any,
+    field: str,
+    idx_mapping_np: Any,
+    num_reqs: int | None = None,
+) -> Any:
     owner = getattr(state, field, None)
     data = getattr(owner, "np", owner)
     if data is None:
         return None
+    if idx_mapping_np is not None:
+        try:
+            return data[idx_mapping_np]
+        except Exception:
+            return data
+    return _slice_active(data, num_reqs)
+
+
+def _active_input_array(input_batch: Any, field: str) -> Any:
+    return _slice_active(
+        getattr(input_batch, field, None),
+        _active_num_reqs(input_batch),
+    )
+
+
+def _active_dict_or_set_any(input_batch: Any, field: str) -> bool:
+    value = getattr(input_batch, field, None)
+    if value is None:
+        return False
+    return bool(value)
+
+
+def _active_array_non_default(input_batch: Any, field: str, default: float) -> bool:
+    values = _active_input_array(input_batch, field)
+    if values is None:
+        return False
     try:
-        return data[idx_mapping_np]
+        return bool((values != default).any())
     except Exception:
-        return data
+        return any(item != default for item in values)
+
+
+def _scheduled_token_metadata(scheduler_output: Any) -> dict[str, int | None]:
+    counts = getattr(scheduler_output, "num_scheduled_tokens", None)
+    total = _safe_int(getattr(scheduler_output, "total_num_scheduled_tokens", None))
+    if not counts:
+        return {
+            "scheduler_num_reqs": None,
+            "scheduler_total_num_scheduled_tokens": total,
+            "scheduler_max_scheduled_tokens": None,
+        }
+    values = list(counts.values())
+    return {
+        "scheduler_num_reqs": len(values),
+        "scheduler_total_num_scheduled_tokens": total
+        if total is not None
+        else sum(_safe_int(value, 0) or 0 for value in values),
+        "scheduler_max_scheduled_tokens": max(
+            (_safe_int(value, 0) or 0) for value in values
+        ),
+    }
 
 
 def _device_reason(tensor: Any) -> str | None:
@@ -112,44 +177,100 @@ def _sampling_metadata(model_runner: Any, input_batch: Any) -> dict[str, float |
     sampler = getattr(model_runner, "sampler", None)
     sampling_states = getattr(sampler, "sampling_states", None)
     idx_mapping_np = getattr(input_batch, "idx_mapping_np", None)
+    num_reqs = _active_num_reqs(input_batch)
     result = {}
-    for field in ("temperature", "top_k", "top_p", "min_p", "num_logprobs"):
-        values = _mapped_np(sampling_states, field, idx_mapping_np)
+    if sampling_states is not None:
+        for field in ("temperature", "top_k", "top_p", "min_p", "num_logprobs"):
+            values = _mapped_np(sampling_states, field, idx_mapping_np, num_reqs)
+            result[f"{field}_min"] = _array_min(values)
+            result[f"{field}_max"] = _array_max(values)
+        return result
+
+    v2_fields = {
+        "temperature": "temperature_cpu",
+        "top_k": "top_k_cpu",
+        "top_p": "top_p_cpu",
+        "min_p": "min_p_cpu",
+    }
+    for field, input_field in v2_fields.items():
+        values = _active_input_array(input_batch, input_field)
         result[f"{field}_min"] = _array_min(values)
         result[f"{field}_max"] = _array_max(values)
+    num_logprobs = getattr(input_batch, "num_logprobs", None)
+    num_logprobs_values = list(num_logprobs.values()) if num_logprobs else []
+    result["num_logprobs_min"] = (
+        float(min(num_logprobs_values)) if num_logprobs_values else 0.0
+    )
+    result["num_logprobs_max"] = (
+        float(max(num_logprobs_values)) if num_logprobs_values else 0.0
+    )
     return result
 
 
 def _sampling_state_reasons(model_runner: Any, input_batch: Any) -> list[str]:
     sampler = getattr(model_runner, "sampler", None)
-    if sampler is None:
+    has_v2_sampling = hasattr(input_batch, "temperature_cpu") and hasattr(
+        input_batch, "top_k_cpu"
+    )
+    if sampler is None and not has_v2_sampling:
         return ["missing_sampler"]
     idx_mapping_np = getattr(input_batch, "idx_mapping_np", None)
+    num_reqs = _active_num_reqs(input_batch)
     reasons = []
 
+    if has_v2_sampling:
+        if _active_dict_or_set_any(input_batch, "num_logprobs"):
+            reasons.append("token_logprobs")
+        if _active_dict_or_set_any(input_batch, "logprob_token_ids"):
+            reasons.append("logprob_token_ids")
+        if _active_array_non_default(input_batch, "frequency_penalties_cpu", 0.0):
+            reasons.append("penalties")
+        if _active_array_non_default(input_batch, "presence_penalties_cpu", 0.0):
+            reasons.append("penalties")
+        if _active_array_non_default(input_batch, "repetition_penalties_cpu", 1.0):
+            reasons.append("penalties")
+        if _active_dict_or_set_any(input_batch, "has_allowed_token_ids") or bool(
+            _array_any(
+                _active_input_array(input_batch, "logits_processing_needs_token_ids")
+            )
+        ):
+            reasons.append("logit_bias_or_min_tokens")
+        if _active_dict_or_set_any(input_batch, "bad_words_token_ids"):
+            reasons.append("bad_words")
+        if _active_dict_or_set_any(input_batch, "generators"):
+            reasons.append("per_request_generators")
+        return sorted(set(reasons))
+
     sampling_states = getattr(sampler, "sampling_states", None)
-    num_logprobs = _mapped_np(sampling_states, "num_logprobs", idx_mapping_np)
+    num_logprobs = _mapped_np(sampling_states, "num_logprobs", idx_mapping_np, num_reqs)
     if _array_max(num_logprobs) not in (-1.0, None):
         reasons.append("token_logprobs")
-    min_p = _mapped_np(sampling_states, "min_p", idx_mapping_np)
+    min_p = _mapped_np(sampling_states, "min_p", idx_mapping_np, num_reqs)
     if _array_max(min_p) not in (0.0, None):
         reasons.append("min_p")
 
     logprob_token_ids_state = getattr(sampler, "logprob_token_ids_state", None)
-    token_ids = _mapped_np(logprob_token_ids_state, "num_token_ids", idx_mapping_np)
+    token_ids = _mapped_np(
+        logprob_token_ids_state,
+        "num_token_ids",
+        idx_mapping_np,
+        num_reqs,
+    )
     if _array_max(token_ids) not in (0.0, None):
         reasons.append("logprob_token_ids")
 
     penalties_state = getattr(sampler, "penalties_state", None)
-    if _array_any(_mapped_np(penalties_state, "use_penalty", idx_mapping_np)):
+    if _array_any(_mapped_np(penalties_state, "use_penalty", idx_mapping_np, num_reqs)):
         reasons.append("penalties")
 
     logit_bias_state = getattr(sampler, "logit_bias_state", None)
-    if _array_any(_mapped_np(logit_bias_state, "use_logit_bias", idx_mapping_np)):
+    if _array_any(
+        _mapped_np(logit_bias_state, "use_logit_bias", idx_mapping_np, num_reqs)
+    ):
         reasons.append("logit_bias_or_min_tokens")
 
     bad_words_state = getattr(sampler, "bad_words_state", None)
-    bad_words = _mapped_np(bad_words_state, "num_bad_words", idx_mapping_np)
+    bad_words = _mapped_np(bad_words_state, "num_bad_words", idx_mapping_np, num_reqs)
     if _array_max(bad_words) not in (0.0, None):
         reasons.append("bad_words")
 
@@ -162,8 +283,10 @@ def l20_logits_boundary_gate(
     grammar_output: Any,
     sample_hidden_states: Any,
     logits: Any,
+    scheduler_output: Any = None,
 ) -> tuple[bool, list[str], dict[str, Any]]:
     """Return whether a future fused logits-boundary path should be eligible."""
+    scheduled = _scheduled_token_metadata(scheduler_output)
     reasons = []
     metadata = {
         "num_reqs": _safe_int(getattr(input_batch, "num_reqs", None)),
@@ -172,6 +295,7 @@ def l20_logits_boundary_gate(
         "hidden_shape": _as_shape(sample_hidden_states),
         "logits_shape": _as_shape(logits),
         "sampling": _sampling_metadata(model_runner, input_batch),
+        **scheduled,
     }
 
     device_reason = _device_reason(sample_hidden_states)
@@ -190,7 +314,18 @@ def l20_logits_boundary_gate(
         reasons.append("spec_decode")
     if _array_any(getattr(input_batch, "is_prefilling_np", None)):
         reasons.append("prefill")
-    if getattr(input_batch, "num_tokens", None) != getattr(input_batch, "num_reqs", None):
+
+    scheduled_total = scheduled["scheduler_total_num_scheduled_tokens"]
+    scheduled_max = scheduled["scheduler_max_scheduled_tokens"]
+    if scheduled_max is not None and scheduled_max > 1:
+        reasons.append("prefill")
+    if scheduled_total is not None and scheduled_total != metadata["num_reqs"]:
+        reasons.append("not_single_token_decode")
+    elif scheduled_total is None and getattr(input_batch, "num_tokens", None) != getattr(
+        input_batch,
+        "num_reqs",
+        None,
+    ):
         reasons.append("not_single_token_decode")
 
     logits_shape = _as_shape(logits)
@@ -210,6 +345,7 @@ def maybe_trace_l20_logits_boundary(
     grammar_output: Any,
     sample_hidden_states: Any,
     logits: Any,
+    scheduler_output: Any = None,
 ) -> None:
     path = os.environ.get(TRACE_ENV)
     if not path:
@@ -224,6 +360,7 @@ def maybe_trace_l20_logits_boundary(
         grammar_output,
         sample_hidden_states,
         logits,
+        scheduler_output,
     )
     event = {
         "ts": time.time(),

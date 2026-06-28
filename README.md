@@ -182,6 +182,8 @@ production paths unless their policy function enables them.
   target onto concrete vLLM source patch points and a conservative first gate.
 - `integrations/vllm/install_l20_logits_boundary_trace.py` installs the
   behavior-preserving trace hook for the first safe logits-boundary gate.
+- `scripts/run_vllm_l20_logits_boundary_trace_campaign.sh` runs the real vLLM
+  serving trace campaign and emits per-shape serving reports plus gate summaries.
 - `docs/l20-operator-research.md` tracks operator-level experiments and raw
   benchmark interpretation.
 - `docs/l20-hybrid-tree-attention.md` covers speculative decoding and
@@ -212,6 +214,7 @@ larger there than for standalone sampler kernels or another isolated Q/K/RoPE/KV
 microkernel. The current implementation step is the trace-only vLLM patch around
 `GPUModelRunner.sample()`: set `VLLM_L20_LOGITS_BOUNDARY_TRACE=/tmp/trace.jsonl`
 to record when a safe logits-boundary fast path would fire, then summarize it
-with `scripts/summarize_l20_logits_boundary_trace.py`. P1 work is CUDA
-graph/launch/memcpy reduction and isolating the
+with `scripts/summarize_l20_logits_boundary_trace.py`, or run the full serving
+campaign via `scripts/run_vllm_l20_logits_boundary_trace_campaign.sh`. P1 work
+is CUDA graph/launch/memcpy reduction and isolating the
 large fill/bookkeeping kernels in vLLM serving timelines.

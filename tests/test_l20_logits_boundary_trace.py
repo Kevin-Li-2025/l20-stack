@@ -82,6 +82,29 @@ class InputBatch:
     is_prefilling_np = np.array([False, False])
 
 
+class SchedulerOutput:
+    num_scheduled_tokens = {"req0": 1, "req1": 1}
+    total_num_scheduled_tokens = 2
+
+
+class V2InputBatch:
+    num_reqs = 2
+    num_draft_tokens = 0
+    has_structured_output_reqs = False
+    temperature_cpu = np.array([0.8, 1.0, 999.0], dtype=np.float32)
+    top_k_cpu = np.array([50, 50, 999], dtype=np.int32)
+    top_p_cpu = np.array([0.9, 1.0, 999.0], dtype=np.float32)
+    frequency_penalties_cpu = np.array([0.0, 0.0, 999.0], dtype=np.float32)
+    presence_penalties_cpu = np.array([0.0, 0.0, 999.0], dtype=np.float32)
+    repetition_penalties_cpu = np.array([1.0, 1.0, 999.0], dtype=np.float32)
+    logits_processing_needs_token_ids = np.array([False, False, True])
+    num_logprobs = {}
+    logprob_token_ids = {}
+    has_allowed_token_ids = set()
+    bad_words_token_ids = {}
+    generators = {}
+
+
 def test_l20_logits_boundary_trace_records_eligible_event(tmp_path, monkeypatch):
     module = load_module(
         "integrations/vllm/l20_logits_boundary_trace.py",
@@ -109,6 +132,75 @@ def test_l20_logits_boundary_trace_records_eligible_event(tmp_path, monkeypatch)
     assert event["metadata"]["sampling"]["temperature_min"] == 0.8
     assert event["metadata"]["sampling"]["top_k_max"] == 50.0
     assert event["metadata"]["sampling"]["top_p_min"] == 0.9
+
+
+def test_l20_logits_boundary_trace_supports_v2_input_batch(tmp_path, monkeypatch):
+    module = load_module(
+        "integrations/vllm/l20_logits_boundary_trace.py",
+        "l20_logits_boundary_trace_v2",
+    )
+    module._TRACE_COUNT = 0
+    trace = tmp_path / "trace.jsonl"
+    monkeypatch.setenv("VLLM_L20_LOGITS_BOUNDARY_TRACE", str(trace))
+    monkeypatch.setenv("VLLM_L20_LOGITS_BOUNDARY_ALLOW_NON_L20", "1")
+
+    module.maybe_trace_l20_logits_boundary(
+        type("V2ModelRunner", (), {"parallel_config": ParallelConfig()})(),
+        V2InputBatch(),
+        None,
+        Tensor((2, 2048)),
+        Tensor((2, 151936)),
+        SchedulerOutput(),
+    )
+
+    event = json.loads(trace.read_text(encoding="utf-8"))
+    assert event["eligible"] is True
+    assert event["reasons"] == []
+    assert event["metadata"]["scheduler_max_scheduled_tokens"] == 1
+    assert event["metadata"]["sampling"]["temperature_max"] == 1.0
+    assert event["metadata"]["sampling"]["top_k_max"] == 50.0
+    assert event["metadata"]["sampling"]["top_p_max"] == 1.0
+
+
+def test_l20_logits_boundary_trace_rejects_v2_prefill_and_processors(
+    tmp_path,
+    monkeypatch,
+):
+    module = load_module(
+        "integrations/vllm/l20_logits_boundary_trace.py",
+        "l20_logits_boundary_trace_v2_reject",
+    )
+    module._TRACE_COUNT = 0
+    batch = V2InputBatch()
+    batch.num_logprobs = {"req0": 1}
+    batch.frequency_penalties_cpu = np.array([0.1, 0.0], dtype=np.float32)
+    trace = tmp_path / "trace.jsonl"
+    scheduler_output = type(
+        "PrefillSchedulerOutput",
+        (),
+        {
+            "num_scheduled_tokens": {"req0": 128, "req1": 1},
+            "total_num_scheduled_tokens": 129,
+        },
+    )()
+    monkeypatch.setenv("VLLM_L20_LOGITS_BOUNDARY_TRACE", str(trace))
+    monkeypatch.setenv("VLLM_L20_LOGITS_BOUNDARY_ALLOW_NON_L20", "1")
+
+    module.maybe_trace_l20_logits_boundary(
+        type("V2ModelRunner", (), {"parallel_config": ParallelConfig()})(),
+        batch,
+        None,
+        Tensor((2, 2048)),
+        Tensor((2, 151936)),
+        scheduler_output,
+    )
+
+    event = json.loads(trace.read_text(encoding="utf-8"))
+    assert event["eligible"] is False
+    assert "prefill" in event["reasons"]
+    assert "not_single_token_decode" in event["reasons"]
+    assert "token_logprobs" in event["reasons"]
+    assert "penalties" in event["reasons"]
 
 
 def test_l20_logits_boundary_trace_records_reject_reasons(tmp_path, monkeypatch):
@@ -155,6 +247,8 @@ def test_install_l20_logits_boundary_trace_patches_and_uninstalls(tmp_path):
     package = tmp_path / "vllm"
     target = package / "v1/worker/gpu/model_runner.py"
     target.parent.mkdir(parents=True)
+    v2_target = package / "v1/worker/gpu_model_runner.py"
+    v2_target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(
         """from vllm.v1.worker.gpu.structured_outputs import StructuredOutputsWorker
 
@@ -168,17 +262,46 @@ class GPUModelRunner:
 """,
         encoding="utf-8",
     )
+    v2_target.write_text(
+        """from vllm.v1.worker.gpu_input_batch import CachedRequestState, InputBatch
+
+class GPUModelRunner:
+    def sample_tokens(self, grammar_output):
+        (
+            scheduler_output,
+            logits,
+            spec_decode_metadata,
+            spec_decode_common_attn_metadata,
+            hidden_states,
+            sample_hidden_states,
+        ) = self.execute_model_state
+        # Clear ephemeral state.
+        self.execute_model_state = None
+
+        # Apply structured output bitmasks if present.
+        if grammar_output is not None:
+            pass
+        return self._sample(logits, spec_decode_metadata)
+""",
+        encoding="utf-8",
+    )
 
     installer.install(package)
     patched = target.read_text(encoding="utf-8")
+    v2_patched = v2_target.read_text(encoding="utf-8")
     assert "maybe_trace_l20_logits_boundary" in patched
+    assert "maybe_trace_l20_logits_boundary" in v2_patched
+    assert "scheduler_output" in v2_patched
     assert (package / "v1/worker/gpu/l20_logits_boundary_trace.py").exists()
     installer.install(package)
     assert target.read_text(encoding="utf-8") == patched
+    assert v2_target.read_text(encoding="utf-8") == v2_patched
 
     installer.uninstall(package)
     restored = target.read_text(encoding="utf-8")
+    v2_restored = v2_target.read_text(encoding="utf-8")
     assert "maybe_trace_l20_logits_boundary" not in restored
+    assert "maybe_trace_l20_logits_boundary" not in v2_restored
     assert not (package / "v1/worker/gpu/l20_logits_boundary_trace.py").exists()
 
 
@@ -216,3 +339,57 @@ def test_l20_logits_boundary_trace_summarizer_counts_reasons_and_shapes(tmp_path
     assert summary["fallback_events"] == 2
     assert summary["reason_counts"] == {"prefill": 2, "token_logprobs": 1}
     assert summary["logits_shape_counts"] == {"4x10": 2, "2x10": 1}
+
+
+def test_l20_logits_boundary_campaign_summarizer_reads_serving_reports(tmp_path):
+    summarizer = load_module(
+        "scripts/summarize_l20_logits_boundary_campaign.py",
+        "summarize_l20_logits_boundary_campaign",
+    )
+    campaign = tmp_path / "campaign"
+    campaign.mkdir()
+    (campaign / "run-config.json").write_text(
+        json.dumps({"model": "Qwen/Qwen3-0.6B"}),
+        encoding="utf-8",
+    )
+    (campaign / "logits-boundary-summary.json").write_text(
+        json.dumps(
+            {
+                "total_events": 10,
+                "eligible_events": 7,
+                "fallback_events": 3,
+                "eligible_fraction": 0.7,
+                "reason_counts": {"prefill": 3},
+            }
+        ),
+        encoding="utf-8",
+    )
+    base_report = {
+        "completed": 4,
+        "failed": 0,
+        "request_throughput": 2.0,
+        "output_throughput": 64.0,
+        "median_ttft_ms": 20.0,
+        "p95_ttft_ms": 30.0,
+        "median_itl_ms": 5.0,
+        "p95_itl_ms": 6.0,
+    }
+    (campaign / "c1-i512-r1.json").write_text(
+        json.dumps(base_report),
+        encoding="utf-8",
+    )
+    second = dict(base_report)
+    second["median_itl_ms"] = 7.0
+    second["output_throughput"] = 60.0
+    (campaign / "c1-i512-r2.json").write_text(
+        json.dumps(second),
+        encoding="utf-8",
+    )
+
+    summary = summarizer.summarize(campaign)
+    assert summary["serving_report_count"] == 2
+    assert summary["trace_summary"]["eligible_fraction"] == 0.7
+    assert summary["shapes"][0]["max_concurrency"] == 1
+    assert summary["shapes"][0]["input_tokens"] == 512
+    assert summary["shapes"][0]["metrics"]["median_itl_ms"] == 6.0
+    assert summary["shapes"][0]["metrics"]["output_throughput"] == 62.0

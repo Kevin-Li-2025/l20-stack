@@ -163,6 +163,10 @@ That trace-only patch is now implemented as
 logits or sampler state. Use
 `scripts/summarize_l20_logits_boundary_trace.py` to turn the serving trace into
 an eligible/fallback breakdown before writing any CUTLASS or Triton epilogue.
+For the full evidence run, use
+`scripts/run_vllm_l20_logits_boundary_trace_campaign.sh`; it installs the trace
+hook into a vLLM source checkout, runs the serving matrix, and emits
+`campaign-summary.json` plus a per-campaign `README.md`.
 
 ## 4. Spec Decode Acceptance-Rate Study
 
