@@ -21,8 +21,14 @@ Important environment:
   MAX_CONCURRENCY       Benchmark max concurrency. Defaults to 1.
   REQUEST_RATE          Benchmark request rate. Defaults to inf.
   EXECUTION_MODE        o2|eager. Defaults to o2.
+  COMPILATION_CUSTOM_OPS Optional whitespace-separated custom_ops list used
+                         when COMPILATION_CONFIG is not set.
+  DISABLE_COMPILE_CACHE Disable vLLM compile cache during capture. Defaults to 1
+                         so stale AOT graphs cannot hide this experimental path.
   L20_NSYS_TMPDIR      Short writable tmpdir. Defaults to $HOME/tmp/l20-nsys.
   ENABLE_LAYERWISE_NVTX Set to 0 to disable vLLM layerwise NVTX. Defaults to 1.
+  REQUIRE_CUSTOM_QK_KERNEL Set to 0 to allow a zero custom-kernel timeline.
+                         Defaults to 1.
   MAX_MODEL_LEN         vLLM max model length. Defaults to 1024.
   GPU_MEMORY_UTILIZATION Defaults to 0.70.
 EOF
@@ -47,9 +53,11 @@ max_model_len=${MAX_MODEL_LEN:-1024}
 gpu_memory_utilization=${GPU_MEMORY_UTILIZATION:-0.70}
 attention_backend=${ATTENTION_BACKEND:-FLASHINFER}
 execution_mode=${EXECUTION_MODE:-o2}
-compilation_config=${COMPILATION_CONFIG:-'{"mode":3,"splitting_ops":[],"cudagraph_mode":"FULL","pass_config":{"enable_qk_norm_rope_fusion":false,"fuse_rope_kvcache":false}}'}
+compilation_custom_ops=${COMPILATION_CUSTOM_OPS:-}
+disable_compile_cache=${DISABLE_COMPILE_CACHE:-1}
 extra_vllm_args=${VLLM_EXTRA_ARGS:-}
 enable_layerwise_nvtx=${ENABLE_LAYERWISE_NVTX:-1}
+require_custom_qk_kernel=${REQUIRE_CUSTOM_QK_KERNEL:-1}
 
 case "$execution_mode" in
   eager|o2) ;;
@@ -100,6 +108,30 @@ python_dir=$(dirname "$("$python_bin" -c 'import sys; print(sys.executable)')")
 export PATH="$python_dir:$PATH"
 export PYTHONPATH="$vllm_source_dir${PYTHONPATH:+:$PYTHONPATH}"
 
+if [[ -n "${COMPILATION_CONFIG:-}" ]]; then
+  compilation_config=$COMPILATION_CONFIG
+else
+  compilation_config=$("$python_bin" - "$compilation_custom_ops" <<'PY'
+import json
+import sys
+
+custom_ops = sys.argv[1].split()
+payload = {
+    "mode": 3,
+    "splitting_ops": [],
+    "cudagraph_mode": "FULL",
+    "pass_config": {
+        "enable_qk_norm_rope_fusion": False,
+        "fuse_rope_kvcache": False,
+    },
+}
+if custom_ops:
+    payload["custom_ops"] = custom_ops
+print(json.dumps(payload, separators=(",", ":")))
+PY
+)
+fi
+
 cuda13_home=${CUDA13_HOME:-"$python_dir/../lib/python3.12/site-packages/nvidia/cu13"}
 if [[ -x "$cuda13_home/bin/nvcc" ]]; then
   export CUDA_HOME="$cuda13_home"
@@ -147,6 +179,7 @@ if [[ -n "$extra_vllm_args" ]]; then
   server_args+=("${extra_args[@]}")
 fi
 
+export L20_COMPILATION_CONFIG_JSON="$compilation_config"
 "$python_bin" - "$output_dir/run-config.json" <<PY
 import json, os, sys
 path = sys.argv[1]
@@ -165,11 +198,16 @@ payload = {
     "gpu_memory_utilization": float("$gpu_memory_utilization"),
     "nsys_bin": "$nsys_bin",
     "nsys_duration_seconds": int("$duration"),
+    "compilation_config": json.loads(os.environ["L20_COMPILATION_CONFIG_JSON"]),
+    "compilation_custom_ops": "$compilation_custom_ops".split(),
+    "disable_compile_cache": "$disable_compile_cache" != "0",
+    "vllm_disable_compile_cache_env": "$disable_compile_cache",
     "tmpdir": os.environ.get("TMPDIR"),
     "cuda_home": os.environ.get("CUDA_HOME"),
     "cudacxx": os.environ.get("CUDACXX"),
     "custom_qk_rope_kv_enabled": True,
     "enable_layerwise_nvtx": "$enable_layerwise_nvtx" != "0",
+    "require_custom_qk_kernel": "$require_custom_qk_kernel" != "0",
     "native_qk_norm_rope_fusion": False,
     "native_rope_kvcache_fusion": False,
 }
@@ -228,6 +266,7 @@ setsid "$nsys_bin" profile \
   --output "$profile_prefix" \
   env \
     PYTHONPATH="$PYTHONPATH" \
+    VLLM_DISABLE_COMPILE_CACHE="$disable_compile_cache" \
     VLLM_L20_QK_ROPE_KV=1 \
     VLLM_L20_QK_ROPE_KV_STRICT=1 \
     VLLM_L20_QK_ROPE_KV_TRACE="$trace_file" \
@@ -312,3 +351,19 @@ cd "$repo_root"
 "$python_bin" scripts/summarize_nsys_timeline.py \
   --input-dir "$stats_dir" \
   --output "$output_dir/timeline-summary.json"
+
+"$python_bin" - "$output_dir/timeline-summary.json" "$require_custom_qk_kernel" <<'PY'
+import json
+import sys
+
+path, require = sys.argv[1], sys.argv[2] != "0"
+summary = json.load(open(path, encoding="utf-8"))
+count = int(summary.get("custom_qk_kernel_instance_count") or 0)
+if require and count <= 0:
+    raise SystemExit(
+        "Nsight Systems captured zero L20 QK/RoPE/KV custom kernel instances; "
+        "refusing to classify this as a custom-kernel serving timeline. Set "
+        "REQUIRE_CUSTOM_QK_KERNEL=0 only when intentionally recording a "
+        "negative integration run."
+    )
+PY

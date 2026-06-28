@@ -1,0 +1,1177 @@
+{
+  "cuda_api_call_count": 61252,
+  "cuda_graph_launch_api_count": 1,
+  "cuda_kernel_instance_count": 14961,
+  "cuda_kernel_launch_api_count": 25833,
+  "cuda_kernel_unique_count": 103,
+  "custom_qk_kernel_instance_count": 1064,
+  "custom_qk_kernel_rows": [
+    {
+      "avg_ns": 3247.5,
+      "instances": 1064,
+      "name": "_l20_qk_norm_rope_kv_kernel",
+      "time_pct": 1.1,
+      "total_time_ns": 3455376.0
+    }
+  ],
+  "files": {
+    "cuda_api_sum": "/home/hhai/l20-stack/benchmarks/results/nsys/qk-norm-rope-kv/qwen3-0p6b-o2-disable-cache-i16-v1/stats/cuda_api_sum_cuda_api_sum.csv",
+    "cuda_gpu_kern_sum": "/home/hhai/l20-stack/benchmarks/results/nsys/qk-norm-rope-kv/qwen3-0p6b-o2-disable-cache-i16-v1/stats/cuda_gpu_kern_sum_cuda_gpu_kern_sum.csv",
+    "cuda_gpu_trace": "/home/hhai/l20-stack/benchmarks/results/nsys/qk-norm-rope-kv/qwen3-0p6b-o2-disable-cache-i16-v1/stats/cuda_gpu_trace_cuda_gpu_trace.csv",
+    "cuda_kern_exec_sum": "/home/hhai/l20-stack/benchmarks/results/nsys/qk-norm-rope-kv/qwen3-0p6b-o2-disable-cache-i16-v1/stats/cuda_kern_exec_sum_cuda_kern_exec_sum.csv",
+    "nvtx_sum": "/home/hhai/l20-stack/benchmarks/results/nsys/qk-norm-rope-kv/qwen3-0p6b-o2-disable-cache-i16-v1/stats/nvtx_sum_nvtx_sum.csv"
+  },
+  "first_cuda_gpu_trace_rows": [
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<int>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 1280.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<int>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 1184.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)2, at::native::FillFunctor<long>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 928.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<int>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 896.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<int>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 1088.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)2, at::native::FillFunctor<long>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 928.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<bool>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 864.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<int>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 960.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<int>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 896.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<int>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 896.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void <unnamed>::elementwise_kernel_with_index<int, at::native::arange_cuda_out(const c10::Scalar &, const c10::Scalar &, const c10::Scalar &, at::Tensor &)::[lambda() (instance 1)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(long) (instance 1)]>(T1, T2, function_traits<T2>::result_type *)",
+      "time_pct": 0.0,
+      "total_time_ns": 896.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::BUnaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float>>, std::array<char *, (unsigned long)2>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 1056.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)2, at::native::FillFunctor<long>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 928.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::elementwise_kernel<(int)128, (int)4, void at::native::gpu_kernel_impl<at::native::<unnamed>::pow_tensor_tensor_kernel(at::TensorIteratorBase &)::[lambda() (instance 1)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(float, float) (instance 1)]>(at::TensorIteratorBase &, const T1 &)::[lambda(int) (instance 1)]>(int, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 2176.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::reciprocal_kernel_cuda(at::TensorIteratorBase &)::[lambda() (instance 1)]::operator ()() const::[lambda() (instance 2)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 1216.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::AUnaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float>>, std::array<char *, (unsigned long)2>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 1056.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void <unnamed>::elementwise_kernel_with_index<int, at::native::arange_cuda_out(const c10::Scalar &, const c10::Scalar &, const c10::Scalar &, at::Tensor &)::[lambda() (instance 1)]::operator ()() const::[lambda() (instance 7)]::operator ()() const::[lambda(long) (instance 1)]>(T1, T2, function_traits<T2>::result_type *)",
+      "time_pct": 0.0,
+      "total_time_ns": 1408.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::elementwise_kernel<(int)128, (int)2, void at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float>>>(at::TensorIteratorBase &, const T1 &)::[lambda(int) (instance 1)]>(int, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 7968.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::cos_kernel_cuda(at::TensorIteratorBase &)::[lambda() (instance 2)]::operator ()() const::[lambda() (instance 2)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 6400.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::sin_kernel_cuda(at::TensorIteratorBase &)::[lambda() (instance 2)]::operator ()() const::[lambda() (instance 2)]::operator ()() const::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 6688.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::<unnamed>::CatArrayBatchedCopy_vectorized<at::native::<unnamed>::OpaqueType<(unsigned int)4>, unsigned int, (int)2, (int)128, (int)1, (int)16, (int)4>(char *, at::native::<unnamed>::CatArrInputTensorMetadata<T1, T2, T4, T5>, at::native::<unnamed>::TensorSizeStride<T2, (unsigned int)4>, int, T2)",
+      "time_pct": 0.0,
+      "total_time_ns": 10976.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::float16_copy_kernel_cuda(at::TensorIteratorBase &)::[lambda(float) (instance 1)], std::array<char *, (unsigned long)2>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 7136.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 416.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 960.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 928.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 864.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 832.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 416.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 416.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 928.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 928.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 864.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 864.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 352.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 928.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 928.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 864.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 864.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 416.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 416.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 928.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 928.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 864.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 832.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 416.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 928.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 928.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 864.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 864.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 544.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 992.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 928.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 864.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 864.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 352.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 352.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "[CUDA memcpy Host-to-Device]",
+      "time_pct": 0.0,
+      "total_time_ns": 384.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 928.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 928.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 864.0
+    },
+    {
+      "avg_ns": 0.0,
+      "instances": 0,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<c10::Half>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 864.0
+    }
+  ],
+  "row_counts": {
+    "cuda_api_sum": 39,
+    "cuda_gpu_kern_sum": 103,
+    "cuda_gpu_trace": 17016,
+    "cuda_kern_exec_sum": 103,
+    "nvtx_sum": 2
+  },
+  "schema_version": 1,
+  "source_dir": "/home/hhai/l20-stack/benchmarks/results/nsys/qk-norm-rope-kv/qwen3-0p6b-o2-disable-cache-i16-v1/stats",
+  "top_cuda_apis_by_time": [
+    {
+      "avg_ns": 4944240.6,
+      "instances": 33,
+      "name": "cuLibraryLoadData",
+      "time_pct": 17.3,
+      "total_time_ns": 163159941.0
+    },
+    {
+      "avg_ns": 70999.5,
+      "instances": 1804,
+      "name": "cudaMemcpyAsync",
+      "time_pct": 13.6,
+      "total_time_ns": 128083102.0
+    },
+    {
+      "avg_ns": 139732.1,
+      "instances": 914,
+      "name": "cudaHostAlloc",
+      "time_pct": 13.5,
+      "total_time_ns": 127715112.0
+    },
+    {
+      "avg_ns": 13657.6,
+      "instances": 8732,
+      "name": "cudaLaunchKernel",
+      "time_pct": 12.6,
+      "total_time_ns": 119258204.0
+    },
+    {
+      "avg_ns": 21510161.8,
+      "instances": 5,
+      "name": "cudaMemGetInfo",
+      "time_pct": 11.4,
+      "total_time_ns": 107550809.0
+    },
+    {
+      "avg_ns": 1931114.1,
+      "instances": 53,
+      "name": "cudaDeviceSynchronize",
+      "time_pct": 10.8,
+      "total_time_ns": 102349049.0
+    },
+    {
+      "avg_ns": 1531249.5,
+      "instances": 35,
+      "name": "cudaGraphInstantiateWithFlags_v11040",
+      "time_pct": 5.7,
+      "total_time_ns": 53593731.0
+    },
+    {
+      "avg_ns": 3265.7,
+      "instances": 12856,
+      "name": "cuLaunchKernel",
+      "time_pct": 4.4,
+      "total_time_ns": 41983316.0
+    },
+    {
+      "avg_ns": 150337.1,
+      "instances": 157,
+      "name": "cudaMalloc",
+      "time_pct": 2.5,
+      "total_time_ns": 23602923.0
+    },
+    {
+      "avg_ns": 5703.4,
+      "instances": 2072,
+      "name": "cudaLaunchKernelExC_v11060",
+      "time_pct": 1.3,
+      "total_time_ns": 11817407.0
+    },
+    {
+      "avg_ns": 17580.1,
+      "instances": 609,
+      "name": "cudaStreamSynchronize",
+      "time_pct": 1.1,
+      "total_time_ns": 10706294.0
+    },
+    {
+      "avg_ns": 4847.5,
+      "instances": 2172,
+      "name": "cuLaunchKernelEx",
+      "time_pct": 1.1,
+      "total_time_ns": 10528756.0
+    },
+    {
+      "avg_ns": 1670.6,
+      "instances": 6132,
+      "name": "cuKernelGetFunction",
+      "time_pct": 1.1,
+      "total_time_ns": 10243943.0
+    },
+    {
+      "avg_ns": 198313.1,
+      "instances": 26,
+      "name": "cuModuleLoadData",
+      "time_pct": 0.5,
+      "total_time_ns": 5156140.0
+    },
+    {
+      "avg_ns": 362263.8,
+      "instances": 11,
+      "name": "cuModuleLoad",
+      "time_pct": 0.4,
+      "total_time_ns": 3984902.0
+    },
+    {
+      "avg_ns": 240138.2,
+      "instances": 16,
+      "name": "cudaFree",
+      "time_pct": 0.4,
+      "total_time_ns": 3842211.0
+    },
+    {
+      "avg_ns": 98555.7,
+      "instances": 35,
+      "name": "cudaGraphDestroy_v10000",
+      "time_pct": 0.4,
+      "total_time_ns": 3449450.0
+    },
+    {
+      "avg_ns": 525.0,
+      "instances": 5645,
+      "name": "cudaStreamIsCapturing_v10000",
+      "time_pct": 0.3,
+      "total_time_ns": 2963621.0
+    },
+    {
+      "avg_ns": 1619.9,
+      "instances": 1650,
+      "name": "cudaEventRecordWithFlags_v11010",
+      "time_pct": 0.3,
+      "total_time_ns": 2672788.0
+    },
+    {
+      "avg_ns": 361.4,
+      "instances": 6861,
+      "name": "cudaStreamGetCaptureInfo_v12030",
+      "time_pct": 0.3,
+      "total_time_ns": 2479887.0
+    }
+  ],
+  "top_cuda_kernel_exec_by_time": [
+    {
+      "avg_ns": 90167.7,
+      "instances": 1211,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<int>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 109193084.7
+    },
+    {
+      "avg_ns": 27370.1,
+      "instances": 1316,
+      "name": "void cutlass::Kernel2<cutlass_80_tensorop_f16_s16816gemm_relu_f16_64x64_32x6_tn_align8>(T1::Params)",
+      "time_pct": 0.0,
+      "total_time_ns": 36019051.6
+    },
+    {
+      "avg_ns": 19077.0,
+      "instances": 1517,
+      "name": "triton_poi_fused_mul_silu_slice_2",
+      "time_pct": 0.0,
+      "total_time_ns": 28939809.0
+    },
+    {
+      "avg_ns": 987970.6,
+      "instances": 28,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<signed char>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 0.0,
+      "total_time_ns": 27663176.8
+    },
+    {
+      "avg_ns": 27188.7,
+      "instances": 924,
+      "name": "void flashinfer::BatchPrefillWithPagedKVCacheKernel<flashinfer::KernelTraits<(flashinfer::MaskMode)0, (unsigned int)16, (unsigned int)1, (unsigned int)1, (unsigned int)8, (unsigned int)8, (unsigned int)1, (unsigned int)4, (flashinfer::PosEncodingMode)0, __half, __half, __half, float, int, flashinfer::DefaultAttention<(bool)0, (bool)0, (bool)0, (bool)0>>, PagedParams>(T2)",
+      "time_pct": 0.0,
+      "total_time_ns": 25122358.8
+    },
+    {
+      "avg_ns": 123746.3,
+      "instances": 112,
+      "name": "ampere_fp16_s1688gemm_fp16_128x64_sliced1x2_ldg8_f2f_tn",
+      "time_pct": 0.0,
+      "total_time_ns": 13859585.6
+    },
+    {
+      "avg_ns": 14593.6,
+      "instances": 672,
+      "name": "void cutlass::Kernel2<cutlass_80_wmma_tensorop_f16_s161616gemm_f16_16x16_128x2_tn_align8>(T1::Params)",
+      "time_pct": 0.0,
+      "total_time_ns": 9806899.200000001
+    },
+    {
+      "avg_ns": 12921.2,
+      "instances": 728,
+      "name": "void cutlass::Kernel2<cutlass_80_wmma_tensorop_f16_s161616gemm_f16_32x32_128x2_tn_align8>(T1::Params)",
+      "time_pct": 0.0,
+      "total_time_ns": 9406633.6
+    },
+    {
+      "avg_ns": 15155.4,
+      "instances": 448,
+      "name": "ampere_fp16_s16816gemm_fp16_64x64_ldg8_f2f_stages_64x5_tn",
+      "time_pct": 0.0,
+      "total_time_ns": 6789619.2
+    },
+    {
+      "avg_ns": 23598.2,
+      "instances": 196,
+      "name": "void cutlass::Kernel2<cutlass_80_wmma_tensorop_f16_s161616gemm_f16_32x32_64x2_tn_align8>(T1::Params)",
+      "time_pct": 0.0,
+      "total_time_ns": 4625247.2
+    },
+    {
+      "avg_ns": 164562.0,
+      "instances": 28,
+      "name": "ampere_fp16_s1688gemm_fp16_128x128_ldg8_f2f_stages_32x1_tn",
+      "time_pct": 0.0,
+      "total_time_ns": 4607736.0
+    },
+    {
+      "avg_ns": 14631.7,
+      "instances": 308,
+      "name": "ampere_fp16_s16816gemm_fp16_128x64_ldg8_f2f_stages_32x6_tn",
+      "time_pct": 0.0,
+      "total_time_ns": 4506563.600000001
+    },
+    {
+      "avg_ns": 19247.6,
+      "instances": 224,
+      "name": "void cutlass::Kernel2<cutlass_80_wmma_tensorop_f16_s161616gemm_f16_32x32_32x2_tn_align8>(T1::Params)",
+      "time_pct": 0.0,
+      "total_time_ns": 4311462.399999999
+    },
+    {
+      "avg_ns": 882996.5,
+      "instances": 4,
+      "name": "ampere_fp16_s16816gemm_fp16_128x64_ldg8_f2f_tn",
+      "time_pct": 0.0,
+      "total_time_ns": 3531986.0
+    },
+    {
+      "avg_ns": 3247.5,
+      "instances": 1064,
+      "name": "_l20_qk_norm_rope_kv_kernel",
+      "time_pct": 0.0,
+      "total_time_ns": 3455340.0
+    },
+    {
+      "avg_ns": 2424.6,
+      "instances": 924,
+      "name": "void flashinfer::PersistentVariableLengthMergeStatesKernel<(unsigned int)8, (unsigned int)16, (unsigned int)8, (unsigned int)4, __half, __half, int>(T5 *, float *, T7 *, T6 *, float *, unsigned int, unsigned int *, unsigned int)",
+      "time_pct": 0.0,
+      "total_time_ns": 2240330.4
+    },
+    {
+      "avg_ns": 23442.4,
+      "instances": 84,
+      "name": "void cutlass::Kernel2<cutlass_80_wmma_tensorop_f16_s161616gemm_f16_32x32_32x1_tn_align8>(T1::Params)",
+      "time_pct": 0.0,
+      "total_time_ns": 1969161.6
+    },
+    {
+      "avg_ns": 1879.6,
+      "instances": 1036,
+      "name": "void cublasLt::splitKreduce_kernel<(int)32, (int)16, int, __half, __half, float, __half, (bool)0, __half, __half, __half, (bool)1, (bool)0, (bool)0, (bool)0>(cublasLt::cublasSplitKParams<T6>, const T4 *, const T10 *, T9 *, T5 *, const T6 *, const T6 *, const T11 *, const T4 *, T11 *, void *, long, T6 *, int *, T6 *, T6 *, const T6 *, const T6 *, const T6 *, const T6 *, const T6 *)",
+      "time_pct": 0.0,
+      "total_time_ns": 1947265.5999999999
+    },
+    {
+      "avg_ns": 16042.0,
+      "instances": 113,
+      "name": "std::enable_if<!T7, void>::type internal::gemvx::kernel<int, int, __half, __half, __half, float, (bool)0, (bool)1, (bool)1, (bool)0, (int)6, (bool)0, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<const __half>, cublasGemvTensorStridedBatched<const __half>, cublasGemvTensorStridedBatched<__half>, float>>(T13)",
+      "time_pct": 0.0,
+      "total_time_ns": 1812746.0
+    },
+    {
+      "avg_ns": 48696.1,
+      "instances": 28,
+      "name": "void flashinfer::BatchPrefillWithPagedKVCacheKernel<flashinfer::KernelTraits<(flashinfer::MaskMode)1, (unsigned int)16, (unsigned int)1, (unsigned int)1, (unsigned int)8, (unsigned int)8, (unsigned int)1, (unsigned int)4, (flashinfer::PosEncodingMode)0, __half, __half, __half, float, int, flashinfer::DefaultAttention<(bool)0, (bool)0, (bool)0, (bool)0>>, PagedParams>(T2)",
+      "time_pct": 0.0,
+      "total_time_ns": 1363490.8
+    }
+  ],
+  "top_cuda_kernels_by_time": [
+    {
+      "avg_ns": 90167.7,
+      "instances": 1211,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<int>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 33.9,
+      "total_time_ns": 109193144.0
+    },
+    {
+      "avg_ns": 27370.1,
+      "instances": 1316,
+      "name": "void cutlass::Kernel2<cutlass_80_tensorop_f16_s16816gemm_relu_f16_64x64_32x6_tn_align8>(T1::Params)",
+      "time_pct": 11.2,
+      "total_time_ns": 36019063.0
+    },
+    {
+      "avg_ns": 19077.0,
+      "instances": 1517,
+      "name": "triton_poi_fused_mul_silu_slice_2",
+      "time_pct": 9.0,
+      "total_time_ns": 28939861.0
+    },
+    {
+      "avg_ns": 987970.6,
+      "instances": 28,
+      "name": "void at::native::vectorized_elementwise_kernel<(int)4, at::native::FillFunctor<signed char>, std::array<char *, (unsigned long)1>>(int, T2, T3)",
+      "time_pct": 8.6,
+      "total_time_ns": 27663178.0
+    },
+    {
+      "avg_ns": 27188.7,
+      "instances": 924,
+      "name": "void flashinfer::BatchPrefillWithPagedKVCacheKernel<flashinfer::KernelTraits<(flashinfer::MaskMode)0, (unsigned int)16, (unsigned int)1, (unsigned int)1, (unsigned int)8, (unsigned int)8, (unsigned int)1, (unsigned int)4, (flashinfer::PosEncodingMode)0, __half, __half, __half, float, int, flashinfer::DefaultAttention<(bool)0, (bool)0, (bool)0, (bool)0>>, PagedParams>(T2)",
+      "time_pct": 7.8,
+      "total_time_ns": 25122375.0
+    },
+    {
+      "avg_ns": 123746.3,
+      "instances": 112,
+      "name": "ampere_fp16_s1688gemm_fp16_128x64_sliced1x2_ldg8_f2f_tn",
+      "time_pct": 4.3,
+      "total_time_ns": 13859585.0
+    },
+    {
+      "avg_ns": 14593.6,
+      "instances": 672,
+      "name": "void cutlass::Kernel2<cutlass_80_wmma_tensorop_f16_s161616gemm_f16_16x16_128x2_tn_align8>(T1::Params)",
+      "time_pct": 3.0,
+      "total_time_ns": 9806897.0
+    },
+    {
+      "avg_ns": 12921.2,
+      "instances": 728,
+      "name": "void cutlass::Kernel2<cutlass_80_wmma_tensorop_f16_s161616gemm_f16_32x32_128x2_tn_align8>(T1::Params)",
+      "time_pct": 2.9,
+      "total_time_ns": 9406631.0
+    },
+    {
+      "avg_ns": 15155.4,
+      "instances": 448,
+      "name": "ampere_fp16_s16816gemm_fp16_64x64_ldg8_f2f_stages_64x5_tn",
+      "time_pct": 2.1,
+      "total_time_ns": 6789631.0
+    },
+    {
+      "avg_ns": 23598.2,
+      "instances": 196,
+      "name": "void cutlass::Kernel2<cutlass_80_wmma_tensorop_f16_s161616gemm_f16_32x32_64x2_tn_align8>(T1::Params)",
+      "time_pct": 1.4,
+      "total_time_ns": 4625244.0
+    },
+    {
+      "avg_ns": 164562.0,
+      "instances": 28,
+      "name": "ampere_fp16_s1688gemm_fp16_128x128_ldg8_f2f_stages_32x1_tn",
+      "time_pct": 1.4,
+      "total_time_ns": 4607736.0
+    },
+    {
+      "avg_ns": 14631.7,
+      "instances": 308,
+      "name": "ampere_fp16_s16816gemm_fp16_128x64_ldg8_f2f_stages_32x6_tn",
+      "time_pct": 1.4,
+      "total_time_ns": 4506556.0
+    },
+    {
+      "avg_ns": 19247.6,
+      "instances": 224,
+      "name": "void cutlass::Kernel2<cutlass_80_wmma_tensorop_f16_s161616gemm_f16_32x32_32x2_tn_align8>(T1::Params)",
+      "time_pct": 1.3,
+      "total_time_ns": 4311473.0
+    },
+    {
+      "avg_ns": 882996.5,
+      "instances": 4,
+      "name": "ampere_fp16_s16816gemm_fp16_128x64_ldg8_f2f_tn",
+      "time_pct": 1.1,
+      "total_time_ns": 3531986.0
+    },
+    {
+      "avg_ns": 3247.5,
+      "instances": 1064,
+      "name": "_l20_qk_norm_rope_kv_kernel",
+      "time_pct": 1.1,
+      "total_time_ns": 3455376.0
+    },
+    {
+      "avg_ns": 2424.6,
+      "instances": 924,
+      "name": "void flashinfer::PersistentVariableLengthMergeStatesKernel<(unsigned int)8, (unsigned int)16, (unsigned int)8, (unsigned int)4, __half, __half, int>(T5 *, float *, T7 *, T6 *, float *, unsigned int, unsigned int *, unsigned int)",
+      "time_pct": 0.7,
+      "total_time_ns": 2240362.0
+    },
+    {
+      "avg_ns": 23442.4,
+      "instances": 84,
+      "name": "void cutlass::Kernel2<cutlass_80_wmma_tensorop_f16_s161616gemm_f16_32x32_32x1_tn_align8>(T1::Params)",
+      "time_pct": 0.6,
+      "total_time_ns": 1969161.0
+    },
+    {
+      "avg_ns": 1879.6,
+      "instances": 1036,
+      "name": "void cublasLt::splitKreduce_kernel<(int)32, (int)16, int, __half, __half, float, __half, (bool)0, __half, __half, __half, (bool)1, (bool)0, (bool)0, (bool)0>(cublasLt::cublasSplitKParams<T6>, const T4 *, const T10 *, T9 *, T5 *, const T6 *, const T6 *, const T11 *, const T4 *, T11 *, void *, long, T6 *, int *, T6 *, T6 *, const T6 *, const T6 *, const T6 *, const T6 *, const T6 *)",
+      "time_pct": 0.6,
+      "total_time_ns": 1947311.0
+    },
+    {
+      "avg_ns": 16042.0,
+      "instances": 113,
+      "name": "std::enable_if<!T7, void>::type internal::gemvx::kernel<int, int, __half, __half, __half, float, (bool)0, (bool)1, (bool)1, (bool)0, (int)6, (bool)0, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<const __half>, cublasGemvTensorStridedBatched<const __half>, cublasGemvTensorStridedBatched<__half>, float>>(T13)",
+      "time_pct": 0.6,
+      "total_time_ns": 1812747.0
+    },
+    {
+      "avg_ns": 48696.1,
+      "instances": 28,
+      "name": "void flashinfer::BatchPrefillWithPagedKVCacheKernel<flashinfer::KernelTraits<(flashinfer::MaskMode)1, (unsigned int)16, (unsigned int)1, (unsigned int)1, (unsigned int)8, (unsigned int)8, (unsigned int)1, (unsigned int)4, (flashinfer::PosEncodingMode)0, __half, __half, __half, float, int, flashinfer::DefaultAttention<(bool)0, (bool)0, (bool)0, (bool)0>>, PagedParams>(T2)",
+      "time_pct": 0.4,
+      "total_time_ns": 1363490.0
+    }
+  ],
+  "top_nvtx_ranges_by_time": [
+    {
+      "avg_ns": 27084.9,
+      "instances": 73,
+      "name": "CCCL:cub::DeviceScan::InclusiveScan",
+      "time_pct": 89.3,
+      "total_time_ns": 1977196.0
+    },
+    {
+      "avg_ns": 39516.3,
+      "instances": 6,
+      "name": "CCCL:cub::DeviceScan::InclusiveSumByKey",
+      "time_pct": 10.7,
+      "total_time_ns": 237098.0
+    }
+  ]
+}

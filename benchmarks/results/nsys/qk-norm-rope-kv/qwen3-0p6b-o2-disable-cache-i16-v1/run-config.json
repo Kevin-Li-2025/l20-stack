@@ -1,0 +1,34 @@
+{
+  "attention_backend": "FLASHINFER",
+  "compilation_config": {
+    "cudagraph_mode": "FULL",
+    "mode": 3,
+    "pass_config": {
+      "enable_qk_norm_rope_fusion": false,
+      "fuse_rope_kvcache": false
+    },
+    "splitting_ops": []
+  },
+  "compilation_custom_ops": [],
+  "cuda_home": "/home/hhai/venvs/vllm-l20/bin/../lib/python3.12/site-packages/nvidia/cu13",
+  "cudacxx": "/home/hhai/venvs/vllm-l20/bin/../lib/python3.12/site-packages/nvidia/cu13/bin/nvcc",
+  "custom_qk_rope_kv_enabled": true,
+  "enable_layerwise_nvtx": false,
+  "execution_mode": "o2",
+  "gpu_memory_utilization": 0.45,
+  "input_tokens": 16,
+  "max_concurrency": 1,
+  "max_model_len": 256,
+  "model": "/home/hhai/models/Qwen3-0.6B",
+  "native_qk_norm_rope_fusion": false,
+  "native_rope_kvcache_fusion": false,
+  "nsys_bin": "/opt/nvidia/nsight-compute/2025.3.1/host/target-linux-x64/nsys",
+  "nsys_duration_seconds": 150,
+  "num_prompts": 1,
+  "output_tokens": 1,
+  "request_rate": "inf",
+  "require_custom_qk_kernel": true,
+  "schema_version": 1,
+  "served_name": "qwen3-l20-nsys-o2-l20-graph",
+  "tmpdir": "/home/hhai/tmp/l20-nsys"
+}

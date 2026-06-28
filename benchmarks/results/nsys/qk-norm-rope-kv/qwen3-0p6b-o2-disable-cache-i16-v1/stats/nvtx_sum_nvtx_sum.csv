@@ -1,0 +1,3 @@
+Time (%),Total Time (ns),Instances,Avg (ns),Med (ns),Min (ns),Max (ns),StdDev (ns),Style,Range
+89.3,1977196,73,27084.9,24659.0,23217,103084,9813.8,PushPop,CCCL:cub::DeviceScan::InclusiveScan
+10.7,237098,6,39516.3,33064.0,15619,80701,25832.3,PushPop,CCCL:cub::DeviceScan::InclusiveSumByKey

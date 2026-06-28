@@ -51,8 +51,6 @@ integration finding, not a missing benchmark run.
 
 - `run-config.json`
 - `serving.json`
-- `server.log`
-- `nsys.log`
 - `timeline-summary.json`
 - `stats/cuda_gpu_kern_sum_cuda_gpu_kern_sum.csv`
 - `stats/cuda_kern_exec_sum_cuda_kern_exec_sum.csv`
@@ -60,5 +58,6 @@ integration finding, not a missing benchmark run.
 - `stats/nvtx_sum_nvtx_sum.csv`
 - `stats/cuda_gpu_trace_cuda_gpu_trace.csv`
 
-The full `.nsys-rep` and exported sqlite are kept on the L20 host but not
-committed because they are binary/large.
+The raw logs, full `.nsys-rep`, and exported sqlite are kept on the L20 host
+but not committed because logs are ignored and the profile files are
+binary/large.

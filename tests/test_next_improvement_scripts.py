@@ -126,11 +126,16 @@ def test_qk_norm_rope_kv_has_serving_nsys_timeline_entrypoint():
     assert "VLLM_L20_QK_ROPE_KV=1" in source
     assert "VLLM_L20_QK_ROPE_KV_TRACE" in source
     assert "ENABLE_LAYERWISE_NVTX" in source
+    assert "REQUIRE_CUSTOM_QK_KERNEL" in source
+    assert "COMPILATION_CUSTOM_OPS" in source
+    assert "DISABLE_COMPILE_CACHE" in source
+    assert "VLLM_DISABLE_COMPILE_CACHE" in source
+    assert "custom kernel instances" in source
     assert "--enable-layerwise-nvtx-tracing" in source
     assert "L20_NSYS_TMPDIR" in source
     assert "$HOME/tmp/l20-nsys" in source
-    assert "enable_qk_norm_rope_fusion\":false" in source
-    assert "fuse_rope_kvcache\":false" in source
+    assert "enable_qk_norm_rope_fusion" in source
+    assert "fuse_rope_kvcache" in source
     assert "cuda_gpu_kern_sum" in source
     assert "cuda_kern_exec_sum" in source
     assert "cuda_api_sum" in source
@@ -193,8 +198,15 @@ def test_l20_qk_norm_rope_kv_serving_smoke_compares_custom_path():
     assert "l20_qk_norm_rope_kv_cache_update" in installer
     assert "skip_kv_cache_update" in installer
     assert "torch.compiler.is_compiling()" in installer
+    assert "_L20_QK_ROPE_KV_ENABLED" in installer
     assert "VLLM_L20_QK_ROPE_KV" in source
     assert "VLLM_L20_QK_ROPE_KV_STRICT" in source
+    assert "EXECUTION_MODE" in source
+    assert "eager|o2" in source
+    assert "REQUIRE_QK_KV_TRACE_HIT" in source
+    assert "auto" in source
+    assert "COMPILATION_CUSTOM_OPS" in source
+    assert "trace hits" in source
     assert "enable_qk_norm_rope_fusion" in source
     assert "fuse_rope_kvcache" in source
     assert "qk-kv-off" in source and "qk-kv-on" in source

@@ -103,14 +103,16 @@ except Exception:  # pragma: no cover - optional experimental install path
 
 
 _L20_QK_ROPE_KV_TRACE_COUNT = 0
+_L20_QK_ROPE_KV_ENABLED = os.environ.get("VLLM_L20_QK_ROPE_KV", "0") == "1"
+_L20_QK_ROPE_KV_STRICT = os.environ.get("VLLM_L20_QK_ROPE_KV_STRICT", "0") == "1"
 
 
 def _l20_qk_rope_kv_enabled() -> bool:
-    return os.environ.get("VLLM_L20_QK_ROPE_KV", "0") == "1"
+    return _L20_QK_ROPE_KV_ENABLED
 
 
 def _l20_qk_rope_kv_strict() -> bool:
-    return os.environ.get("VLLM_L20_QK_ROPE_KV_STRICT", "0") == "1"
+    return _L20_QK_ROPE_KV_STRICT
 
 
 def _l20_qk_rope_kv_trace(layer_name: str, status: str, detail: str) -> None:
@@ -191,6 +193,31 @@ direct_register_custom_op(
 ''',
             "qwen3 L20 custom op block",
         )
+    source = source.replace(
+        '''_L20_QK_ROPE_KV_TRACE_COUNT = 0
+
+
+def _l20_qk_rope_kv_enabled() -> bool:
+    return os.environ.get("VLLM_L20_QK_ROPE_KV", "0") == "1"
+
+
+def _l20_qk_rope_kv_strict() -> bool:
+    return os.environ.get("VLLM_L20_QK_ROPE_KV_STRICT", "0") == "1"
+''',
+        '''_L20_QK_ROPE_KV_TRACE_COUNT = 0
+_L20_QK_ROPE_KV_ENABLED = os.environ.get("VLLM_L20_QK_ROPE_KV", "0") == "1"
+_L20_QK_ROPE_KV_STRICT = os.environ.get("VLLM_L20_QK_ROPE_KV_STRICT", "0") == "1"
+
+
+def _l20_qk_rope_kv_enabled() -> bool:
+    return _L20_QK_ROPE_KV_ENABLED
+
+
+def _l20_qk_rope_kv_strict() -> bool:
+    return _L20_QK_ROPE_KV_STRICT
+''',
+        1,
+    )
     source = replace_once(
         source,
         '''    def forward(
