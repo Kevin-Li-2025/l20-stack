@@ -271,3 +271,67 @@ RoPE+KV-cache update. The L20 upstream candidate needs one side-effecting
 custom op, modeled after `torch.ops.vllm.unified_kv_cache_update`, so the graph
 can match and replace the whole `qkv -> q/k norm -> q/k RoPE -> KV write`
 boundary while preserving the dependency into attention.
+
+## L20 Three-Way Q/K Norm + RoPE + KV Write Hook
+
+`integrations/vllm/install_l20_qk_norm_rope_kv.py` adds the first real serving
+hook for the L20 three-way kernel.  It is deliberately Qwen3-only and disabled
+by default.  With `VLLM_L20_QK_ROPE_KV=1`, Qwen3 attention keeps packed QKV
+until the custom op mutates Q/K in place, writes the paged KV cache, and then
+calls attention with the fused Q/K/V tensors while skipping vLLM's duplicate
+KV-cache update.  The native vLLM `enable_qk_norm_rope_fusion` pass is forced
+off in the paired benchmark, so this is no longer measuring vLLM's built-in QK
+fusion gate.
+
+The integration required three production-path fixes:
+
+- file tracing must be skipped while TorchDynamo is compiling;
+- logging must not read `qkv.shape[0]` in compiled code because it specializes
+  the dynamic token dimension;
+- FlashInfer attention still requires key/value tensors, so the hook passes
+  fused Q/K/V and adds an explicit `skip_kv_cache_update` flag instead of
+  passing `None` for key/value.
+
+### Serving Matrix
+
+The mini matrix uses vLLM O2, FlashInfer attention and sampling, input length
+512, output length 32, `REQUEST_RATE=inf`, two runs per shape, and 16 prompts
+per run.  The L20 host reports NVIDIA L20, driver 580.159.04, and 46,068 MiB
+GPU memory.
+
+| Model | Shapes | Output throughput | Mean ITL | Median ITL | P99 ITL | Mean TTFT |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Qwen3-0.6B | c1/c4, i512 | +0.986% | -0.993% | -1.787% | +25.024% | -3.572% |
+| Qwen3-1.7B | c1/c4, i512 | +2.775% | -0.044% | -0.210% | -0.928% | -9.792% |
+
+Per-shape interpretation:
+
+- Qwen3-0.6B c1/i512 is the strongest case: throughput +7.514%, median ITL
+  -1.729%, and mean TTFT -21.853%.
+- Qwen3-0.6B c4/i512 regresses throughput by -1.813% and TTFT by +9.532%, so
+  the small-model high-concurrency path should not be enabled by default.
+- Qwen3-1.7B is more stable: throughput improves +2.240% to +2.475% at c1/c4,
+  while ITL is essentially flat.
+
+This is a real O2 serving integration of the custom L20 three-way path, but the
+system-level result is still low-single-digit.  The honest claim is "functional
+and modestly positive on Qwen3-1.7B, mixed on Qwen3-0.6B", not "industry-leading
+serving speedup".
+
+Raw artifacts:
+
+- `benchmarks/results/l20-qk-norm-rope-kv-serving/qwen3-0p6b-o2-mini-v1/`
+- `benchmarks/results/l20-qk-norm-rope-kv-serving/qwen3-1p7b-o2-mini-v1/`
+
+Qwen2.5-Coder-1.5B is not a comparable model for this specific Q/K norm kernel:
+its architecture does not expose the same Qwen3 Q/K RMSNorm boundary.  It should
+remain in the broader paged decode and sampling matrix, but not in this QK norm
+serving table.
+
+### Profiling Status
+
+The Nsight piece is still not complete.  The tested L20 host does not currently
+have `ncu` or `nsys` in `PATH`, so there is no honest kernel-count, timeline,
+occupancy, warp-stall, L2, or DRAM artifact for this serving hook yet.  Once
+Nsight Compute is available, use `scripts/profile_kernel.sh` against
+`scripts/benchmark_qk_norm_rope_kv.py` first, then profile a short serving run.

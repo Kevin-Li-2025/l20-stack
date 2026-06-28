@@ -137,6 +137,25 @@ def test_qk_norm_serving_smoke_compares_o2_fusion_gate():
     assert "run_vllm_l20_qk_norm_rope_serving_smoke.sh" in matrix
 
 
+def test_l20_qk_norm_rope_kv_serving_smoke_compares_custom_path():
+    installer = Path("integrations/vllm/install_l20_qk_norm_rope_kv.py").read_text()
+    source = Path("scripts/run_vllm_l20_qk_norm_rope_kv_serving_smoke.sh").read_text()
+    matrix = Path("scripts/run_vllm_l20_qk_norm_rope_kv_serving_matrix.sh").read_text()
+    assert "l20_qk_norm_rope_kv_cache_update" in installer
+    assert "skip_kv_cache_update" in installer
+    assert "torch.compiler.is_compiling()" in installer
+    assert "VLLM_L20_QK_ROPE_KV" in source
+    assert "VLLM_L20_QK_ROPE_KV_STRICT" in source
+    assert "enable_qk_norm_rope_fusion" in source
+    assert "fuse_rope_kvcache" in source
+    assert "qk-kv-off" in source and "qk-kv-on" in source
+    assert "qk-rope-kv-serving-summary.json" in source
+    assert "native_qk_fusion_false" in source
+    assert "trace_fallback_count" in source
+    assert "run_vllm_l20_qk_norm_rope_kv_serving_smoke.sh" in matrix
+    assert "REQUEST_RATE" in matrix
+
+
 def test_decode_attention_has_isolated_tensor_core_candidate():
     op_source = Path("src/l20_stack/ops/triton_decode_attention.py").read_text()
     sweep_source = Path("scripts/benchmark_decode_attention_tile_sweep.py").read_text()

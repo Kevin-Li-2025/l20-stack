@@ -1,0 +1,133 @@
+{
+  "changes_pct": {
+    "mean_itl_ms": -0.044,
+    "mean_ttft_ms": -9.792,
+    "median_itl_ms": -0.21,
+    "median_ttft_ms": -4.249,
+    "output_throughput": 2.775,
+    "p99_itl_ms": -0.928,
+    "p99_ttft_ms": -22.5
+  },
+  "log_evidence": {
+    "qk-kv-off": {
+      "cudagraph_disabled": false,
+      "custom_env_seen": true,
+      "flashinfer_backend": true,
+      "flashinfer_sampling": true,
+      "full_decode_only": true,
+      "native_qk_fusion_false": true,
+      "server_log_exists": true,
+      "strict_env_seen": true,
+      "torch_compile_mentions": 2,
+      "trace_exists": false,
+      "trace_fallback_count": 0,
+      "trace_hit_count": 0
+    },
+    "qk-kv-on": {
+      "cudagraph_disabled": false,
+      "custom_env_seen": true,
+      "flashinfer_backend": true,
+      "flashinfer_sampling": true,
+      "full_decode_only": true,
+      "native_qk_fusion_false": true,
+      "server_log_exists": true,
+      "strict_env_seen": true,
+      "torch_compile_mentions": 2,
+      "trace_exists": false,
+      "trace_fallback_count": 0,
+      "trace_hit_count": 0
+    }
+  },
+  "rows": {
+    "qk-kv-off": {
+      "mean_itl_ms": 6.051400494470727,
+      "mean_ttft_ms": 39.95221998775378,
+      "median_itl_ms": 6.098838290199637,
+      "median_ttft_ms": 38.16858108621091,
+      "output_throughput": 344.1380460686397,
+      "p99_itl_ms": 7.0319189864676455,
+      "p99_ttft_ms": 51.34677267051302,
+      "report_count": 4
+    },
+    "qk-kv-on": {
+      "mean_itl_ms": 6.048732613928751,
+      "mean_ttft_ms": 36.039971324498765,
+      "median_itl_ms": 6.086025736294687,
+      "median_ttft_ms": 36.54668352100998,
+      "output_throughput": 353.68888170641594,
+      "p99_itl_ms": 6.966634938726203,
+      "p99_ttft_ms": 39.79396481299773,
+      "report_count": 4
+    }
+  },
+  "schema_version": 1,
+  "shapes": [
+    {
+      "changes_pct": {
+        "mean_itl_ms": -0.092,
+        "mean_ttft_ms": -14.336,
+        "median_itl_ms": -0.228,
+        "median_ttft_ms": -10.078,
+        "output_throughput": 2.475,
+        "p99_itl_ms": -1.382,
+        "p99_ttft_ms": -19.755
+      },
+      "input_tokens": 512,
+      "max_concurrency": 1,
+      "qk_kv_off": {
+        "mean_itl_ms": 5.832690053437311,
+        "mean_ttft_ms": 34.39893227186985,
+        "median_itl_ms": 5.875411559827626,
+        "median_ttft_ms": 33.25541032245383,
+        "output_throughput": 148.55630814972665,
+        "p99_itl_ms": 6.452365807490423,
+        "p99_ttft_ms": 50.7177251856774,
+        "report_count": 2
+      },
+      "qk_kv_on": {
+        "mean_itl_ms": 5.827312706265554,
+        "mean_ttft_ms": 29.46765052183764,
+        "median_itl_ms": 5.862023215740919,
+        "median_ttft_ms": 29.903876478783786,
+        "output_throughput": 152.2326929221726,
+        "p99_itl_ms": 6.363180110929534,
+        "p99_ttft_ms": 40.698310523293905,
+        "report_count": 2
+      }
+    },
+    {
+      "changes_pct": {
+        "mean_itl_ms": 0.054,
+        "mean_ttft_ms": -12.728,
+        "median_itl_ms": -0.21,
+        "median_ttft_ms": -8.276,
+        "output_throughput": 2.24,
+        "p99_itl_ms": 2.961,
+        "p99_ttft_ms": -22.5
+      },
+      "input_tokens": 512,
+      "max_concurrency": 4,
+      "qk_kv_off": {
+        "mean_itl_ms": 6.263440741496461,
+        "mean_ttft_ms": 41.453726174950134,
+        "median_itl_ms": 6.325638038106263,
+        "median_ttft_ms": 39.84411450801417,
+        "output_throughput": 540.7408714041517,
+        "p99_itl_ms": 7.568208436714485,
+        "p99_ttft_ms": 51.34677267051302,
+        "report_count": 2
+      },
+      "qk_kv_on": {
+        "mean_itl_ms": 6.266812542303195,
+        "mean_ttft_ms": 36.17740441404749,
+        "median_itl_ms": 6.312379788141698,
+        "median_ttft_ms": 36.54668352100998,
+        "output_throughput": 552.8515152795035,
+        "p99_itl_ms": 7.7922697470057765,
+        "p99_ttft_ms": 39.79396481299773,
+        "report_count": 2
+      }
+    }
+  ],
+  "summary": "vLLM O2 serving matrix comparing the L20 Q/K norm + RoPE + KV-cache custom path off vs on. vLLM native QK fusion is disabled."
+}
