@@ -93,6 +93,16 @@ def test_ncu_summary_accepts_cuda_13_stall_metric_names():
     assert "sm__pipe_tensor_cycles_active_v2" in source
 
 
+def test_profile_kernel_auto_discovers_non_path_ncu():
+    source = Path("scripts/profile_kernel.sh").read_text()
+    assert "find_ncu()" in source
+    assert "NCU_BIN" in source
+    assert "/usr/local/cuda-13.0/bin/ncu" in source
+    assert "/opt/nvidia/nsight-compute/*/ncu" in source
+    assert 'Using Nsight Compute CLI: $ncu_bin' in source
+    assert '"$ncu_bin" --import' in source
+
+
 def test_paged_decode_rfc_campaign_tracks_o2_and_flashinfer():
     campaign = Path("scripts/run_vllm_l20_paged_decode_rfc_campaign.sh").read_text()
     matrix = Path("scripts/run_vllm_l20_paged_decode_rfc_matrix.sh").read_text()

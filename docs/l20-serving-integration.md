@@ -330,8 +330,25 @@ serving table.
 
 ### Profiling Status
 
-The Nsight piece is still not complete.  The tested L20 host does not currently
-have `ncu` or `nsys` in `PATH`, so there is no honest kernel-count, timeline,
-occupancy, warp-stall, L2, or DRAM artifact for this serving hook yet.  Once
-Nsight Compute is available, use `scripts/profile_kernel.sh` against
-`scripts/benchmark_qk_norm_rope_kv.py` first, then profile a short serving run.
+The Nsight piece is partially complete.  The tested L20 host did not expose
+`ncu` in the default `PATH`, but Nsight Compute was installed under
+`/usr/local/cuda-13.0/bin/ncu` and
+`/opt/nvidia/nsight-compute/2025.3.1/ncu`. Normal-user profiling failed with
+`ERR_NVGPUCTRPERM` because the driver had `RmProfilingAdminOnly: 1`; the first
+Q/K norm + RoPE + KV write counter artifacts were therefore collected through an
+elevated Nsight Compute invocation.
+
+Artifacts:
+
+- `benchmarks/results/ncu/qk-norm-rope-kv/README.md`
+- `benchmarks/results/ncu/qk-norm-rope-kv/qk-norm-rope-kv-sudo-first.json`
+- `benchmarks/results/ncu/qk-norm-rope-kv/qk-norm-rope-kv-sudo-first.md`
+
+Current counter conclusion is intentionally narrow: the captured
+`_l20_qk_norm_rope_kv_kernel` launch is a tiny `grid=(1,16,1)` launch, with
+4.35 us duration, 17,536 DRAM bytes, 0.47% DRAM peak, 81.57% L2 hit rate,
+8.30% active warps, 28 registers/thread, zero Tensor pipe usage, and 48.63%
+long-scoreboard stalls. This proves the tiny shape is launch/occupancy
+dominated, not bandwidth saturated. It is not yet a serving-shape roofline or
+kernel-count timeline; that still needs either a deterministic single-shape NCU
+harness or an Nsight Systems serving trace with NVTX names.

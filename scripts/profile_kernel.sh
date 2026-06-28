@@ -64,8 +64,42 @@ if [[ -z "$output" || $# -eq 0 ]]; then
   exit 2
 fi
 
-if ! command -v ncu >/dev/null 2>&1; then
-  echo "ncu is required; install NVIDIA Nsight Compute on the L20 host" >&2
+find_ncu() {
+  if [[ -n "${NCU_BIN:-}" ]]; then
+    if command -v "$NCU_BIN" >/dev/null 2>&1; then
+      command -v "$NCU_BIN"
+    else
+      echo "$NCU_BIN"
+    fi
+    return 0
+  fi
+
+  if command -v ncu >/dev/null 2>&1; then
+    command -v ncu
+    return 0
+  fi
+
+  local candidate
+  for candidate in \
+    /usr/local/cuda/bin/ncu \
+    /usr/local/cuda-13.0/bin/ncu \
+    /usr/local/cuda-12.9/bin/ncu \
+    /usr/local/cuda-12.8/bin/ncu \
+    /usr/local/cuda-12.6/bin/ncu \
+    /opt/nvidia/nsight-compute/*/ncu \
+    /opt/nvidia/nsight-compute/*/target/linux-desktop-glibc_2_11_3-x64/ncu; do
+    if [[ -x "$candidate" ]]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+ncu_bin="$(find_ncu || true)"
+if [[ -z "$ncu_bin" || ! -x "$ncu_bin" ]]; then
+  echo "ncu is required; set NCU_BIN or install NVIDIA Nsight Compute on the L20 host" >&2
   exit 2
 fi
 
@@ -94,7 +128,9 @@ smsp__sass_thread_inst_executed_op_fmul_pred_on.sum,\
 smsp__sass_thread_inst_executed_op_ffma_pred_on.sum}"
 )
 
-ncu \
+echo "Using Nsight Compute CLI: $ncu_bin" >&2
+
+"$ncu_bin" \
   --target-processes all \
   --kernel-name "$kernel_name" \
   --launch-skip "$launch_skip" \
@@ -108,7 +144,7 @@ ncu \
   --export "$output" \
   "$@"
 
-ncu --import "${output}.ncu-rep" --page raw --csv > "${output}.csv"
+"$ncu_bin" --import "${output}.ncu-rep" --page raw --csv > "${output}.csv"
 summary_python="${PYTHON:-python3}"
 "$summary_python" scripts/summarize_ncu_profile.py \
   --csv "${output}.csv" \

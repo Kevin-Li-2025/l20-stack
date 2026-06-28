@@ -83,6 +83,9 @@ scripts/profile_kernel.sh \
   -- python scripts/benchmark_paged_rope_kv.py --tokens 1024
 ```
 
+The wrapper accepts `NCU_BIN=/path/to/ncu` and also auto-discovers common CUDA
+and Nsight Compute locations such as `/usr/local/cuda-13.0/bin/ncu`.
+
 FP8 paged decode CUDA experiment:
 
 ```bash
