@@ -343,12 +343,22 @@ Artifacts:
 - `benchmarks/results/ncu/qk-norm-rope-kv/README.md`
 - `benchmarks/results/ncu/qk-norm-rope-kv/qk-norm-rope-kv-sudo-first.json`
 - `benchmarks/results/ncu/qk-norm-rope-kv/qk-norm-rope-kv-sudo-first.md`
+- `benchmarks/results/ncu/qk-norm-rope-kv/tokens-1-deterministic-v1.json`
+- `benchmarks/results/ncu/qk-norm-rope-kv/tokens-64-deterministic-v1.json`
+- `benchmarks/results/ncu/qk-norm-rope-kv/tokens-512-deterministic-v1.json`
 
-Current counter conclusion is intentionally narrow: the captured
-`_l20_qk_norm_rope_kv_kernel` launch is a tiny `grid=(1,16,1)` launch, with
-4.35 us duration, 17,536 DRAM bytes, 0.47% DRAM peak, 81.57% L2 hit rate,
-8.30% active warps, 28 registers/thread, zero Tensor pipe usage, and 48.63%
-long-scoreboard stalls. This proves the tiny shape is launch/occupancy
-dominated, not bandwidth saturated. It is not yet a serving-shape roofline or
-kernel-count timeline; that still needs either a deterministic single-shape NCU
-harness or an Nsight Systems serving trace with NVTX names.
+The deterministic single-shape NCU pass now separates three regimes:
+
+| Tokens | Grid | Duration | DRAM peak | L2 hit | Active warps | SM peak | Long scoreboard |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | `(1,16,1)` | 4.384 us | 0.47% | 82.94% | 8.30% | 0.72% | 43.58% |
+| 64 | `(64,16,1)` | 5.088 us | 14.67% | 70.26% | 32.42% | 18.81% | 43.68% |
+| 512 | `(512,16,1)` | 12.512 us | 49.08% | 67.15% | 76.37% | 60.66% | 37.69% |
+
+This replaces the earlier launch-skip-only result. The 1-token shape is clearly
+launch/occupancy dominated; the 512-token shape is the first credible
+medium-shape counter point and shows a real memory/LSU pipeline workload. All
+three profiles use 28 registers/thread and zero Tensor pipe, so register
+pressure and Tensor Core utilization are not the next Q/K+RoPE+KV target. The
+remaining profiling gap is a serving-level Nsight Systems timeline with kernel
+counts and NVTX names.

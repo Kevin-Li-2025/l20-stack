@@ -35,16 +35,18 @@ No local credential or sudo material is stored in this repo.
 The profiling wrapper now auto-discovers common Nsight Compute locations:
 
 ```bash
-scripts/profile_kernel.sh \
-  --output benchmarks/results/ncu/qk-norm-rope-kv/qk-norm-rope-kv-sudo-first \
-  --kernel-name 'regex:_l20_qk_norm_rope_kv_kernel' \
-  -- env PYTHONPATH=src python scripts/benchmark_qk_norm_rope_kv.py \
-    --output benchmarks/results/ncu/qk-norm-rope-kv/qk-norm-rope-kv-sudo-bench.json
+NCU_BIN=/tmp/ncu-root \
+VLLM_SOURCE=/home/hhai/vllm-l20-rfc \
+PYTHON_BIN=/home/hhai/venvs/vllm-l20/bin/python \
+scripts/profile_qk_norm_rope_kv_ncu.sh \
+  benchmarks/results/ncu/qk-norm-rope-kv/tokens-64-deterministic-v1 64
 ```
 
 If the host blocks counters for normal users, run the same command through a
 local root wrapper or sudo session. Do not add the wrapper or credentials to the
-repository.
+repository. `VLLM_SOURCE` is optional, but it is required on the current L20
+host because the vLLM editable checkout is not fully importable through the
+installed finder alone.
 
 ## Microbenchmark Timing
 
@@ -60,30 +62,46 @@ All reported token shapes passed correctness. The sudo timing run measured:
 
 ## Nsight Counter Summary
 
-The first captured `_l20_qk_norm_rope_kv_kernel` launch is a tiny launch:
-`grid=(1,16,1)`, `block=(128,1,1)`, and `waves_per_sm=0.01`.
+The deterministic profiles below run one token shape per process, so the Nsight
+launch metrics correspond to the requested token count instead of a guessed
+`--launch-skip` window.
 
-| Run | Duration | DRAM bytes | DRAM BW | DRAM peak | L2 hit | L1 hit | Active warps | Reg/thread | Tensor pipe | Long scoreboard |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `qk-norm-rope-kv-sudo-first` | 4.352 us | 17,536 | 4.03 GB/s | 0.47% | 81.57% | 39.24% | 8.30% | 28 | 0.00% | 48.63% |
-| `qk-norm-rope-kv-sudo-tokens64` | 4.384 us | 17,536 | 4.00 GB/s | 0.47% | 82.10% | 39.54% | 8.31% | 28 | 0.00% | 51.51% |
+| Tokens | Grid | Block | Duration | DRAM BW | DRAM peak | L2 hit | L1 hit | Active warps | SM peak | Reg/thread | Tensor pipe | Long scoreboard |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | `(1,16,1)` | 128 | 4.384 us | 4.00 GB/s | 0.47% | 82.94% | 39.36% | 8.30% | 0.72% | 28 | 0.00% | 43.58% |
+| 64 | `(64,16,1)` | 64 | 5.088 us | 125.21 GB/s | 14.67% | 70.26% | 47.30% | 32.42% | 18.81% | 28 | 0.00% | 43.68% |
+| 512 | `(512,16,1)` | 64 | 12.512 us | 421.28 GB/s | 49.08% | 67.15% | 49.13% | 76.37% | 60.66% | 28 | 0.00% | 37.69% |
 
-The `tokens64` file name reflects the intended launch-skip experiment, but the
-Nsight launch metrics are still the same tiny `grid=(1,16,1)` launch with the
-same DRAM byte count. Treat it as a repeat tiny-launch profile, not as 64-token
-kernel evidence. A deterministic single-shape profiler is still required before
-claiming 64-token or serving-shape counter behavior for this kernel.
+Timing from the same deterministic benchmark runs:
+
+| Tokens | Baseline | Fused | Speedup | Correct |
+| ---: | ---: | ---: | ---: | --- |
+| 1 | 0.009421 ms | 0.007168 ms | 1.314x | yes |
+| 64 | 0.011588 ms | 0.008704 ms | 1.331x | yes |
+| 512 | 0.026551 ms | 0.020992 ms | 1.265x | yes |
+
+Older `qk-norm-rope-kv-sudo-*` files are retained as launch-skip controls. The
+`qk-norm-rope-kv-sudo-tokens64` file name reflects the intended skip experiment,
+but its launch metrics are still the tiny `grid=(1,16,1)` launch; use the
+`tokens-64-deterministic-v1.*` files for 64-token evidence.
 
 ## Interpretation
 
-For the tiny launch, the kernel is not close to saturating L20 DRAM or SM
-compute: DRAM utilization is below 1%, active warps are about 8%, and tensor
-pipe utilization is zero. The useful conclusion is therefore narrow:
+The regimes are now separated:
 
-- this shape is launch/occupancy dominated, not bandwidth saturated;
-- there is no register-pressure signal; the kernel uses 28 registers/thread;
-- the next useful profiling step is a deterministic single-shape harness or a
-  serving timeline with NVTX names and kernel counts.
+- 1 token is launch/occupancy dominated: only 0.47% DRAM peak and 8.30% active
+  warps.
+- 64 tokens starts to fill the device but is still not bandwidth saturated:
+  14.67% DRAM peak and 32.42% active warps.
+- 512 tokens is the first credible medium-shape counter point: 49.08% DRAM
+  peak, 76.37% active warps, and 60.66% SM peak, with no register pressure and
+  no Tensor Core involvement.
+- Register count is stable at 28/thread across all three shapes; spills and
+  shared-memory pressure are not the next target.
+- Long-scoreboard stalls remain visible, but for the 512-token shape the more
+  important observation is that the launch has enough waves to become a real
+  memory/LSU pipeline workload.
 
 Serving-level ITL claims must continue to use the checked-in vLLM benchmark
-matrix, not these tiny-launch counters.
+matrix, not these isolated kernel counters. The next profiling step should be an
+Nsight Systems serving timeline with kernel counts and NVTX names.

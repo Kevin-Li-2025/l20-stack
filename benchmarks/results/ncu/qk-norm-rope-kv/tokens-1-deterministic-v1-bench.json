@@ -1,0 +1,22 @@
+{
+  "gpu": "NVIDIA L20",
+  "import_source": "vllm",
+  "reports": [
+    {
+      "baseline_ms": 0.009420728052339008,
+      "correct": true,
+      "diagnostics": {
+        "key_cache_max_abs_error": 0.0,
+        "qkv_max_abs_error": 0.00048828125,
+        "value_cache_equal": true
+      },
+      "fused_ms": 0.0071680000983178616,
+      "speedup": 1.3142756589177227,
+      "tokens": 1
+    }
+  ],
+  "schema_version": 1,
+  "tokens_requested": [
+    1
+  ]
+}

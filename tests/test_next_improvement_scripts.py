@@ -83,6 +83,8 @@ def test_qk_norm_benchmark_can_import_repo_local_kernel():
     source = Path("scripts/benchmark_qk_norm_rope_kv.py").read_text()
     assert "import_source" in source
     assert "integrations/vllm" in source
+    assert "--tokens" in source
+    assert "tokens_requested" in source
 
 
 def test_ncu_summary_accepts_cuda_13_stall_metric_names():
@@ -101,6 +103,17 @@ def test_profile_kernel_auto_discovers_non_path_ncu():
     assert "/opt/nvidia/nsight-compute/*/ncu" in source
     assert 'Using Nsight Compute CLI: $ncu_bin' in source
     assert '"$ncu_bin" --import' in source
+
+
+def test_qk_norm_rope_kv_has_deterministic_ncu_entrypoint():
+    source = Path("scripts/profile_qk_norm_rope_kv_ncu.sh").read_text()
+    assert "scripts/profile_kernel.sh" in source
+    assert "regex:_l20_qk_norm_rope_kv_kernel" in source
+    assert "benchmark_qk_norm_rope_kv.py" in source
+    assert '--tokens "$tokens"' in source
+    assert "tokens-64" in source
+    assert "VLLM_SOURCE" in source
+    assert 'PYTHONPATH="$repo_pythonpath"' in source
 
 
 def test_paged_decode_rfc_campaign_tracks_o2_and_flashinfer():

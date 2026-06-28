@@ -14,6 +14,13 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path)
     parser.add_argument("--rounds", type=int, default=7)
+    parser.add_argument(
+        "--tokens",
+        type=int,
+        nargs="+",
+        default=[1, 8, 16, 32, 64],
+        help="Token counts to benchmark. Use a single value for deterministic NCU capture.",
+    )
     return parser.parse_args()
 
 
@@ -35,7 +42,9 @@ def main() -> int:
 
     q_heads, kv_heads, head_dim = 16, 8, 128
     reports = []
-    for tokens in (1, 8, 16, 32, 64):
+    for tokens in args.tokens:
+        if tokens <= 0:
+            raise ValueError(f"tokens must be positive, got {tokens}")
         torch.manual_seed(tokens)
         width = (q_heads + 2 * kv_heads) * head_dim
         source = torch.randn(tokens, width, device="cuda", dtype=torch.bfloat16)
@@ -188,6 +197,7 @@ def main() -> int:
         "schema_version": 1,
         "gpu": torch.cuda.get_device_name(),
         "import_source": import_source,
+        "tokens_requested": args.tokens,
         "reports": reports,
     }
     serialized = json.dumps(result, indent=2, sort_keys=True)
