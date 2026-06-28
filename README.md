@@ -180,6 +180,8 @@ production paths unless their policy function enables them.
   NSYS family summaries into Amdahl ceilings and the current P0/P1/Stop list.
 - `benchmarks/results/l20-vllm-logits-boundary-scout/README.md` maps that P0
   target onto concrete vLLM source patch points and a conservative first gate.
+- `integrations/vllm/install_l20_logits_boundary_trace.py` installs the
+  behavior-preserving trace hook for the first safe logits-boundary gate.
 - `docs/l20-operator-research.md` tracks operator-level experiments and raw
   benchmark interpretation.
 - `docs/l20-hybrid-tree-attention.md` covers speculative decoding and
@@ -207,7 +209,9 @@ production paths unless their policy function enables them.
 The strongest next technical target is a production GEMM/GEMV epilogue or
 upstream logits boundary for sampling/top-k state. The measured ceiling is much
 larger there than for standalone sampler kernels or another isolated Q/K/RoPE/KV
-microkernel. The next implementation step is a trace-only vLLM patch around
-`GPUModelRunner.sample()` that records when a safe logits-boundary fast path
-would fire. P1 work is CUDA graph/launch/memcpy reduction and isolating the
+microkernel. The current implementation step is the trace-only vLLM patch around
+`GPUModelRunner.sample()`: set `VLLM_L20_LOGITS_BOUNDARY_TRACE=/tmp/trace.jsonl`
+to record when a safe logits-boundary fast path would fire, then summarize it
+with `scripts/summarize_l20_logits_boundary_trace.py`. P1 work is CUDA
+graph/launch/memcpy reduction and isolating the
 large fill/bookkeeping kernels in vLLM serving timelines.

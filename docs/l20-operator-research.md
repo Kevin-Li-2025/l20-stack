@@ -630,6 +630,16 @@ The checkout is dirty, so this is local static evidence, not a claim that a
 clean upstream PR applies unchanged. Artifact:
 `benchmarks/results/l20-vllm-logits-boundary-scout/`.
 
+The next increment is a behavior-preserving trace hook:
+`integrations/vllm/install_l20_logits_boundary_trace.py`. It patches
+`GPUModelRunner.sample()` immediately after `compute_logits()` and records a
+JSONL event when `VLLM_L20_LOGITS_BOUNDARY_TRACE` is set. The gate requires
+SM89/L20, TP=1, single-token decode, no prefill, no grammar/structured output,
+no speculative rejection, no logprobs, no min-p, no penalties, no logit bias,
+and no bad-words masking. The hook exists to measure the real serving
+eligibility rate for an LM-head epilogue or upstream logits boundary; it is not
+a performance result by itself.
+
 ### V23 Tensor-Core Hypothesis Check
 
 FlashInfer exposes both CUDA-core decode and a tensor-core path. The wrapper

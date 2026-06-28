@@ -155,6 +155,15 @@ grammar, no speculative rejection, no per-request generators, and simple
 top-k/top-p/temperature. See
 `benchmarks/results/l20-vllm-logits-boundary-scout/`.
 
+That trace-only patch is now implemented as
+`integrations/vllm/install_l20_logits_boundary_trace.py`. It copies
+`l20_logits_boundary_trace.py` into vLLM and injects one call after
+`compute_logits()` in `GPUModelRunner.sample()`. The hook is disabled unless
+`VLLM_L20_LOGITS_BOUNDARY_TRACE` points to a JSONL path, and it never mutates
+logits or sampler state. Use
+`scripts/summarize_l20_logits_boundary_trace.py` to turn the serving trace into
+an eligible/fallback breakdown before writing any CUTLASS or Triton epilogue.
+
 ## 4. Spec Decode Acceptance-Rate Study
 
 New entries:
