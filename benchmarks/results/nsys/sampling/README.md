@@ -26,6 +26,13 @@ The timeline confirms real GPU sampler kernels:
 | `flashinfer::sampling::TopPSamplingFromProbKernel` | 134 | 38.420 us | 0.4% |
 | `flashinfer::sampling::RadixTopKMaskLogitsKernel_MultiCTA` | 134 | 27.755 us | 0.3% |
 
+The family attribution artifact for the same run shows why this should stay a
+system-boundary project rather than a standalone sampler project: CUTLASS/cuBLAS
+GEMM is 42.99% of GPU time, PyTorch fill/bookkeeping kernels are 41.72%,
+FlashInfer attention is 1.96%, FlashInfer sampling is 0.69%, and vLLM's native
+`_topk_topp_kernel` is 0.66%. On the CUDA API side, sync/memcpy/launch account
+for 43.76%, 13.98%, and 13.51% of API time.
+
 This supports the existing conclusion from the paired serving matrix: the
 production FlashInfer sampler route is real and modestly useful, but a
 standalone replacement sampler is unlikely to be the next large win. The more

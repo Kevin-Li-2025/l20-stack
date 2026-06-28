@@ -19,6 +19,14 @@ def load_ncu_summary_script():
     return module
 
 
+def load_nsys_family_script():
+    path = Path("scripts/summarize_nsys_kernel_families.py")
+    spec = importlib.util.spec_from_file_location("summarize_nsys_kernel_families", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 class L20KernelProfileTest(unittest.TestCase):
     def test_register_limited_occupancy(self):
         module = load_profile_script()
@@ -72,6 +80,35 @@ class L20KernelProfileTest(unittest.TestCase):
         rope_source = Path("scripts/profile_vllm_l20_rope_kv_ncu.sh").read_text()
         self.assertIn("scripts/profile_kernel.sh", rope_source)
         self.assertIn("regex:_l20_.*rope_kv_kernel", rope_source)
+
+    def test_nsys_family_classifier_tracks_serving_boundaries(self):
+        module = load_nsys_family_script()
+        self.assertEqual(
+            module.classify_kernel("void flashinfer::sampling::TopPSamplingFromProbKernel"),
+            "flashinfer_sampling",
+        )
+        self.assertEqual(module.classify_kernel("_topk_topp_kernel"), "sampler_other")
+        self.assertEqual(module.classify_kernel("_temperature_kernel"), "sampler_other")
+        self.assertEqual(module.classify_kernel("_min_p_kernel"), "sampler_other")
+        self.assertEqual(module.classify_kernel("_penalties_kernel"), "sampler_other")
+        self.assertEqual(
+            module.classify_kernel(
+                "void flashinfer::BatchPrefillWithPagedKVCacheKernel<T>(T)"
+            ),
+            "flashinfer_attention",
+        )
+        self.assertEqual(
+            module.classify_kernel("void cutlass::Kernel2<cutlass_80_tensorop>(T)"),
+            "cutlass_or_cublas_gemm",
+        )
+        self.assertEqual(
+            module.classify_kernel("std::enable_if<!T7, void>::type internal::gemvx::kernel"),
+            "cublas_gemv",
+        )
+        self.assertEqual(module.classify_kernel("_l20_qk_norm_rope_kv_kernel"), "custom_l20")
+        self.assertEqual(module.classify_api("cudaEventSynchronize"), "sync")
+        self.assertEqual(module.classify_api("cudaMemcpyAsync"), "memcpy")
+        self.assertEqual(module.classify_api("cudaGraphLaunch_v10000"), "graph")
 
 
 if __name__ == "__main__":

@@ -70,6 +70,25 @@ larger system boundary: sampler kernels themselves are present and cheap; the
 remaining opportunity is reducing post-logits launch/sync/transfer structure,
 not writing a narrow standalone FlashInfer replacement.
 
+## Family Attribution
+
+`kernel-family-summary.{json,md}` groups the raw Nsight Systems CSV rows by
+serving boundary. The GPU kernel time is dominated by existing GEMM/fill work,
+not sampler kernels:
+
+| Family | GPU time share |
+| --- | ---: |
+| CUTLASS/cuBLAS GEMM | 42.99% |
+| PyTorch fill/bookkeeping kernels | 41.72% |
+| Triton-generated model kernels | 9.59% |
+| FlashInfer attention | 1.96% |
+| FlashInfer sampling | 0.69% |
+| vLLM native `_topk_topp_kernel` | 0.66% |
+
+The CUDA API family summary shows the same system boundary from the host side:
+sync, memcpy, and launch calls account for 43.76%, 13.98%, and 13.51% of API
+time respectively. This is an Amdahl ceiling estimate for sampler-only work.
+
 ## Artifacts
 
 - `run-config.json`
@@ -77,6 +96,8 @@ not writing a narrow standalone FlashInfer replacement.
 - `sampling-path.json`
 - `serving.json`
 - `timeline-summary.json`
+- `kernel-family-summary.json`
+- `kernel-family-summary.md`
 - `stats/*.csv`
 
 The raw `.nsys-rep`, `.sqlite`, and server log remain on the L20 host. The empty

@@ -565,6 +565,16 @@ top-k/top-p/multinomial; it does not support replacing FlashInfer's standalone
 sampler kernels. Artifact:
 `benchmarks/results/nsys/sampling/qwen25-coder-1p5b-flashinfer-c4-i512-o32-v2/`.
 
+The family summary generated from the same Nsight Systems CSV makes the Amdahl
+ceiling explicit. GPU kernel time is 42.99% CUTLASS/cuBLAS GEMM, 41.72% PyTorch
+fill/bookkeeping kernels, 9.59% Triton-generated model kernels, 1.96%
+FlashInfer attention, 0.69% FlashInfer sampling, and 0.66% native
+`_topk_topp_kernel`. CUDA API time is dominated by sync, memcpy, and launch at
+43.76%, 13.98%, and 13.51%. A sampler-only kernel can therefore only be a small
+win unless it also removes adjacent logits, transfer, launch, or synchronization
+work. Artifact:
+`benchmarks/results/nsys/sampling/qwen25-coder-1p5b-flashinfer-c4-i512-o32-v2/kernel-family-summary.md`.
+
 The first LM-head/top-k boundary probe is intentionally conservative and mostly
 negative. `scripts/benchmark_lm_head_topk_boundary.py` compares full logits
 materialization, chunked no-full-logits top-k, and an experimental Triton direct

@@ -59,6 +59,24 @@ The O2 serving timeline is dominated by existing vLLM/FlashInfer/PyTorch paths:
 | 5 | Ampere FP16 GEMM 128x64 sliced | 336 | 7.6% |
 | 11 | Custom `_l20_qk_norm_rope_kv_kernel` | 1,260 | 1.6% |
 
+`qwen3-0p6b-o2-disable-cache-c1-i512-o16-v1/kernel-family-summary.{json,md}`
+adds a coarser serving-boundary view:
+
+| Family | GPU time share |
+| --- | ---: |
+| CUTLASS/cuBLAS GEMM | 44.30% |
+| cuBLAS GEMV | 17.80% |
+| PyTorch fill/bookkeeping kernels | 14.66% |
+| FlashInfer attention | 13.22% |
+| vLLM sampler/logits processor kernels | 2.57% |
+| Custom L20 Q/K norm + RoPE + KV write | 1.58% |
+| FlashInfer sampling | 0.52% |
+
+This is the system-level reason the custom kernel is valuable as integration
+proof but cannot by itself produce a decisive serving win on this shape. The
+next higher-ceiling boundaries are GEMM/GEMV epilogues, attention/KV layout,
+and launch/memcpy reduction.
+
 The zero-hit run remains useful as a failure artifact: Python trace files are
 not a reliable O2 gate because compiled graph execution bypasses the Python
 trace writer. The Nsight timeline gate is now nonzero

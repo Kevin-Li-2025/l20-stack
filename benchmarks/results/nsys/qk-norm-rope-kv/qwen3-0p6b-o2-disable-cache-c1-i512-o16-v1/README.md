@@ -57,6 +57,25 @@ L20 Q/K norm + Q/K RoPE + KV-cache write kernel executes inside vLLM O2.
 | 5 | Ampere FP16 GEMM 128x64 sliced | 336 | 7.6% |
 | 11 | Custom `_l20_qk_norm_rope_kv_kernel` | 1,260 | 1.6% |
 
+## Family Attribution
+
+`kernel-family-summary.{json,md}` groups the raw Nsight Systems CSV rows by
+serving boundary:
+
+| Family | GPU time share |
+| --- | ---: |
+| CUTLASS/cuBLAS GEMM | 44.30% |
+| cuBLAS GEMV | 17.80% |
+| PyTorch fill/bookkeeping kernels | 14.66% |
+| FlashInfer attention | 13.22% |
+| Triton-generated model kernels | 2.90% |
+| vLLM sampler/logits processor kernels | 2.57% |
+| Custom L20 Q/K norm + RoPE + KV write | 1.58% |
+
+The corresponding CUDA API table is dominated by launch, memcpy, library-load,
+allocation, and memory-info calls. This run is therefore an integration proof
+and a bottleneck map, not a large end-to-end win claim.
+
 ## Interpretation
 
 The custom kernel is present in the compiled O2 serving graph, but it accounts
@@ -67,4 +86,4 @@ is the corresponding latency comparison.
 
 The raw `.nsys-rep`, `.sqlite`, and logs remain on the L20 host. The committed
 artifact keeps only `run-config.json`, `serving.json`, `timeline-summary.json`,
-and exported stats CSV files.
+`kernel-family-summary.{json,md}`, and exported stats CSV files.
