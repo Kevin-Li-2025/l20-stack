@@ -1,0 +1,31 @@
+{
+  "attention_backend": "FLASHINFER",
+  "concurrencies": [
+    "1",
+    "4"
+  ],
+  "cuda_home": "/home/hhai/venvs/vllm-l20/bin/../lib/python3.12/site-packages/nvidia/cu13",
+  "cudacxx": "/home/hhai/venvs/vllm-l20/bin/../lib/python3.12/site-packages/nvidia/cu13/bin/nvcc",
+  "execution_mode": "o2",
+  "flashsampling_mode": "gumbel",
+  "gpu_memory_utilization": 0.55,
+  "inputs": [
+    "512"
+  ],
+  "logits_trace_jsonl": "/home/hhai/tmp/l20-flashsampling-qwen3-0p6b-i512-c1c4-20260629-150517/logits-boundary-trace.jsonl",
+  "max_model_len": 1024,
+  "min_p": 0.0,
+  "model": "/home/hhai/models/Qwen3-0.6B",
+  "num_prompts": 16,
+  "output_tokens": 32,
+  "request_rate": "inf",
+  "runs": 1,
+  "schema_version": 1,
+  "served_name": "qwen3-0p6b",
+  "temperature": 0.8,
+  "top_k": -1,
+  "top_p": 1.0,
+  "trace_jsonl": "/home/hhai/tmp/l20-flashsampling-qwen3-0p6b-i512-c1c4-20260629-150517/flashsampling-trace.jsonl",
+  "trace_limit": 10000,
+  "vllm_source_dir": "/home/hhai/vllm-l20-rfc"
+}

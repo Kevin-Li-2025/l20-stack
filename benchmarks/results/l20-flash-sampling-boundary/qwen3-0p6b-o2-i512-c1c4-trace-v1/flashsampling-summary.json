@@ -1,0 +1,40 @@
+{
+  "avoidable_logits_bytes": 356441856,
+  "avoidable_logits_mib": 339.929443359375,
+  "eligible_events": 744,
+  "eligible_fraction": 0.96,
+  "eligible_shape_counts": {
+    "b1-h1024-v151936-gumbel": 589,
+    "b2-h1024-v151936-gumbel": 1,
+    "b3-h1024-v151936-gumbel": 34,
+    "b4-h1024-v151936-gumbel": 120
+  },
+  "fallback_events": 31,
+  "reason_counts": {
+    "bad_words": 2,
+    "bad_words_unsupported": 2,
+    "batch_gt_4": 2,
+    "grammar_or_structured_output": 1,
+    "logit_bias_or_min_tokens": 2,
+    "logprobs_unsupported": 2,
+    "min_p": 2,
+    "not_single_token_decode": 30,
+    "penalties": 2,
+    "penalties_unsupported": 2,
+    "prefill": 30,
+    "structured_output_unsupported": 1,
+    "token_logprobs": 2,
+    "top_k_top_p_unsupported": 2
+  },
+  "schema_version": 1,
+  "shape_counts": {
+    "b1-h1024-v151936-gumbel": 613,
+    "b2-h1024-v151936-gumbel": 1,
+    "b256-h1024-v151936-gumbel": 2,
+    "b3-h1024-v151936-gumbel": 35,
+    "b4-h1024-v151936-gumbel": 124
+  },
+  "total_events": 775,
+  "total_logits_bytes": 525090816,
+  "total_logits_mib": 500.765625
+}

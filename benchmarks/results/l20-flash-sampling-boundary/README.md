@@ -96,6 +96,7 @@ show paired ITL movement.
 
 ## Artifacts
 
+- `qwen3-0p6b-o2-i512-c1c4-trace-v1/`
 - `qwen3-b4-h1024-v151936-gumbel-v1.json`
 - `qwen25-b4-h1536-v151936-gumbel-v1.json`
 - `qwen3-b4-h2048-v151936-gumbel-v1.json`
