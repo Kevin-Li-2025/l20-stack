@@ -63,7 +63,7 @@ def test_flashsampling_shadow_plan_accepts_full_vocab_gumbel_v2(monkeypatch):
     assert plan["would_use_epilogue"] is True
     assert plan["fallback_reasons"] == []
     assert plan["policy"]["block_vocab"] == 64
-    assert plan["policy"]["block_hidden"] == 128
+    assert plan["policy"]["block_hidden"] == 256
     assert plan["avoidable_logits_materialization_bytes"] == 2 * 151936 * 2
 
 
@@ -119,4 +119,4 @@ def test_flashsampling_shadow_trace_writes_jsonl_event(tmp_path, monkeypatch):
     plan = event["metadata"]["flashsampling_epilogue"]
     assert plan["would_use_epilogue"] is True
     assert plan["mutates_outputs"] is False
-    assert plan["policy"]["block_hidden"] == 128
+    assert plan["policy"]["block_hidden"] == 256

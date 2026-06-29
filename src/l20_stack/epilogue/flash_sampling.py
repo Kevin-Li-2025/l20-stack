@@ -135,19 +135,24 @@ def should_use_flash_sampling_epilogue(request: FlashSamplingRequest) -> bool:
 def _build_launch_policy(request: FlashSamplingRequest) -> FlashSamplingLaunchPolicy:
     if request.batch_size == 1:
         block_vocab = 32
-        block_hidden = 64
     else:
         block_vocab = 64
+    if request.hidden_size % 256 == 0:
+        block_hidden = 256
+    elif request.hidden_size % 128 == 0:
         block_hidden = 128
+    else:
+        block_hidden = 64
 
     blocks_per_row = (request.vocab_size + block_vocab - 1) // block_vocab
+    num_stages = 2 if block_vocab * block_hidden >= 32_768 else 3
     return FlashSamplingLaunchPolicy(
         block_vocab=block_vocab,
         block_hidden=block_hidden,
         blocks_per_row=blocks_per_row,
         reduce_block=next_power_of_2(blocks_per_row),
         num_warps=4 if block_vocab <= 32 else 8,
-        num_stages=3,
+        num_stages=num_stages,
         strategy="two_stage_lm_head_flash_sampling_epilogue_plan",
     )
 

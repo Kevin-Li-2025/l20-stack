@@ -60,22 +60,32 @@ def lm_head_sampling_launch_config(
     if batch <= 0 or vocab_size <= 0 or hidden_size <= 0:
         raise ValueError("batch, vocab_size, and hidden_size must be positive")
     selected_block_vocab = block_vocab if block_vocab is not None else (64 if batch > 1 else 32)
-    selected_block_hidden = block_hidden if block_hidden is not None else (128 if batch > 1 else 64)
-    if selected_block_vocab not in {16, 32, 64}:
-        raise ValueError("block_vocab must be one of 16, 32, or 64")
-    if selected_block_hidden not in {32, 64, 128}:
-        raise ValueError("block_hidden must be one of 32, 64, or 128")
+    if block_hidden is not None:
+        selected_block_hidden = block_hidden
+    elif hidden_size % 256 == 0:
+        selected_block_hidden = 256
+    elif hidden_size % 128 == 0:
+        selected_block_hidden = 128
+    else:
+        selected_block_hidden = 64
+    if selected_block_vocab not in {16, 32, 64, 128, 256}:
+        raise ValueError("block_vocab must be one of 16, 32, 64, 128, or 256")
+    if selected_block_hidden not in {32, 64, 128, 256}:
+        raise ValueError("block_hidden must be one of 32, 64, 128, or 256")
     if hidden_size % selected_block_hidden != 0:
         raise ValueError("hidden_size must be divisible by block_hidden")
     blocks_per_row = (vocab_size + selected_block_vocab - 1) // selected_block_vocab
+    selected_num_stages = (
+        2 if selected_block_vocab * selected_block_hidden >= 32_768 else 3
+    )
     return LMHeadSamplingLaunchConfig(
         block_vocab=selected_block_vocab,
         block_hidden=selected_block_hidden,
         block_batch=4 if batch > 1 else 1,
         blocks_per_row=blocks_per_row,
         reduce_block=next_power_of_2(blocks_per_row),
-        num_warps=8 if selected_block_vocab == 64 else 4,
-        num_stages=3,
+        num_warps=8 if selected_block_vocab >= 64 else 4,
+        num_stages=selected_num_stages,
         strategy="two_stage_lm_head_gumbel_max",
     )
 

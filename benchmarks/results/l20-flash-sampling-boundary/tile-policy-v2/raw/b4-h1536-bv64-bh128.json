@@ -1,0 +1,113 @@
+{
+  "bytes": {
+    "hidden_bytes": 12288,
+    "materialized_logits_bytes": 1215488,
+    "weight_bytes": 466747392
+  },
+  "candidate_policy": {
+    "block_hidden": 128,
+    "block_vocab": 64,
+    "blocks_per_row": 2374,
+    "num_stages": 3,
+    "num_warps": 8,
+    "reduce_block": 4096,
+    "strategy": "two_stage_lm_head_flash_sampling_epilogue_plan"
+  },
+  "cuda_available": true,
+  "gate": {
+    "eligible": true,
+    "policy": {
+      "block_hidden": 128,
+      "block_vocab": 64,
+      "blocks_per_row": 2374,
+      "num_stages": 3,
+      "num_warps": 8,
+      "reduce_block": 4096,
+      "strategy": "two_stage_lm_head_flash_sampling_epilogue_plan"
+    },
+    "reasons": []
+  },
+  "hardware": "NVIDIA L20",
+  "paths": {
+    "full_logits_reference": {
+      "median_ms": 0.719871997833252,
+      "p10_ms": 0.7147520184516907,
+      "p90_ms": 0.7219200134277344,
+      "samples_ms": [
+        0.7301120162010193,
+        0.7229440212249756,
+        0.7157760262489319,
+        0.7208960056304932,
+        0.719871997833252,
+        0.7208960056304932,
+        0.7147520184516907,
+        0.719871997833252,
+        0.719871997833252,
+        0.7208960056304932,
+        0.7147520184516907,
+        0.719871997833252,
+        0.7208960056304932,
+        0.7219200134277344,
+        0.7147520184516907,
+        0.7208960056304932,
+        0.7208960056304932,
+        0.719871997833252,
+        0.7147520184516907,
+        0.7188479900360107
+      ]
+    },
+    "l20_lm_head_sampling_candidate": {
+      "launch": {
+        "block_batch": 4,
+        "block_hidden": 128,
+        "block_vocab": 64,
+        "blocks_per_row": 2374,
+        "num_stages": 3,
+        "num_warps": 8,
+        "reduce_block": 4096,
+        "strategy": "two_stage_lm_head_gumbel_max"
+      },
+      "median_ms": 0.68299201130867,
+      "p10_ms": 0.6809599995613098,
+      "p90_ms": 0.7710719704627991,
+      "samples_ms": [
+        0.7833600044250488,
+        0.8038399815559387,
+        0.7608320116996765,
+        0.7690240144729614,
+        0.7710719704627991,
+        0.7034879922866821,
+        0.6860799789428711,
+        0.681984007358551,
+        0.6840320229530334,
+        0.6829760074615479,
+        0.6799359917640686,
+        0.681984007358551,
+        0.681984007358551,
+        0.6799359917640686,
+        0.681984007358551,
+        0.6809599995613098,
+        0.681984007358551,
+        0.6840320229530334,
+        0.681984007358551,
+        0.6830080151557922
+      ],
+      "status": "measured"
+    }
+  },
+  "ratios": {
+    "candidate_over_full_logits_reference": 0.94876868855076,
+    "full_logits_reference_over_candidate": 1.0539976835950347
+  },
+  "schema_version": 1,
+  "shape": {
+    "batch": 4,
+    "dtype": "float16",
+    "hidden": 1536,
+    "sampling_mode": "gumbel",
+    "temperature": 1.0,
+    "top_k": -1,
+    "top_p": 1.0,
+    "vocab": 151936
+  }
+}

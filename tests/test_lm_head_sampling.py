@@ -12,8 +12,8 @@ def test_lm_head_sampling_policy_matches_measured_l20_top1_configs():
     batch1 = lm_head_sampling_launch_config(1, 151_936, 1536)
     batch4 = lm_head_sampling_launch_config(4, 151_936, 1536)
 
-    assert (batch1.block_batch, batch1.block_vocab, batch1.block_hidden) == (1, 32, 64)
-    assert (batch4.block_batch, batch4.block_vocab, batch4.block_hidden) == (4, 64, 128)
+    assert (batch1.block_batch, batch1.block_vocab, batch1.block_hidden) == (1, 32, 256)
+    assert (batch4.block_batch, batch4.block_vocab, batch4.block_hidden) == (4, 64, 256)
     assert batch4.blocks_per_row == 2374
     assert batch4.reduce_block == 4096
     assert batch4.num_warps == 8
@@ -36,8 +36,6 @@ def test_lm_head_sampling_rejects_bad_launch_shapes():
         lm_head_sampling_launch_config(0, 151_936, 1536)
     with pytest.raises(ValueError):
         lm_head_sampling_launch_config(4, 151_936, 1537)
-    with pytest.raises(ValueError):
-        lm_head_sampling_launch_config(4, 151_936, 1536, block_vocab=128)
     with pytest.raises(ValueError):
         lm_head_sampling_launch_config(4, 151_936, 1536, block_hidden=96)
 

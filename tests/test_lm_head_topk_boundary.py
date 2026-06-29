@@ -24,8 +24,8 @@ def test_lm_head_top1_policy_matches_qwen_shape():
 def test_lm_head_top1_measured_config_policy():
     batch1 = lm_head_top1_policy_config(1, 151_936, 1536)
     batch4 = lm_head_top1_policy_config(4, 151_936, 1536)
-    assert (batch1.block_vocab, batch1.block_hidden) == (32, 64)
-    assert (batch4.block_vocab, batch4.block_hidden) == (64, 128)
+    assert (batch1.block_vocab, batch1.block_hidden) == (32, 256)
+    assert (batch4.block_vocab, batch4.block_hidden) == (64, 256)
     explicit = lm_head_top1_policy_config(4, 151_936, 1536, block_vocab=16, block_hidden=64)
     assert (explicit.block_vocab, explicit.block_hidden) == (16, 64)
 
@@ -48,8 +48,6 @@ def test_lm_head_top1_gate_is_conservative():
 
 
 def test_lm_head_top1_rejects_bad_blocks():
-    with pytest.raises(ValueError):
-        lm_head_top1_launch_config(151_936, 1536, block_vocab=128)
     with pytest.raises(ValueError):
         lm_head_top1_launch_config(151_936, 1536, block_hidden=96)
     with pytest.raises(ValueError):

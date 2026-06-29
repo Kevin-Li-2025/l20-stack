@@ -47,7 +47,7 @@ def test_flash_sampling_gate_accepts_greedy_and_gumbel_decode_shapes():
     assert greedy.reasons == ()
     assert gumbel.eligible
     assert gumbel.policy.block_vocab == 64
-    assert gumbel.policy.block_hidden == 128
+    assert gumbel.policy.block_hidden == 256
 
 
 @pytest.mark.parametrize(
@@ -92,7 +92,7 @@ def test_flash_sampling_policy_keeps_batch_one_measured_lm_head_top1_shape():
     policy = module.flash_sampling_launch_policy(_request(batch_size=1))
 
     assert policy.block_vocab == 32
-    assert policy.block_hidden == 64
+    assert policy.block_hidden == 256
     assert policy.blocks_per_row == 4748
     assert policy.reduce_block == 8192
     assert policy.num_warps == 4
@@ -105,7 +105,7 @@ def test_flash_sampling_policy_uses_wider_tiles_for_batched_decode():
     policy = module.flash_sampling_launch_policy(_request(batch_size=4))
 
     assert policy.block_vocab == 64
-    assert policy.block_hidden == 128
+    assert policy.block_hidden == 256
     assert policy.blocks_per_row == 2374
     assert policy.reduce_block == 4096
     assert policy.num_warps == 8

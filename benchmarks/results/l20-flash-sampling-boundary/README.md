@@ -99,8 +99,21 @@ LM-head GEMM epilogue rather than replacing GEMM with a separate candidate
 kernel. Because the first c4 run regressed throughput, the checked-in candidate
 policy falls back for batch > 1 unless the max batch is explicitly overridden.
 
+`tile-policy-v2/` records the follow-up L20 sweep that repaired the standalone
+candidate launch policy. The measured default is now a 256-wide hidden tile:
+batch 1 uses `BLOCK_VOCAB=32, BLOCK_HIDDEN=256`, and batched decode uses
+`BLOCK_VOCAB=64, BLOCK_HIDDEN=256`. This reduces standalone micro latency but
+does not change the larger conclusion: a true serving win requires an LM-head
+GEMM epilogue integration.
+
+`qwen3-0p6b-o2-i512-c1-policy-v2-smoke/` is the serving check for that policy:
+the candidate improves median ITL by 1.11%, but throughput drops 2.95% and TTFT
+worsens 13.76%, so it remains a negative result for production serving.
+
 ## Artifacts
 
+- `tile-policy-v2/`
+- `qwen3-0p6b-o2-i512-c1-policy-v2-smoke/`
 - `qwen3-0p6b-o2-i512-c1c4-candidate-v1/`
 - `qwen3-0p6b-o2-i512-c1c4-trace-v1/`
 - `qwen3-b4-h1024-v151936-gumbel-v1.json`

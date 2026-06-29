@@ -94,6 +94,12 @@ The FlashSampling trace is intentionally downstream of `compute_logits` today.
 It proves legality, fallback reasons, and avoidable logits bytes before replacing
 the LM-head epilogue. It is not a latency optimization by itself.
 
+The follow-up tile-policy-v2 sweep changed the candidate default to a 256-wide
+hidden tile. That repaired most standalone batch-one micro latency, but the
+Qwen3-0.6B c1 serving smoke still lost throughput and TTFT. Treat this candidate
+as boundary evidence only; a real win requires fusing sampling into the existing
+LM-head GEMM epilogue.
+
 ## Dispatch Rules
 
 - Prefer trace-only hooks until the target boundary has a measured budget.

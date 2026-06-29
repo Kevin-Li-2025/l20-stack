@@ -53,8 +53,8 @@ serving win unless the full stack improves.
 | Self-written standalone sampler | Path reaches vLLM hot path | Median ITL regresses versus FlashInfer | Keep disabled |
 | Standalone LM-head top-k | Chunked top-k and batch-1 direct top-1 are slower than full logits | Not worth serving integration | Avoid standalone replacement |
 | Batched LM-head greedy top-1 | Batch-4 direct top-1 reaches 0.677 ms vs 0.712 ms full logits, a 4.8% micro speedup | No vLLM serving integration and no top-k/top-p semantics yet | Keep as epilogue prototype evidence |
-| FlashSampling-style LM-head Gumbel | Batch-4 full-vocab Gumbel reaches 1.047-1.084x micro speedup across hidden 1024/1536/2048 | No vLLM serving integration yet | Current implementation target |
-| LM-head/logits epilogue | 96.00% trace eligibility; 339.93 MiB eligible logits materialization in latest smoke | A/B sampler hook regressed; FlashSampling-style epilogue kernel now has a positive micro signal | Current P0 |
+| FlashSampling-style LM-head Gumbel | Tile-policy-v2 improves the standalone candidate policy; batch-4 h1024 reaches 0.911x candidate/full-logits ratio | Native vLLM candidate path is wired, but c1 policy-v2 smoke still loses throughput and TTFT | Negative standalone result |
+| LM-head/logits epilogue | 96.00% trace eligibility; 339.93 MiB eligible logits materialization in latest smoke | A/B sampler hook and standalone FlashSampling candidate both regressed serving throughput | Current P0: true GEMM epilogue only |
 
 The generated artifact for this table is:
 `benchmarks/results/l20-boundary-impact/`.
@@ -69,13 +69,16 @@ The negative results are part of the contribution:
   reaching the custom path;
 - standalone no-full-logits top-k does not beat the optimized full-logits path;
 - batched greedy top-1 can beat full logits in a narrow microbenchmark, but it is not yet a production sampler path;
-- FlashSampling-style full-vocabulary Gumbel has a stronger positive micro signal, but still needs vLLM serving integration;
+- FlashSampling-style full-vocabulary Gumbel reaches the native vLLM path, but
+  the standalone replacement still loses serving throughput after tile-policy
+  repair;
 - current FP8 KV-cache decode prototypes do not justify a vLLM dispatch gate;
 - custom RoPE/KV-style kernels are often Amdahl-limited once attention and
   model compute are included.
 
-These failures narrow the search space and explain why the next boundary must
-move closer to the LM-head/GEMM epilogue and production sampler state.
+These failures narrow the search space and explain why the next boundary must be
+a true LM-head GEMM epilogue or upstream production sampler integration, not
+another standalone replacement kernel.
 
 ## Current Research Claim
 

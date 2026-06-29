@@ -55,17 +55,18 @@ def lm_head_top1_launch_config(
     if hidden_size % block_hidden != 0:
         raise ValueError("hidden_size must be divisible by block_hidden")
     selected_block_vocab = block_vocab or 32
-    if selected_block_vocab not in {16, 32, 64}:
-        raise ValueError("block_vocab must be one of 16, 32, or 64")
-    if block_hidden not in {32, 64, 128}:
-        raise ValueError("block_hidden must be one of 32, 64, or 128")
+    if selected_block_vocab not in {16, 32, 64, 128, 256}:
+        raise ValueError("block_vocab must be one of 16, 32, 64, 128, or 256")
+    if block_hidden not in {32, 64, 128, 256}:
+        raise ValueError("block_hidden must be one of 32, 64, 128, or 256")
     blocks_per_row = (vocab_size + selected_block_vocab - 1) // selected_block_vocab
+    selected_num_warps = 8 if selected_block_vocab >= 64 else 4
     return LMHeadTop1LaunchConfig(
         block_vocab=selected_block_vocab,
         block_hidden=block_hidden,
         blocks_per_row=blocks_per_row,
         reduce_block=next_power_of_2(blocks_per_row),
-        num_warps=4 if selected_block_vocab <= 32 else 8,
+        num_warps=selected_num_warps,
         strategy="two_stage_direct_lm_head_top1",
     )
 
@@ -87,7 +88,12 @@ def lm_head_top1_policy_config(
     if selected_block_vocab is None:
         selected_block_vocab = 64 if batch > 1 else 32
     if selected_block_hidden is None:
-        selected_block_hidden = 128 if batch > 1 else 64
+        if hidden_size % 256 == 0:
+            selected_block_hidden = 256
+        elif hidden_size % 128 == 0:
+            selected_block_hidden = 128
+        else:
+            selected_block_hidden = 64
     return lm_head_top1_launch_config(
         vocab_size,
         hidden_size,

@@ -25,6 +25,7 @@ small.
 | Self-written L20 top-k/top-p sampler | Negative serving result | `benchmarks/results/l20-vllm-sampling-itl/` | Do not enable as a serving path; use only as research/control code. |
 | LM-head/logits boundary | Active P0 | `benchmarks/results/l20-vllm-logits-boundary-scout/`, `benchmarks/results/l20-vllm-logits-boundary-trace-p1/` | Next meaningful implementation target is an upstream-shaped epilogue or compiled sampler boundary. |
 | Standalone LM-head top-k | Negative micro result | `benchmarks/results/l20-lm-head-topk-boundary/` | Standalone replacement is slower; only an epilogue can plausibly win. |
+| FlashSampling standalone LM-head candidate | Negative serving result | `benchmarks/results/l20-flash-sampling-boundary/tile-policy-v2/`, `benchmarks/results/l20-flash-sampling-boundary/qwen3-0p6b-o2-i512-c1-policy-v2-smoke/` | Tile policy repaired the standalone kernel, but real serving still loses throughput/TTFT; next target must be a true GEMM epilogue. |
 | FP8 KV fused attention | Experimental / negative dispatch | `docs/l20-next-improvements.md`, `benchmarks/results/l20-vllm-paged-decode-o2/` | Keep disabled until repeated vLLM ITL beats BF16/FlashInfer. |
 | Speculative tree/verifier attention | Experimental | `docs/l20-hybrid-tree-attention.md` | Keep as a research branch; serving has not shown a stable win. |
 | Kernel-coding QLoRA | Negative so far | `docs/l20-qlora-research.md` | Training stack is healthy, but held-out KernelBench `fast_0` remains zero. |

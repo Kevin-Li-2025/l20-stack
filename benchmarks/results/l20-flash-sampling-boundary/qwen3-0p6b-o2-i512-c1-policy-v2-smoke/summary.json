@@ -1,0 +1,42 @@
+{
+  "candidate_policy": {
+    "block_hidden": 256,
+    "block_vocab": 32,
+    "max_batch": 1,
+    "source": "tile-policy-v2"
+  },
+  "decision": "do_not_claim_serving_win",
+  "hardware": "NVIDIA L20",
+  "metrics": {
+    "baseline": {
+      "median_itl_ms": 2.758893882855773,
+      "median_ttft_ms": 22.787223453633487,
+      "output_throughput": 298.57506854889965,
+      "p95_itl_ms": 2.9343898640945554
+    },
+    "candidate": {
+      "median_itl_ms": 2.7282920200377703,
+      "median_ttft_ms": 25.923212873749435,
+      "output_throughput": 289.77564137011956,
+      "p95_itl_ms": 2.947518997825682
+    },
+    "delta_pct": {
+      "median_itl_ms": -1.1092076795040138,
+      "median_ttft_ms": 13.762051469310999,
+      "output_throughput": -2.9471406375442064,
+      "p95_itl_ms": 0.4474229512504792
+    }
+  },
+  "model": "Qwen3-0.6B",
+  "reason": "Policy repair improved standalone tile choice and median ITL moved slightly, but throughput and TTFT regressed in this smoke run.",
+  "schema_version": 1,
+  "trace": {
+    "eligible_events": 608,
+    "events": 610,
+    "fallback_events": 2,
+    "fallback_reasons": {
+      "candidate_batch_gt_1": 2
+    }
+  },
+  "vllm_mode": "O2 / FlashInfer attention / input 512 / output 32 / concurrency 1 / 16 prompts"
+}
