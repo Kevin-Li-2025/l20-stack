@@ -1,0 +1,155 @@
+{
+  "campaign_dir": "benchmarks/results/l20-vllm-logits-boundary-trace-p1/qwen3-0p6b-o2-v1",
+  "run_config": {
+    "attention_backend": "FLASHINFER",
+    "concurrencies": [
+      "1",
+      "4"
+    ],
+    "cuda_home": "/home/hhai/venvs/vllm-l20/bin/../lib/python3.12/site-packages/nvidia/cu13",
+    "cudacxx": "/home/hhai/venvs/vllm-l20/bin/../lib/python3.12/site-packages/nvidia/cu13/bin/nvcc",
+    "execution_mode": "o2",
+    "gpu_memory_utilization": 0.7,
+    "inputs": [
+      "512"
+    ],
+    "max_model_len": 2048,
+    "min_p": 0.0,
+    "model": "/home/hhai/models/Qwen3-0.6B",
+    "num_prompts": 16,
+    "output_tokens": 32,
+    "request_rate": "inf",
+    "runs": 1,
+    "schema_version": 1,
+    "served_name": "qwen3-0p6b",
+    "temperature": 0.8,
+    "top_k": 50,
+    "top_p": 0.9,
+    "trace_jsonl": "/home/hhai/l20-stack/benchmarks/results/l20-vllm-logits-boundary-trace-p1/qwen3-0p6b-o2-v1/logits-boundary-trace.jsonl",
+    "trace_limit": 50000,
+    "vllm_source_dir": "/home/hhai/vllm-l20-rfc"
+  },
+  "schema_version": 1,
+  "serving_report_count": 2,
+  "shapes": [
+    {
+      "input_tokens": 512,
+      "max_concurrency": 1,
+      "metrics": {
+        "median_itl_ms": 2.82024,
+        "median_ttft_ms": 25.80867,
+        "output_throughput": 284.85302,
+        "p95_itl_ms": 3.07485,
+        "p95_ttft_ms": 34.17456,
+        "request_throughput": 8.90166
+      },
+      "runs": 1
+    },
+    {
+      "input_tokens": 512,
+      "max_concurrency": 4,
+      "metrics": {
+        "median_itl_ms": 3.28006,
+        "median_ttft_ms": 43.15291,
+        "output_throughput": 878.81668,
+        "p95_itl_ms": 3.86634,
+        "p95_ttft_ms": 51.45485,
+        "request_throughput": 27.46302
+      },
+      "runs": 1
+    }
+  ],
+  "trace_summary": {
+    "eligible_events": 744,
+    "eligible_fraction": 0.96,
+    "eligible_hidden_bytes": 2402304,
+    "eligible_hidden_mib": 2.291015625,
+    "eligible_logits_bytes": 356441856,
+    "eligible_logits_mib": 339.929443359375,
+    "fallback_events": 31,
+    "hidden_shape_counts": {
+      "1x1024": 613,
+      "256x1024": 2,
+      "2x1024": 1,
+      "3x1024": 35,
+      "4x1024": 124
+    },
+    "hidden_unknown_bytes_events": 0,
+    "logits_shape_counts": {
+      "1x151936": 613,
+      "256x151936": 2,
+      "2x151936": 1,
+      "3x151936": 35,
+      "4x151936": 124
+    },
+    "logits_unknown_bytes_events": 0,
+    "reason_counts": {
+      "bad_words": 2,
+      "grammar_or_structured_output": 1,
+      "logit_bias_or_min_tokens": 2,
+      "min_p": 2,
+      "not_single_token_decode": 30,
+      "penalties": 2,
+      "prefill": 30,
+      "token_logprobs": 2
+    },
+    "schema_version": 2,
+    "shape_budget": [
+      {
+        "eligible_events": 589,
+        "eligible_logits_bytes": 178980608,
+        "eligible_logits_mib": 170.689208984375,
+        "events": 613,
+        "fallback_events": 24,
+        "shape": "1x151936",
+        "total_logits_bytes": 186273536,
+        "total_logits_mib": 177.644287109375
+      },
+      {
+        "eligible_events": 120,
+        "eligible_logits_bytes": 145858560,
+        "eligible_logits_mib": 139.1015625,
+        "events": 124,
+        "fallback_events": 4,
+        "shape": "4x151936",
+        "total_logits_bytes": 150720512,
+        "total_logits_mib": 143.73828125
+      },
+      {
+        "eligible_events": 34,
+        "eligible_logits_bytes": 30994944,
+        "eligible_logits_mib": 29.55908203125,
+        "events": 35,
+        "fallback_events": 1,
+        "shape": "3x151936",
+        "total_logits_bytes": 31906560,
+        "total_logits_mib": 30.428466796875
+      },
+      {
+        "eligible_events": 1,
+        "eligible_logits_bytes": 607744,
+        "eligible_logits_mib": 0.57958984375,
+        "events": 1,
+        "fallback_events": 0,
+        "shape": "2x151936",
+        "total_logits_bytes": 607744,
+        "total_logits_mib": 0.57958984375
+      },
+      {
+        "eligible_events": 0,
+        "eligible_logits_bytes": 0,
+        "eligible_logits_mib": 0.0,
+        "events": 2,
+        "fallback_events": 2,
+        "shape": "256x151936",
+        "total_logits_bytes": 155582464,
+        "total_logits_mib": 148.375
+      }
+    ],
+    "total_events": 775,
+    "total_hidden_bytes": 3538944,
+    "total_hidden_mib": 3.375,
+    "total_logits_bytes": 525090816,
+    "total_logits_mib": 500.765625
+  }
+}

@@ -17,8 +17,9 @@ class Device:
 
 
 class Tensor:
-    def __init__(self, shape):
+    def __init__(self, shape, dtype="torch.float16"):
         self.shape = shape
+        self.dtype = dtype
         self.device = Device()
 
 
@@ -129,6 +130,11 @@ def test_l20_logits_boundary_trace_records_eligible_event(tmp_path, monkeypatch)
     assert event["reasons"] == []
     assert event["metadata"]["num_reqs"] == 2
     assert event["metadata"]["logits_shape"] == [2, 151936]
+    assert event["metadata"]["logits_dtype"] == "torch.float16"
+    assert event["metadata"]["logits_element_bytes"] == 2
+    assert event["metadata"]["logits_bytes"] == 2 * 151936 * 2
+    assert event["metadata"]["hidden_dim"] == 2048
+    assert event["metadata"]["vocab_size"] == 151936
     assert event["metadata"]["sampling"]["temperature_min"] == 0.8
     assert event["metadata"]["sampling"]["top_k_max"] == 50.0
     assert event["metadata"]["sampling"]["top_p_min"] == 0.9
@@ -314,17 +320,32 @@ def test_l20_logits_boundary_trace_summarizer_counts_reasons_and_shapes(tmp_path
         {
             "eligible": True,
             "reasons": [],
-            "metadata": {"logits_shape": [2, 10], "hidden_shape": [2, 4]},
+            "metadata": {
+                "logits_shape": [2, 10],
+                "hidden_shape": [2, 4],
+                "logits_dtype": "torch.float16",
+                "hidden_dtype": "torch.float16",
+            },
         },
         {
             "eligible": False,
             "reasons": ["prefill", "token_logprobs"],
-            "metadata": {"logits_shape": [4, 10], "hidden_shape": [4, 4]},
+            "metadata": {
+                "logits_shape": [4, 10],
+                "hidden_shape": [4, 4],
+                "logits_dtype": "torch.float16",
+                "hidden_dtype": "torch.float16",
+            },
         },
         {
             "eligible": False,
             "reasons": ["prefill"],
-            "metadata": {"logits_shape": [4, 10], "hidden_shape": [4, 4]},
+            "metadata": {
+                "logits_shape": [4, 10],
+                "hidden_shape": [4, 4],
+                "logits_dtype": "torch.float16",
+                "hidden_dtype": "torch.float16",
+            },
         },
     ]
     trace = tmp_path / "trace.jsonl"
@@ -339,6 +360,15 @@ def test_l20_logits_boundary_trace_summarizer_counts_reasons_and_shapes(tmp_path
     assert summary["fallback_events"] == 2
     assert summary["reason_counts"] == {"prefill": 2, "token_logprobs": 1}
     assert summary["logits_shape_counts"] == {"4x10": 2, "2x10": 1}
+    assert summary["schema_version"] == 2
+    assert summary["eligible_logits_bytes"] == 2 * 10 * 2
+    assert summary["total_logits_bytes"] == (2 * 10 + 4 * 10 + 4 * 10) * 2
+    assert summary["logits_unknown_bytes_events"] == 0
+    shape_budget = {row["shape"]: row for row in summary["shape_budget"]}
+    assert shape_budget["2x10"]["eligible_events"] == 1
+    assert shape_budget["2x10"]["eligible_logits_bytes"] == 2 * 10 * 2
+    assert shape_budget["4x10"]["events"] == 2
+    assert shape_budget["4x10"]["fallback_events"] == 2
 
 
 def test_l20_logits_boundary_campaign_summarizer_reads_serving_reports(tmp_path):

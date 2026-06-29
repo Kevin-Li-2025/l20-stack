@@ -8,6 +8,8 @@ import json
 from collections import Counter
 from pathlib import Path
 
+MIB = 1024 * 1024
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -26,26 +28,131 @@ def read_events(path: Path) -> list[dict]:
     return events
 
 
+def _shape_key(shape: list[int] | None) -> str | None:
+    if shape is None:
+        return None
+    return "x".join(str(dim) for dim in shape)
+
+
+def _dtype_nbytes(dtype: object) -> int | None:
+    if dtype is None:
+        return None
+    text = str(dtype).lower()
+    if "float8" in text or "int8" in text or "uint8" in text or "bool" in text:
+        return 1
+    if "bfloat16" in text or "float16" in text or "half" in text or "int16" in text:
+        return 2
+    if "float32" in text or text.endswith(".float") or "int32" in text:
+        return 4
+    if "float64" in text or "double" in text or "int64" in text:
+        return 8
+    return None
+
+
+def _shape_numel(shape: list[int] | None) -> int | None:
+    if shape is None:
+        return None
+    numel = 1
+    for dim in shape:
+        numel *= int(dim)
+    return numel
+
+
+def _tensor_bytes(metadata: dict, prefix: str) -> int | None:
+    value = metadata.get(f"{prefix}_bytes")
+    if value is not None:
+        return int(value)
+    element_bytes = metadata.get(f"{prefix}_element_bytes")
+    if element_bytes is None:
+        element_bytes = _dtype_nbytes(metadata.get(f"{prefix}_dtype"))
+    shape = metadata.get(f"{prefix}_shape")
+    numel = _shape_numel(shape)
+    if element_bytes is None or numel is None:
+        return None
+    return int(element_bytes) * numel
+
+
+def _mib(value: int) -> float:
+    return value / MIB
+
+
 def summarize(events: list[dict]) -> dict:
     reason_counts = Counter()
     logits_shapes = Counter()
     hidden_shapes = Counter()
+    shape_budget: dict[str, dict] = {}
     eligible = 0
+    total_logits_bytes = 0
+    eligible_logits_bytes = 0
+    total_hidden_bytes = 0
+    eligible_hidden_bytes = 0
+    logits_unknown_bytes_events = 0
+    hidden_unknown_bytes_events = 0
     for event in events:
-        if event.get("eligible"):
+        is_eligible = bool(event.get("eligible"))
+        if is_eligible:
             eligible += 1
         for reason in event.get("reasons", []):
             reason_counts[reason] += 1
         metadata = event.get("metadata", {})
         logits_shape = metadata.get("logits_shape")
         hidden_shape = metadata.get("hidden_shape")
-        if logits_shape is not None:
-            logits_shapes["x".join(str(dim) for dim in logits_shape)] += 1
-        if hidden_shape is not None:
-            hidden_shapes["x".join(str(dim) for dim in hidden_shape)] += 1
+        logits_key = _shape_key(logits_shape)
+        hidden_key = _shape_key(hidden_shape)
+        if logits_key is not None:
+            logits_shapes[logits_key] += 1
+            entry = shape_budget.setdefault(
+                logits_key,
+                {
+                    "events": 0,
+                    "eligible_events": 0,
+                    "fallback_events": 0,
+                    "total_logits_bytes": 0,
+                    "eligible_logits_bytes": 0,
+                },
+            )
+            entry["events"] += 1
+            if is_eligible:
+                entry["eligible_events"] += 1
+            else:
+                entry["fallback_events"] += 1
+        if hidden_key is not None:
+            hidden_shapes[hidden_key] += 1
+
+        logits_bytes = _tensor_bytes(metadata, "logits")
+        if logits_bytes is None:
+            logits_unknown_bytes_events += 1
+        else:
+            total_logits_bytes += logits_bytes
+            if is_eligible:
+                eligible_logits_bytes += logits_bytes
+            if logits_key is not None:
+                shape_budget[logits_key]["total_logits_bytes"] += logits_bytes
+                if is_eligible:
+                    shape_budget[logits_key]["eligible_logits_bytes"] += logits_bytes
+
+        hidden_bytes = _tensor_bytes(metadata, "hidden")
+        if hidden_bytes is None:
+            hidden_unknown_bytes_events += 1
+        else:
+            total_hidden_bytes += hidden_bytes
+            if is_eligible:
+                eligible_hidden_bytes += hidden_bytes
+
+    shape_budget_rows = []
+    for shape, row in shape_budget.items():
+        enriched = dict(row)
+        enriched["shape"] = shape
+        enriched["total_logits_mib"] = _mib(enriched["total_logits_bytes"])
+        enriched["eligible_logits_mib"] = _mib(enriched["eligible_logits_bytes"])
+        shape_budget_rows.append(enriched)
+    shape_budget_rows.sort(
+        key=lambda row: (row["eligible_logits_bytes"], row["eligible_events"]),
+        reverse=True,
+    )
     total = len(events)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "total_events": total,
         "eligible_events": eligible,
         "fallback_events": total - eligible,
@@ -53,6 +160,17 @@ def summarize(events: list[dict]) -> dict:
         "reason_counts": dict(reason_counts.most_common()),
         "logits_shape_counts": dict(logits_shapes.most_common()),
         "hidden_shape_counts": dict(hidden_shapes.most_common()),
+        "total_logits_bytes": total_logits_bytes,
+        "eligible_logits_bytes": eligible_logits_bytes,
+        "total_logits_mib": _mib(total_logits_bytes),
+        "eligible_logits_mib": _mib(eligible_logits_bytes),
+        "total_hidden_bytes": total_hidden_bytes,
+        "eligible_hidden_bytes": eligible_hidden_bytes,
+        "total_hidden_mib": _mib(total_hidden_bytes),
+        "eligible_hidden_mib": _mib(eligible_hidden_bytes),
+        "logits_unknown_bytes_events": logits_unknown_bytes_events,
+        "hidden_unknown_bytes_events": hidden_unknown_bytes_events,
+        "shape_budget": shape_budget_rows,
     }
 
 
@@ -65,6 +183,9 @@ def render_markdown(summary: dict, trace: Path) -> str:
         f"- Eligible events: `{summary['eligible_events']}`",
         f"- Fallback events: `{summary['fallback_events']}`",
         f"- Eligible fraction: `{summary['eligible_fraction']:.4f}`",
+        f"- Eligible logits materialization: `{summary['eligible_logits_mib']:.2f} MiB`",
+        f"- Total logits materialization: `{summary['total_logits_mib']:.2f} MiB`",
+        f"- Events without logits byte estimate: `{summary['logits_unknown_bytes_events']}`",
         "",
         "## Fallback Reasons",
         "",
@@ -75,6 +196,26 @@ def render_markdown(summary: dict, trace: Path) -> str:
             lines.append(f"| `{reason}` | {count} |")
     else:
         lines.append("No fallback reasons recorded.")
+    lines.extend(["", "## Logits Materialization Budget", ""])
+    if summary["shape_budget"]:
+        lines.extend(
+            [
+                "| Logits shape | Events | Eligible | Eligible logits MiB | Total logits MiB |",
+                "| --- | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for row in summary["shape_budget"]:
+            lines.append(
+                "| `{shape}` | {events} | {eligible_events} | {eligible:.2f} | {total:.2f} |".format(
+                    shape=row["shape"],
+                    events=row["events"],
+                    eligible_events=row["eligible_events"],
+                    eligible=row["eligible_logits_mib"],
+                    total=row["total_logits_mib"],
+                )
+            )
+    else:
+        lines.append("No logits materialization budget recorded.")
     lines.extend(["", "## Logits Shapes", ""])
     if summary["logits_shape_counts"]:
         lines.extend(["| Shape | Count |", "| --- | ---: |"])

@@ -88,6 +88,9 @@ def render_markdown(summary: dict) -> str:
         f"- Eligible fraction: `{trace.get('eligible_fraction', 0.0):.4f}`",
         f"- Eligible events: `{trace.get('eligible_events', 0)}`",
         f"- Fallback events: `{trace.get('fallback_events', 0)}`",
+        f"- Eligible logits materialization: `{trace.get('eligible_logits_mib', 0.0):.2f} MiB`",
+        f"- Total logits materialization: `{trace.get('total_logits_mib', 0.0):.2f} MiB`",
+        f"- Events without logits byte estimate: `{trace.get('logits_unknown_bytes_events', 0)}`",
         "",
         "## Serving Shapes",
         "",
@@ -109,6 +112,24 @@ def render_markdown(summary: dict) -> str:
             )
     else:
         lines.append("No serving reports found.")
+    lines.extend(["", "## Logits Materialization Budget", ""])
+    shape_budget = trace.get("shape_budget", [])
+    if shape_budget:
+        lines.extend(
+            [
+                "| Logits shape | Events | Eligible | Eligible logits MiB | Total logits MiB |",
+                "| --- | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for row in shape_budget:
+            lines.append(
+                f"| `{row['shape']}` | {row['events']} | "
+                f"{row['eligible_events']} | "
+                f"{row['eligible_logits_mib']:.2f} | "
+                f"{row['total_logits_mib']:.2f} |"
+            )
+    else:
+        lines.append("No logits materialization budget recorded.")
     lines.extend(["", "## Fallback Reasons", ""])
     reason_counts = trace.get("reason_counts", {})
     if reason_counts:

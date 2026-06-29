@@ -31,6 +31,43 @@ def _as_shape(value: Any) -> list[int] | None:
     return [int(dim) for dim in shape]
 
 
+def _dtype_text(value: Any) -> str | None:
+    dtype = getattr(value, "dtype", None)
+    return str(dtype) if dtype is not None else None
+
+
+def _dtype_nbytes(dtype: Any) -> int | None:
+    if dtype is None:
+        return None
+    text = str(dtype).lower()
+    if "float8" in text or "int8" in text or "uint8" in text or "bool" in text:
+        return 1
+    if "bfloat16" in text or "float16" in text or "half" in text or "int16" in text:
+        return 2
+    if "float32" in text or text.endswith(".float") or "int32" in text:
+        return 4
+    if "float64" in text or "double" in text or "int64" in text:
+        return 8
+    return None
+
+
+def _shape_numel(shape: list[int] | None) -> int | None:
+    if shape is None:
+        return None
+    numel = 1
+    for dim in shape:
+        numel *= dim
+    return numel
+
+
+def _tensor_nbytes(shape: list[int] | None, dtype_text: str | None) -> int | None:
+    element_bytes = _dtype_nbytes(dtype_text)
+    numel = _shape_numel(shape)
+    if element_bytes is None or numel is None:
+        return None
+    return numel * element_bytes
+
+
 def _safe_int(value: Any, default: int | None = None) -> int | None:
     try:
         return int(value)
@@ -288,15 +325,31 @@ def l20_logits_boundary_gate(
     """Return whether a future fused logits-boundary path should be eligible."""
     scheduled = _scheduled_token_metadata(scheduler_output)
     reasons = []
+    hidden_shape = _as_shape(sample_hidden_states)
+    logits_shape = _as_shape(logits)
+    hidden_dtype = _dtype_text(sample_hidden_states)
+    logits_dtype = _dtype_text(logits)
+    hidden_element_bytes = _dtype_nbytes(hidden_dtype)
+    logits_element_bytes = _dtype_nbytes(logits_dtype)
     metadata = {
         "num_reqs": _safe_int(getattr(input_batch, "num_reqs", None)),
         "num_tokens": _safe_int(getattr(input_batch, "num_tokens", None)),
         "num_draft_tokens": _safe_int(getattr(input_batch, "num_draft_tokens", None)),
-        "hidden_shape": _as_shape(sample_hidden_states),
-        "logits_shape": _as_shape(logits),
+        "hidden_shape": hidden_shape,
+        "logits_shape": logits_shape,
+        "hidden_dtype": hidden_dtype,
+        "logits_dtype": logits_dtype,
+        "hidden_element_bytes": hidden_element_bytes,
+        "logits_element_bytes": logits_element_bytes,
+        "hidden_bytes": _tensor_nbytes(hidden_shape, hidden_dtype),
+        "logits_bytes": _tensor_nbytes(logits_shape, logits_dtype),
         "sampling": _sampling_metadata(model_runner, input_batch),
         **scheduled,
     }
+    if hidden_shape:
+        metadata["hidden_dim"] = hidden_shape[-1]
+    if logits_shape:
+        metadata["vocab_size"] = logits_shape[-1]
 
     device_reason = _device_reason(sample_hidden_states)
     if device_reason is not None:
@@ -328,7 +381,6 @@ def l20_logits_boundary_gate(
     ):
         reasons.append("not_single_token_decode")
 
-    logits_shape = _as_shape(logits)
     num_reqs = metadata["num_reqs"]
     if logits_shape is None or len(logits_shape) != 2:
         reasons.append("unexpected_logits_rank")
