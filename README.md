@@ -87,6 +87,8 @@ PYTHONPYCACHEPREFIX=/tmp/l20-pycache /usr/bin/python3 \
 
 | Purpose | Entry point |
 | --- | --- |
+| One-page research summary | `docs/where-optimizations-stop-mattering.md` |
+| Boundary-impact graph/table | `benchmarks/results/l20-boundary-impact/` |
 | Main serving case study | `docs/l20-serving-case-study.md` |
 | Experiment status and negative results | `docs/experiment-status.md` |
 | vLLM hook status | `integrations/vllm/README.md` |

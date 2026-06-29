@@ -65,3 +65,6 @@ FlashInfer sampling hardening -> logits-boundary trace budget -> epilogue target
 That path is stronger than a list of kernels because it shows a complete systems
 loop: hypothesis, kernel, integration, serving measurement, negative result, and
 next boundary.
+
+The compact paper-style version is `docs/where-optimizations-stop-mattering.md`.
+The generated graph/table artifact is `benchmarks/results/l20-boundary-impact/`.

@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="486" viewBox="0 0 1100 486">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<style>text{font-family:Inter,Arial,sans-serif;fill:#172033}.small{font-size:13px}.label{font-size:14px;font-weight:600}.title{font-size:22px;font-weight:700}.muted{fill:#667085}.axis{stroke:#d0d5dd;stroke-width:1}.good{fill:#137333}.bad{fill:#b42318}.budget{fill:#175cd3}.micro{fill:#7a5af8}</style>
+<text x="28" y="36" class="title">Where L20 inference optimizations stop mattering</text>
+<text x="28" y="60" class="small muted">Micro speedups only matter when the boundary survives vLLM serving and Amdahl dilution.</text>
+<text x="430" y="78" class="small muted">micro speedup</text>
+<text x="660" y="78" class="small muted">serving impact</text>
+<text x="900" y="78" class="small muted">logits budget</text>
+<line x1="28" y1="68" x2="1072" y2="68" class="axis"/>
+<text x="28" y="90" class="label">RoPE + paged KV append</text>
+<text x="28" y="110" class="small muted">case_study_evidence_not_next_target</text>
+<rect x="430" y="81" width="160.0" height="16" rx="2" class="micro"/>
+<text x="598.0" y="94" class="small">7.70x</text>
+<rect x="660" y="81" width="2.8" height="16" rx="2" class="good"/>
+<text x="670.8" y="94" class="small">+0.58%</text>
+<text x="900" y="94" class="small muted">n/a</text>
+<line x1="28" y1="126" x2="1072" y2="126" class="axis"/>
+<text x="28" y="148" class="label">Q/K norm + Q/K RoPE + KV write</text>
+<text x="28" y="168" class="small muted">do_not_micro_optimize_alone</text>
+<rect x="430" y="139" width="30.5" height="16" rx="2" class="micro"/>
+<text x="468.5" y="152" class="small">1.47x</text>
+<rect x="660" y="139" width="22.3" height="16" rx="2" class="good"/>
+<text x="690.3" y="152" class="small">+4.52%</text>
+<text x="900" y="152" class="small muted">n/a</text>
+<line x1="28" y1="184" x2="1072" y2="184" class="axis"/>
+<text x="28" y="206" class="label">FlashInfer sampling route</text>
+<text x="28" y="226" class="small muted">harden_existing_route</text>
+<text x="430" y="210" class="small muted">not measured</text>
+<rect x="660" y="197" width="43.1" height="16" rx="2" class="good"/>
+<text x="711.1" y="210" class="small">+8.73%</text>
+<text x="900" y="210" class="small muted">n/a</text>
+<line x1="28" y1="242" x2="1072" y2="242" class="axis"/>
+<text x="28" y="264" class="label">Self-written standalone sampler</text>
+<text x="28" y="284" class="small muted">keep_disabled</text>
+<text x="430" y="268" class="small muted">not measured</text>
+<rect x="660" y="255" width="160.0" height="16" rx="2" class="bad"/>
+<text x="828.0" y="268" class="small">-32.36%</text>
+<text x="900" y="268" class="small muted">n/a</text>
+<line x1="28" y1="300" x2="1072" y2="300" class="axis"/>
+<text x="28" y="322" class="label">Standalone LM-head top-k</text>
+<text x="28" y="342" class="small muted">avoid_standalone_replacement</text>
+<rect x="430" y="313" width="20.3" height="16" rx="2" class="micro"/>
+<text x="458.3" y="326" class="small">0.98x</text>
+<text x="660" y="326" class="small muted">pending</text>
+<text x="900" y="326" class="small muted">n/a</text>
+<line x1="28" y1="358" x2="1072" y2="358" class="axis"/>
+<text x="28" y="380" class="label">LM-head/logits epilogue</text>
+<text x="28" y="400" class="small muted">next_core_module</text>
+<text x="430" y="384" class="small muted">not measured</text>
+<text x="660" y="384" class="small muted">pending</text>
+<rect x="900" y="371" width="160.0" height="16" rx="2" class="budget"/>
+<text x="1068.0" y="384" class="small">96.0%, 339.9 MiB</text>
+</svg>

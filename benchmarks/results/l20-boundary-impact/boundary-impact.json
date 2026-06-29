@@ -1,0 +1,80 @@
+[
+  {
+    "boundary": "RoPE + paged KV append",
+    "decision": "case_study_evidence_not_next_target",
+    "eligible_fraction_pct": null,
+    "evidence": "benchmarks/results/l20-paged-rope-policy-v3/ and benchmarks/results/l20-vllm-e2e/qwen-policy-v3-safe64-summary.json",
+    "gpu_time_pct": 1.583032438997907,
+    "materialization_mib": null,
+    "micro_speedup_x": 7.699,
+    "note": "Large append speedup collapses as attention/model/runtime dominate.",
+    "serving_impact_pct": 0.576,
+    "serving_metric": "best safe64 vLLM output-throughput gain across measured shapes",
+    "status": "confirmed_kernel_amdahl_limited"
+  },
+  {
+    "boundary": "Q/K norm + Q/K RoPE + KV write",
+    "decision": "do_not_micro_optimize_alone",
+    "eligible_fraction_pct": null,
+    "evidence": "benchmarks/results/nsys/qk-norm-rope-kv/",
+    "gpu_time_pct": 1.583032438997907,
+    "materialization_mib": null,
+    "micro_speedup_x": 1.47,
+    "note": "Path is live under O2 but current custom kernel is a small GPU-time share.",
+    "serving_impact_pct": 4.52,
+    "serving_metric": "paired serving median ITL improvement from path-proof matrix",
+    "status": "o2_path_proven_small_fraction"
+  },
+  {
+    "boundary": "FlashInfer sampling route",
+    "decision": "harden_existing_route",
+    "eligible_fraction_pct": null,
+    "evidence": "benchmarks/results/l20-vllm-sampling-winner-v2/",
+    "gpu_time_pct": 3.4160520483759185,
+    "materialization_mib": null,
+    "micro_speedup_x": null,
+    "note": "Production route beats torch/native on the useful serving shapes.",
+    "serving_impact_pct": 8.725031960613773,
+    "serving_metric": "best strict-win median ITL reduction in paired v2 matrix",
+    "status": "production_route_confirmed"
+  },
+  {
+    "boundary": "Self-written standalone sampler",
+    "decision": "keep_disabled",
+    "eligible_fraction_pct": null,
+    "evidence": "benchmarks/results/l20-vllm-sampling-itl/qwen25-coder-1p5b-summary.json",
+    "gpu_time_pct": 3.4160520483759185,
+    "materialization_mib": null,
+    "micro_speedup_x": null,
+    "note": "The hook reaches the path but loses to FlashInfer once integrated.",
+    "serving_impact_pct": -32.36045369402194,
+    "serving_metric": "median ITL regression versus clean FlashInfer",
+    "status": "negative_serving_result"
+  },
+  {
+    "boundary": "Standalone LM-head top-k",
+    "decision": "avoid_standalone_replacement",
+    "eligible_fraction_pct": null,
+    "evidence": "benchmarks/results/l20-lm-head-topk-boundary/",
+    "gpu_time_pct": 62.10202176584764,
+    "materialization_mib": null,
+    "micro_speedup_x": 0.9787557057197371,
+    "note": "Best standalone candidate is slower than full logits plus optimized top-k.",
+    "serving_impact_pct": null,
+    "serving_metric": "not run in serving because micro path is slower",
+    "status": "negative_micro_result"
+  },
+  {
+    "boundary": "LM-head/logits epilogue",
+    "decision": "next_core_module",
+    "eligible_fraction_pct": 96.0,
+    "evidence": "benchmarks/results/l20-vllm-logits-boundary-trace-p1/qwen3-0p6b-o2-v1/",
+    "gpu_time_pct": 62.10202176584764,
+    "materialization_mib": 339.929443359375,
+    "micro_speedup_x": null,
+    "note": "744/775 events are safe under the current trace gate.",
+    "serving_impact_pct": null,
+    "serving_metric": "implementation pending",
+    "status": "active_p0_budget"
+  }
+]

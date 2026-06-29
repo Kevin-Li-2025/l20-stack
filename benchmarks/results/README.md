@@ -9,6 +9,7 @@ of git.
 
 | Result directory | Status | Why it matters |
 | --- | --- | --- |
+| `l20-boundary-impact/` | Paper-summary artifact | Converts the repo's key positive and negative results into one table, JSON, CSV, and SVG graph. |
 | `l20-vllm-logits-boundary-trace-p1/` | Active P0 | Measures the safe decode subset and logits materialization budget for the next LM-head/logits epilogue target. |
 | `l20-serving-optimization-ceiling/` | Active analysis | Converts NSYS family summaries into Amdahl ceilings and explains why small standalone kernels are no longer the best target. |
 | `l20-vllm-sampling-winner/` | Confirmed route | Shows FlashInfer sampling beating torch/native in most paired multi-model serving shapes. |
