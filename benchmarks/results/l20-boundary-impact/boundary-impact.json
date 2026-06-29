@@ -78,6 +78,19 @@
     "status": "positive_greedy_micro_only"
   },
   {
+    "boundary": "FlashSampling-style LM-head Gumbel",
+    "decision": "current_epilogue_target",
+    "eligible_fraction_pct": null,
+    "evidence": "benchmarks/results/l20-flash-sampling-boundary/",
+    "gpu_time_pct": 62.10202176584764,
+    "materialization_mib": null,
+    "micro_speedup_x": 1.0837005020923667,
+    "note": "Avoids full logits materialization for exact Gumbel-max; serving integration is still pending.",
+    "serving_impact_pct": null,
+    "serving_metric": "not run in serving; full-vocab Gumbel only",
+    "status": "positive_gumbel_micro_only"
+  },
+  {
     "boundary": "LM-head/logits epilogue",
     "decision": "next_core_module",
     "eligible_fraction_pct": 96.0,

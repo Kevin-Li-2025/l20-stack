@@ -115,6 +115,21 @@ def _max_flashinfer_sampling_itl_win(root: Path) -> float | None:
     return max(wins) if wins else None
 
 
+def _best_flash_sampling_gumbel_speedup(root: Path) -> float | None:
+    values: list[float] = []
+    base = root / "benchmarks/results/l20-flash-sampling-boundary"
+    for path in base.glob("*gumbel*.json"):
+        summary = _load_json(path)
+        if not summary:
+            continue
+        ratio = summary.get("ratios", {}).get("candidate_over_full_logits_reference")
+        if ratio:
+            ratio = float(ratio)
+            if ratio > 0.0:
+                values.append(1.0 / ratio)
+    return max(values) if values else None
+
+
 def _best_batched_lm_head_top1_speedup(root: Path) -> float | None:
     values: list[float] = []
     base = root / "benchmarks/results/l20-lm-head-topk-boundary"
@@ -160,6 +175,7 @@ def build_boundary_impacts(root: str | Path = ".") -> list[BoundaryImpact]:
     gemm_gpu_pct = _max_gpu_boundary_pct(ceiling, "gemm_or_gemv")
     lm_head_speedup = _best_lm_head_speedup(ceiling)
     batched_top1_speedup = _best_batched_lm_head_top1_speedup(repo)
+    flash_sampling_gumbel_speedup = _best_flash_sampling_gumbel_speedup(repo)
 
     return [
         BoundaryImpact(
@@ -246,6 +262,19 @@ def build_boundary_impacts(root: str | Path = ".") -> list[BoundaryImpact]:
             note="Batch-4 batched partial kernel beats full logits top-1 but lacks production sampler semantics.",
         ),
         BoundaryImpact(
+            boundary="FlashSampling-style LM-head Gumbel",
+            status="positive_gumbel_micro_only",
+            micro_speedup_x=flash_sampling_gumbel_speedup,
+            serving_impact_pct=None,
+            serving_metric="not run in serving; full-vocab Gumbel only",
+            gpu_time_pct=gemm_gpu_pct,
+            eligible_fraction_pct=None,
+            materialization_mib=None,
+            decision="current_epilogue_target",
+            evidence="benchmarks/results/l20-flash-sampling-boundary/",
+            note="Avoids full logits materialization for exact Gumbel-max; serving integration is still pending.",
+        ),
+        BoundaryImpact(
             boundary="LM-head/logits epilogue",
             status="active_p0_budget",
             micro_speedup_x=None,
@@ -321,6 +350,7 @@ def render_markdown(rows: Iterable[BoundaryImpact]) -> str:
             "- RoPE/KV and Q/K fusion rows show why micro wins are not enough.",
             "- Standalone sampler and standalone LM-head top-k rows are negative controls.",
             "- Batched greedy top-1 is a positive micro signal, not a serving claim.",
+            "- FlashSampling-style Gumbel is the current positive epilogue target, still micro-only.",
             "- The logits epilogue row is not a speed claim; it is the measured "
             "budget for the next implementation.",
         ]

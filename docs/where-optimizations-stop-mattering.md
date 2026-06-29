@@ -53,7 +53,8 @@ serving win unless the full stack improves.
 | Self-written standalone sampler | Path reaches vLLM hot path | Median ITL regresses versus FlashInfer | Keep disabled |
 | Standalone LM-head top-k | Chunked top-k and batch-1 direct top-1 are slower than full logits | Not worth serving integration | Avoid standalone replacement |
 | Batched LM-head greedy top-1 | Batch-4 direct top-1 reaches 0.677 ms vs 0.712 ms full logits, a 4.8% micro speedup | No vLLM serving integration and no top-k/top-p semantics yet | Keep as epilogue prototype evidence |
-| LM-head/logits epilogue | 96.00% trace eligibility; 339.93 MiB eligible logits materialization in latest smoke | A/B sampler hook regressed; epilogue kernel work is now the narrower target | Current P0 |
+| FlashSampling-style LM-head Gumbel | Batch-4 full-vocab Gumbel reaches 1.047-1.084x micro speedup across hidden 1024/1536/2048 | No vLLM serving integration yet | Current implementation target |
+| LM-head/logits epilogue | 96.00% trace eligibility; 339.93 MiB eligible logits materialization in latest smoke | A/B sampler hook regressed; FlashSampling-style epilogue kernel now has a positive micro signal | Current P0 |
 
 The generated artifact for this table is:
 `benchmarks/results/l20-boundary-impact/`.
@@ -68,6 +69,7 @@ The negative results are part of the contribution:
   reaching the custom path;
 - standalone no-full-logits top-k does not beat the optimized full-logits path;
 - batched greedy top-1 can beat full logits in a narrow microbenchmark, but it is not yet a production sampler path;
+- FlashSampling-style full-vocabulary Gumbel has a stronger positive micro signal, but still needs vLLM serving integration;
 - current FP8 KV-cache decode prototypes do not justify a vLLM dispatch gate;
 - custom RoPE/KV-style kernels are often Amdahl-limited once attention and
   model compute are included.

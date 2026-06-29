@@ -10,6 +10,7 @@ serving behavior.
 | Installer | Status | Purpose | Default serving claim |
 | --- | --- | --- | --- |
 | `install_l20_logits_boundary_trace.py` | Safe trace | Records where an LM-head/logits/sampling epilogue could be legal. | Behavior-preserving only; no speed claim. |
+| `l20_flashsampling_epilogue.py` | Shadow helper | Narrows the logits-boundary trace to the FlashSampling-style full-vocab Gumbel epilogue gate. | Behavior-preserving only; micro result is not serving proof. |
 | `install_l20_qk_norm_rope_kv.py` | Experimental | Tests a fused Q/K norm + Q/K RoPE + KV write boundary. | Path proof and small serving signal, not a broad win. |
 | `install_l20_rope_kv.py` | Confirmed kernel / limited serving | Fuses RoPE and KV-cache append. | Useful case-study evidence; Amdahl-limited in full serving. |
 | `install_l20_topk_topp_sampler.py` | Negative serving result | Wires the self-written L20 sampler into vLLM. | Disabled for production claims after ITL regression. |
@@ -39,7 +40,10 @@ or model outputs.
 The upstream-shaped proposal is in `docs/logits-boundary-rfc.md`. The trace
 events include `metadata.shadow_epilogue`, which records whether the request
 would use the future epilogue path and how many logits bytes would be avoidable
-under the current safe gate.
+under the current safe gate. `l20_flashsampling_epilogue.py` is the next narrower
+shadow planner: it only accepts full-vocabulary greedy/Gumbel cases and keeps
+top-k/top-p, logprobs, penalties, structured output, and speculative decode on
+the baseline path.
 
 ## Dispatch Rules
 

@@ -1,0 +1,63 @@
+# L20 FlashSampling Boundary
+
+This directory is for the next LM-head / sampling boundary experiment: a
+FlashSampling-style path that computes sampler candidates inside the LM-head
+matmul and avoids materializing full `[batch, vocab]` logits.
+
+This is not a serving win claim yet. The first checked path is intentionally
+narrow:
+
+- safe decode only;
+- batch <= 4;
+- vocab <= 262144;
+- hidden divisible by 64;
+- greedy or full-vocabulary Gumbel-max only;
+- no top-k/top-p, penalties, logprobs, bad words, structured output, or
+  speculative decode.
+
+## First L20 Micro Results
+
+Shape: batch 4, vocab 151936, FP16, full-vocabulary greedy/Gumbel. The
+candidate computes LM-head tile candidates directly and avoids writing full
+`[batch, vocab]` logits for the sampled-token decision.
+
+| Shape | Mode | Full logits reference | L20 candidate | Speedup |
+| --- | --- | ---: | ---: | ---: |
+| hidden 1024 | Gumbel-max | 0.504 ms | 0.465 ms | 1.084x |
+| hidden 1536 | Gumbel-max | 0.721 ms | 0.682 ms | 1.056x |
+| hidden 2048 | Gumbel-max | 0.935 ms | 0.893 ms | 1.047x |
+| hidden 1536 | Greedy | 0.685 ms | 0.682 ms | 1.005x |
+
+The result is directionally useful but deliberately narrow. Greedy argmax is
+only parity, because the full-logits baseline is already mostly the optimized
+LM-head GEMM plus a cheap max. The positive signal appears when the baseline
+must also materialize full-vocabulary sampling state, which is the FlashSampling
+style boundary.
+
+## Required Metrics Before Claiming A Win
+
+- Full logits reference latency versus L20 LM-head sampling candidate latency.
+- Logits materialization bytes avoided.
+- vLLM serving ITL, TTFT, throughput, and fallback counts.
+- Nsight Systems kernel count and launch sequence.
+- Nsight Compute DRAM/L2/warp-stall data for the candidate kernel.
+
+## First Command
+
+```bash
+PYTHONPATH=src python scripts/benchmark_l20_flash_sampling_boundary.py \
+  --batch 4 --hidden 1536 --vocab 151936 \
+  --sampling-mode gumbel --include-candidate \
+  --rounds 30 --warmup 10 \
+  --output benchmarks/results/l20-flash-sampling-boundary/qwen25-b4-h1536-v151936-gumbel-v1.json
+```
+
+The serving-level gate is separate. A positive microbenchmark only says the
+LM-head boundary is worth integrating; it does not prove vLLM ITL movement.
+
+## Artifacts
+
+- `qwen3-b4-h1024-v151936-gumbel-v1.json`
+- `qwen25-b4-h1536-v151936-gumbel-v1.json`
+- `qwen3-b4-h2048-v151936-gumbel-v1.json`
+- `qwen25-b4-h1536-v151936-greedy-v1.json`
