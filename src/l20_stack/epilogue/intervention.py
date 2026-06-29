@@ -217,9 +217,19 @@ def _summarize_campaign_shapes(payload: dict[str, Any]) -> dict[str, dict[str, A
 def _trace_summary(run_dir: Path, campaign: dict[str, Any] | None) -> dict[str, Any]:
     path = run_dir / "logits-boundary-summary.json"
     if path.exists():
-        return _load_json(path)
+        payload = _load_json(path)
+        payload.setdefault("trace_source", "logits_boundary")
+        return payload
+    sampler_path = run_dir / "l20-topk-topp-summary.json"
+    if sampler_path.exists():
+        payload = _load_json(sampler_path)
+        payload.setdefault("trace_source", "l20_topk_topp_sampler")
+        return payload
     if campaign is not None:
-        return dict(campaign.get("trace_summary", {}))
+        payload = dict(campaign.get("trace_summary", {}))
+        if payload:
+            payload.setdefault("trace_source", "campaign_trace_summary")
+        return payload
     return {}
 
 
@@ -229,6 +239,7 @@ def _trace_eligibility(trace: dict[str, Any]) -> dict[str, Any]:
     shadow_present = "shadow_events" in trace
     return {
         "present": True,
+        "source": trace.get("trace_source", "unknown"),
         "total_events": int(trace.get("total_events", 0)),
         "eligible_events": int(trace.get("eligible_events", 0)),
         "fallback_events": int(trace.get("fallback_events", 0)),

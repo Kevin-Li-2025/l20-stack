@@ -1,0 +1,180 @@
+{
+  "baseline": {
+    "dir": "/home/hhai/l20-stack/benchmarks/results/l20-logits-boundary-ab-smoke/qwen25-coder-1p5b-c1c4-i512-r1/baseline-trace-only",
+    "exists": true,
+    "role": "baseline",
+    "serving_report_count": 2,
+    "shapes": [
+      {
+        "input_tokens": 512,
+        "max_concurrency": 1,
+        "metrics": {
+          "median_itl_ms": 5.05075,
+          "median_ttft_ms": 33.27057,
+          "output_throughput": 168.68319,
+          "p95_itl_ms": 5.26512,
+          "p95_ttft_ms": 36.73293,
+          "request_throughput": 5.27135
+        },
+        "runs": 1,
+        "shape": "c1-i512",
+        "source": "raw_reports"
+      },
+      {
+        "input_tokens": 512,
+        "max_concurrency": 4,
+        "metrics": {
+          "median_itl_ms": 5.40789,
+          "median_ttft_ms": 71.53187,
+          "output_throughput": 525.82546,
+          "p95_itl_ms": 6.00309,
+          "p95_ttft_ms": 89.72844,
+          "request_throughput": 16.43205
+        },
+        "runs": 1,
+        "shape": "c4-i512",
+        "source": "raw_reports"
+      }
+    ],
+    "trace_eligibility": {
+      "eligible_events": 744,
+      "eligible_fraction": 0.96248382923674,
+      "eligible_logits_mib": 339.929443359375,
+      "fallback_events": 29,
+      "present": true,
+      "shadow_avoidable_logits_mib": 339.929443359375,
+      "shadow_eligible_events": 744,
+      "shadow_eligible_fraction": 0.96248382923674,
+      "shadow_events": 773,
+      "shadow_fallback_events": 29,
+      "shadow_present": true,
+      "source": "logits_boundary",
+      "total_events": 773,
+      "total_logits_mib": 352.390625
+    },
+    "warnings": []
+  },
+  "baseline_dir": "/home/hhai/l20-stack/benchmarks/results/l20-logits-boundary-ab-smoke/qwen25-coder-1p5b-c1c4-i512-r1/baseline-trace-only",
+  "candidate": {
+    "dir": "/home/hhai/l20-stack/benchmarks/results/l20-logits-boundary-ab-smoke/qwen25-coder-1p5b-c1c4-i512-r1/sampler-boundary-candidate",
+    "exists": true,
+    "role": "candidate",
+    "serving_report_count": 2,
+    "shapes": [
+      {
+        "input_tokens": 512,
+        "max_concurrency": 1,
+        "metrics": {
+          "median_itl_ms": 6.96234,
+          "median_ttft_ms": 40.91588,
+          "output_throughput": 127.96765,
+          "p95_itl_ms": 7.47182,
+          "p95_ttft_ms": 44.36536,
+          "request_throughput": 3.99899
+        },
+        "runs": 1,
+        "shape": "c1-i512",
+        "source": "raw_reports"
+      },
+      {
+        "input_tokens": 512,
+        "max_concurrency": 4,
+        "metrics": {
+          "median_itl_ms": 7.56257,
+          "median_ttft_ms": 91.06019,
+          "output_throughput": 397.56305,
+          "p95_itl_ms": 8.07958,
+          "p95_ttft_ms": 100.14408,
+          "request_throughput": 12.42385
+        },
+        "runs": 1,
+        "shape": "c4-i512",
+        "source": "raw_reports"
+      }
+    ],
+    "trace_eligibility": {
+      "eligible_events": 773,
+      "eligible_fraction": 0.9974193548387097,
+      "eligible_logits_mib": 0.0,
+      "fallback_events": 2,
+      "present": true,
+      "shadow_avoidable_logits_mib": 0.0,
+      "shadow_eligible_events": 0,
+      "shadow_eligible_fraction": 0.0,
+      "shadow_events": 0,
+      "shadow_fallback_events": 0,
+      "shadow_present": false,
+      "source": "l20_topk_topp_sampler",
+      "total_events": 775,
+      "total_logits_mib": 0.0
+    },
+    "warnings": []
+  },
+  "candidate_dir": "/home/hhai/l20-stack/benchmarks/results/l20-logits-boundary-ab-smoke/qwen25-coder-1p5b-c1c4-i512-r1/sampler-boundary-candidate",
+  "gate": {
+    "compared_shapes": 2,
+    "definition": "A strict win requires lower candidate median ITL and higher candidate output throughput versus baseline for every compared shape.",
+    "strict_win_fraction": 0.0,
+    "strict_win_shapes": 0,
+    "total_shapes": 2
+  },
+  "incomplete": false,
+  "incomplete_reasons": [],
+  "input_dir": "/home/hhai/l20-stack/benchmarks/results/l20-logits-boundary-ab-smoke/qwen25-coder-1p5b-c1c4-i512-r1",
+  "min_runs_per_shape": 1,
+  "schema_version": 1,
+  "shapes": [
+    {
+      "baseline": {
+        "median_itl_ms": 5.05075,
+        "output_throughput": 168.68319,
+        "runs": 1
+      },
+      "candidate": {
+        "median_itl_ms": 6.96234,
+        "output_throughput": 127.96765,
+        "runs": 1
+      },
+      "complete": true,
+      "deltas": {
+        "median_itl_ms_pct": 37.847646389150135,
+        "output_throughput_pct": -24.137283626187052
+      },
+      "incomplete": false,
+      "incomplete_reasons": [],
+      "input_tokens": 512,
+      "max_concurrency": 1,
+      "median_itl_win": false,
+      "shape": "c1-i512",
+      "strict_win": false,
+      "throughput_win": false
+    },
+    {
+      "baseline": {
+        "median_itl_ms": 5.40789,
+        "output_throughput": 525.82546,
+        "runs": 1
+      },
+      "candidate": {
+        "median_itl_ms": 7.56257,
+        "output_throughput": 397.56305,
+        "runs": 1
+      },
+      "complete": true,
+      "deltas": {
+        "median_itl_ms_pct": 39.84326604276344,
+        "output_throughput_pct": -24.392582664217144
+      },
+      "incomplete": false,
+      "incomplete_reasons": [],
+      "input_tokens": 512,
+      "max_concurrency": 4,
+      "median_itl_win": false,
+      "shape": "c4-i512",
+      "strict_win": false,
+      "throughput_win": false
+    }
+  ],
+  "status": "complete",
+  "verdict": "do_not_claim_win"
+}

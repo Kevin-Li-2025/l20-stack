@@ -90,6 +90,23 @@ def write_campaign_summary(run_dir, median_itl_ms, output_throughput):
     )
 
 
+def write_sampler_summary(run_dir):
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "l20-topk-topp-summary.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "total_events": 20,
+                "eligible_events": 18,
+                "fallback_events": 2,
+                "eligible_fraction": 0.9,
+                "reason_counts": {"outside_l20_profitability_gate": 2},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_logits_boundary_ab_strict_win_with_trace_and_shadow(tmp_path):
     root = tmp_path / "ab"
     baseline = root / "baseline-trace"
@@ -191,3 +208,22 @@ def test_logits_boundary_ab_uses_campaign_summary_and_cli_writes_outputs(tmp_pat
 def test_logits_boundary_ab_missing_input_root_raises(tmp_path):
     with pytest.raises(FileNotFoundError):
         summarize_logits_boundary_ab(tmp_path / "missing")
+
+
+def test_logits_boundary_ab_reads_candidate_sampler_trace(tmp_path):
+    root = tmp_path / "ab"
+    baseline = root / "baseline-trace"
+    candidate = root / "candidate-serving"
+    write_report(baseline, 1, 512, 1, 10.0, 100.0)
+    write_report(baseline, 1, 512, 2, 10.0, 100.0)
+    write_report(candidate, 1, 512, 1, 9.0, 125.0)
+    write_report(candidate, 1, 512, 2, 9.0, 125.0)
+    write_sampler_summary(candidate)
+
+    summary = summarize_logits_boundary_ab(root)
+
+    trace = summary["candidate"]["trace_eligibility"]
+    assert trace["present"] is True
+    assert trace["source"] == "l20_topk_topp_sampler"
+    assert trace["eligible_events"] == 18
+    assert trace["eligible_fraction"] == 0.9

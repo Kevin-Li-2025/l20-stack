@@ -34,6 +34,7 @@ def test_ab_campaign_uses_safe_l20_defaults_from_env():
     assert "port=${PORT:-8000}" in source
     assert "max_model_len=${MAX_MODEL_LEN:-2048}" in source
     assert "gpu_memory_utilization=${GPU_MEMORY_UTILIZATION:-0.70}" in source
+    assert "candidate_l20_trace=${CANDIDATE_L20_TRACE:-1}" in source
 
 
 def test_ab_campaign_reuses_existing_campaign_scripts_without_benchmark_logic():
@@ -83,6 +84,10 @@ def test_ab_campaign_writes_summary_outputs_after_both_modes():
     assert "README.md" in source
     assert "--min-runs-per-shape" in source
     assert "$min_runs_per_shape" in source
+    assert 'VLLM_SOURCE_TREE="$vllm_source_tree"' in source
+    assert 'L20_TRACE="$candidate_l20_trace"' in source
+    assert 'PYTHON="$python_bin"' in source
+    assert 'bash "$repo_root/scripts/run_vllm_l20_sampling_campaign.sh"' in source
 
 
 def test_ab_campaign_drops_server_logs_unless_requested():

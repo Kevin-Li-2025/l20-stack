@@ -1,0 +1,85 @@
+{
+  "eligible_events": 744,
+  "eligible_fraction": 0.96248382923674,
+  "eligible_hidden_bytes": 3603456,
+  "eligible_hidden_mib": 3.4365234375,
+  "eligible_logits_bytes": 356441856,
+  "eligible_logits_mib": 339.929443359375,
+  "fallback_events": 29,
+  "hidden_shape_counts": {
+    "1x1536": 613,
+    "2x1536": 1,
+    "3x1536": 35,
+    "4x1536": 124
+  },
+  "hidden_unknown_bytes_events": 0,
+  "logits_shape_counts": {
+    "1x151936": 613,
+    "2x151936": 1,
+    "3x151936": 35,
+    "4x151936": 124
+  },
+  "logits_unknown_bytes_events": 0,
+  "reason_counts": {
+    "not_single_token_decode": 29,
+    "prefill": 29
+  },
+  "schema_version": 3,
+  "shadow_avoidable_logits_bytes": 356441856,
+  "shadow_avoidable_logits_mib": 339.929443359375,
+  "shadow_eligible_events": 744,
+  "shadow_eligible_fraction": 0.96248382923674,
+  "shadow_events": 773,
+  "shadow_fallback_events": 29,
+  "shadow_reason_counts": {
+    "not_single_token_decode": 29,
+    "prefill": 29
+  },
+  "shape_budget": [
+    {
+      "eligible_events": 589,
+      "eligible_logits_bytes": 178980608,
+      "eligible_logits_mib": 170.689208984375,
+      "events": 613,
+      "fallback_events": 24,
+      "shape": "1x151936",
+      "total_logits_bytes": 186273536,
+      "total_logits_mib": 177.644287109375
+    },
+    {
+      "eligible_events": 120,
+      "eligible_logits_bytes": 145858560,
+      "eligible_logits_mib": 139.1015625,
+      "events": 124,
+      "fallback_events": 4,
+      "shape": "4x151936",
+      "total_logits_bytes": 150720512,
+      "total_logits_mib": 143.73828125
+    },
+    {
+      "eligible_events": 34,
+      "eligible_logits_bytes": 30994944,
+      "eligible_logits_mib": 29.55908203125,
+      "events": 35,
+      "fallback_events": 1,
+      "shape": "3x151936",
+      "total_logits_bytes": 31906560,
+      "total_logits_mib": 30.428466796875
+    },
+    {
+      "eligible_events": 1,
+      "eligible_logits_bytes": 607744,
+      "eligible_logits_mib": 0.57958984375,
+      "events": 1,
+      "fallback_events": 0,
+      "shape": "2x151936",
+      "total_logits_bytes": 607744,
+      "total_logits_mib": 0.57958984375
+    }
+  ],
+  "total_events": 773,
+  "total_hidden_bytes": 3735552,
+  "total_hidden_mib": 3.5625,
+  "total_logits_bytes": 369508352,
+  "total_logits_mib": 352.390625
+}

@@ -1,0 +1,40 @@
+{
+  "campaign": "l20_logits_boundary_ab",
+  "candidate_l20_trace": true,
+  "concurrencies": [
+    "1",
+    "4"
+  ],
+  "environment": {
+    "MODEL": "/home/hhai/models/Qwen2.5-Coder-1.5B-Instruct",
+    "PYTHON": "/home/hhai/venvs/vllm-l20/bin/python",
+    "SERVED_NAME": "qwen25-coder-1p5b",
+    "VLLM_SOURCE_TREE": "/home/hhai/vllm-l20-rfc"
+  },
+  "gpu_memory_utilization": 0.7,
+  "inputs": [
+    "512"
+  ],
+  "keep_server_logs": false,
+  "max_model_len": 2048,
+  "min_runs_per_shape": 1,
+  "model": "/home/hhai/models/Qwen2.5-Coder-1.5B-Instruct",
+  "modes": {
+    "baseline_trace_only": {
+      "output_dir": "/home/hhai/l20-stack/benchmarks/results/l20-logits-boundary-ab-smoke/qwen25-coder-1p5b-c1c4-i512-r1/baseline-trace-only",
+      "script": "scripts/run_vllm_l20_logits_boundary_trace_campaign.sh"
+    },
+    "sampler_boundary_candidate": {
+      "output_dir": "/home/hhai/l20-stack/benchmarks/results/l20-logits-boundary-ab-smoke/qwen25-coder-1p5b-c1c4-i512-r1/sampler-boundary-candidate",
+      "sampler_mode": "l20",
+      "script": "scripts/run_vllm_l20_sampling_campaign.sh"
+    }
+  },
+  "num_prompts": 16,
+  "output_tokens": 32,
+  "port": 8161,
+  "runs": 1,
+  "schema_version": 1,
+  "served_name": "qwen25-coder-1p5b",
+  "vllm_source_tree": "/home/hhai/vllm-l20-rfc"
+}

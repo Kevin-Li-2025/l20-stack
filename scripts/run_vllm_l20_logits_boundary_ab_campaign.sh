@@ -25,6 +25,7 @@ max_model_len=${MAX_MODEL_LEN:-2048}
 gpu_memory_utilization=${GPU_MEMORY_UTILIZATION:-0.70}
 keep_server_logs=${KEEP_SERVER_LOGS:-0}
 min_runs_per_shape=${MIN_RUNS_PER_SHAPE:-2}
+candidate_l20_trace=${CANDIDATE_L20_TRACE:-1}
 
 baseline_dir="$output_dir/baseline-trace-only"
 candidate_dir="$output_dir/sampler-boundary-candidate"
@@ -70,6 +71,7 @@ payload = {
     "gpu_memory_utilization": float("$gpu_memory_utilization"),
     "keep_server_logs": "$keep_server_logs" == "1",
     "min_runs_per_shape": int("$min_runs_per_shape"),
+    "candidate_l20_trace": "$candidate_l20_trace" == "1",
     "environment": {
         "PYTHON": os.environ.get("PYTHON"),
         "MODEL": os.environ.get("MODEL"),
@@ -113,6 +115,7 @@ cleanup_server_logs
   MAX_MODEL_LEN="$max_model_len" \
   GPU_MEMORY_UTILIZATION="$gpu_memory_utilization" \
   VLLM_SOURCE_TREE="$vllm_source_tree" \
+  L20_TRACE="$candidate_l20_trace" \
   PYTHON="$python_bin" \
   bash "$repo_root/scripts/run_vllm_l20_sampling_campaign.sh" \
     "$model" \
