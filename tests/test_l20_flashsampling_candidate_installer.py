@@ -38,6 +38,40 @@ def maybe_take_l20_flashsampling_sampler_output(*args, **kwargs):
 """
 
 
+NATIVE_MODEL_RUNNER_SOURCE = """from vllm.v1.worker.gpu.sample.output import SamplerOutput
+
+class GPUModelRunner:
+    def sample(self, hidden_states, input_batch, grammar_output):
+        sample_hidden_states = hidden_states[input_batch.logits_indices]
+        logits = self.model.compute_logits(sample_hidden_states)
+        if grammar_output is not None:
+            # Apply grammar bitmask to the logits in-place.
+            assert self.structured_outputs_worker is not None
+            self.structured_outputs_worker.apply_grammar_bitmask(
+                logits,
+                input_batch,
+                grammar_output.structured_output_request_ids,
+                grammar_output.grammar_bitmask,
+            )
+
+        if input_batch.num_draft_tokens == 0 or self.rejection_sampler is None:
+            assert self.sampler is not None
+            sampler_output = self.sampler(logits, input_batch)
+        else:
+            # Rejection sampling for spec decoding.
+            assert self.rejection_sampler is not None
+            assert self.speculator is not None
+            sampler_output = self.rejection_sampler(
+                logits,
+                input_batch,
+                # Draft logits are needed for probabilistic rejection sampling.
+                self.speculator.draft_logits,
+            )
+        return sampler_output, sampler_output.num_sampled, sampler_output.num_rejected
+"""
+
+
+
 def load_installer():
     path = Path("integrations/vllm/install_l20_flashsampling_epilogue_candidate.py")
     spec = importlib.util.spec_from_file_location(
@@ -53,12 +87,15 @@ def write_package(tmp_path):
     target = package / "v1/worker/gpu_model_runner.py"
     target.parent.mkdir(parents=True)
     target.write_text(V2_MODEL_RUNNER_SOURCE, encoding="utf-8")
-    return package, target
+    native_target = package / "v1/worker/gpu/model_runner.py"
+    native_target.parent.mkdir(parents=True)
+    native_target.write_text(NATIVE_MODEL_RUNNER_SOURCE, encoding="utf-8")
+    return package, target, native_target
 
 
 def test_candidate_installer_patches_compute_and_sample_then_uninstalls(tmp_path):
     installer = load_installer()
-    package, target = write_package(tmp_path)
+    package, target, native_target = write_package(tmp_path)
     helper = tmp_path / "l20_flashsampling_candidate.py"
     helper.write_text(HELPER_SOURCE, encoding="utf-8")
     installer.HELPER_SOURCE = helper
@@ -66,10 +103,14 @@ def test_candidate_installer_patches_compute_and_sample_then_uninstalls(tmp_path
     installer.install(package)
 
     patched = target.read_text(encoding="utf-8")
+    native_patched = native_target.read_text(encoding="utf-8")
     assert "maybe_l20_flashsampling_compute_logits_or_sample" in patched
     assert "maybe_take_l20_flashsampling_sampler_output" in patched
     assert "self.model.compute_logits," in patched
     assert "if sampler_output is None:" in patched
+    assert "maybe_l20_flashsampling_compute_logits_or_sample" in native_patched
+    assert "maybe_take_l20_flashsampling_sampler_output" in native_patched
+    assert "if sampler_output is None:" in native_patched
     assert (package / "v1/worker/gpu/l20_flashsampling_candidate.py").exists()
 
     installer.install(package)
@@ -77,12 +118,13 @@ def test_candidate_installer_patches_compute_and_sample_then_uninstalls(tmp_path
 
     installer.uninstall(package)
     assert target.read_text(encoding="utf-8") == V2_MODEL_RUNNER_SOURCE
+    assert native_target.read_text(encoding="utf-8") == NATIVE_MODEL_RUNNER_SOURCE
     assert not (package / "v1/worker/gpu/l20_flashsampling_candidate.py").exists()
 
 
 def test_candidate_installer_requires_helper(tmp_path):
     installer = load_installer()
-    package, target = write_package(tmp_path)
+    package, target, native_target = write_package(tmp_path)
     installer.HELPER_SOURCE = tmp_path / "missing.py"
 
     with pytest.raises(RuntimeError, match="missing helper source"):

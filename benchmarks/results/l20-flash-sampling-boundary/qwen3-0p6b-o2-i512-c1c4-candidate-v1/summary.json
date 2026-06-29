@@ -1,0 +1,59 @@
+{
+  "attention_backend": "FLASHINFER",
+  "candidate_trace": {
+    "eligible": 773,
+    "events": 775,
+    "fallback": 2,
+    "reason_counts": {
+      "batch_gt_4": 2
+    }
+  },
+  "execution_mode": "o2",
+  "hardware": "NVIDIA L20",
+  "input_tokens": 512,
+  "model": "Qwen3-0.6B",
+  "num_prompts": 16,
+  "output_tokens": 32,
+  "request_rate": "inf",
+  "rows": [
+    {
+      "baseline_output_tok_s": 296.01552988360163,
+      "baseline_p50_itl_ms": 2.7513494715094566,
+      "baseline_p50_ttft_ms": 25.330546079203486,
+      "baseline_p95_itl_ms": 2.915015851613134,
+      "baseline_p95_ttft_ms": 28.555402474012226,
+      "candidate_output_tok_s": 293.1287697330953,
+      "candidate_p50_itl_ms": 2.7418178506195545,
+      "candidate_p50_ttft_ms": 25.244607124477625,
+      "candidate_p95_itl_ms": 3.023316094186157,
+      "candidate_p95_ttft_ms": 29.53823935240507,
+      "output_tok_s_delta_pct": -0.9752056426368816,
+      "p50_itl_improvement_pct": 0.3464343947798401,
+      "p50_ttft_improvement_pct": 0.3392700435953802,
+      "p95_itl_improvement_pct": -3.7152539844025485,
+      "p95_ttft_improvement_pct": -3.4418596596119,
+      "shape": "c1-i512-r1"
+    },
+    {
+      "baseline_output_tok_s": 847.3869324593026,
+      "baseline_p50_itl_ms": 3.18410515319556,
+      "baseline_p50_ttft_ms": 47.04398661851883,
+      "baseline_p95_itl_ms": 3.9086119388230145,
+      "baseline_p95_ttft_ms": 65.68705732934177,
+      "candidate_output_tok_s": 687.8215240891806,
+      "candidate_p50_itl_ms": 3.1338525004684925,
+      "candidate_p50_ttft_ms": 43.0973379407078,
+      "candidate_p95_itl_ms": 3.6643469939008355,
+      "candidate_p95_ttft_ms": 232.10521275177598,
+      "output_tok_s_delta_pct": -18.83028900469685,
+      "p50_itl_improvement_pct": 1.5782347098880836,
+      "p50_ttft_improvement_pct": 8.38927344702847,
+      "p95_itl_improvement_pct": 6.2494038483578285,
+      "p95_ttft_improvement_pct": -253.3499934211497,
+      "shape": "c4-i512-r1"
+    }
+  ],
+  "schema_version": 1,
+  "verdict": "candidate_integrates_and_runs_but_not_a_throughput_win",
+  "vllm": "0.23.1rc1.dev521+gbb1ae10f0.d20260627"
+}

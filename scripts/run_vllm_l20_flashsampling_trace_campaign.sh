@@ -69,6 +69,17 @@ trace_jsonl="$output_dir/flashsampling-trace.jsonl"
 logits_trace_jsonl="$output_dir/logits-boundary-trace.jsonl"
 rm -f "$trace_jsonl" "$logits_trace_jsonl"
 
+candidate_env=()
+if [[ -n "${VLLM_L20_FLASHSAMPLING_CANDIDATE:-}" ]]; then
+  candidate_env+=(VLLM_L20_FLASHSAMPLING_CANDIDATE="$VLLM_L20_FLASHSAMPLING_CANDIDATE")
+fi
+if [[ -n "${VLLM_L20_FLASHSAMPLING_CANDIDATE_TRACE:-}" ]]; then
+  candidate_env+=(VLLM_L20_FLASHSAMPLING_CANDIDATE_TRACE="$VLLM_L20_FLASHSAMPLING_CANDIDATE_TRACE")
+fi
+if [[ -n "${VLLM_L20_FLASHSAMPLING_CANDIDATE_TRACE_LIMIT:-}" ]]; then
+  candidate_env+=(VLLM_L20_FLASHSAMPLING_CANDIDATE_TRACE_LIMIT="$VLLM_L20_FLASHSAMPLING_CANDIDATE_TRACE_LIMIT")
+fi
+
 server_args=(
   "$model"
   --served-model-name "$served_name"
@@ -133,6 +144,7 @@ setsid env \
   VLLM_L20_FLASHSAMPLING_TRACE="$trace_jsonl" \
   VLLM_L20_FLASHSAMPLING_TRACE_LIMIT="$trace_limit" \
   VLLM_L20_FLASHSAMPLING_MODE="$flashsampling_mode" \
+  "${candidate_env[@]}" \
   "$python_bin" -m vllm.entrypoints.cli.main serve "${server_args[@]}" \
   >"$server_log" 2>&1 &
 server_pid=$!

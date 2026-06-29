@@ -12,7 +12,7 @@ serving behavior.
 | `install_l20_logits_boundary_trace.py` | Safe trace | Records where an LM-head/logits/sampling epilogue could be legal. | Behavior-preserving only; no speed claim. |
 | `l20_flashsampling_epilogue.py` | Shadow helper | Narrows the logits-boundary trace to the FlashSampling-style full-vocab Gumbel epilogue gate. | Behavior-preserving only; micro result is not serving proof. |
 | `install_l20_flashsampling_epilogue_trace.py` | Safe trace | Installs the logits-boundary trace plus the narrower FlashSampling gate into vLLM. | Behavior-preserving only; path-proof/fallback accounting. |
-| `install_l20_flashsampling_epilogue_candidate.py` | Experimental | Opt-in LM-head FlashSampling candidate for full-vocab decode. | Requires paired serving A/B before any win claim. |
+| `install_l20_flashsampling_epilogue_candidate.py` | Experimental | Opt-in LM-head FlashSampling candidate for full-vocab decode. | Real native path works; current paired run is not a throughput win. |
 | `install_l20_qk_norm_rope_kv.py` | Experimental | Tests a fused Q/K norm + Q/K RoPE + KV write boundary. | Path proof and small serving signal, not a broad win. |
 | `install_l20_rope_kv.py` | Confirmed kernel / limited serving | Fuses RoPE and KV-cache append. | Useful case-study evidence; Amdahl-limited in full serving. |
 | `install_l20_topk_topp_sampler.py` | Negative serving result | Wires the self-written L20 sampler into vLLM. | Disabled for production claims after ITL regression. |
@@ -73,7 +73,10 @@ path.
 
 The candidate installer is separate from trace-only mode. It only activates when
 `VLLM_L20_FLASHSAMPLING_CANDIDATE=1` is set, and unsupported cases fall back to
-vLLM's baseline logits path. Use it only for paired A/B runs:
+vLLM's baseline logits path. The first native-path paired run is stored in
+`benchmarks/results/l20-flash-sampling-boundary/qwen3-0p6b-o2-i512-c1c4-candidate-v1/`:
+it hits 773/775 candidate events, slightly improves p50 ITL, but regresses
+throughput. Use it only for paired A/B runs:
 
 ```bash
 python integrations/vllm/install_l20_flashsampling_epilogue_candidate.py \

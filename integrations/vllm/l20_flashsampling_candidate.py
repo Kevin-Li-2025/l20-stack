@@ -223,6 +223,15 @@ def maybe_l20_flashsampling_compute_logits_or_sample(
 
     setattr(model_runner, "_l20_flashsampling_sampler_output", None)
     if not _env_flag(ENABLE_ENV):
+        _trace(
+            {
+                "eligible": False,
+                "reasons": ["candidate_disabled"],
+                "request": {
+                    "hidden_shape": list(getattr(sample_hidden_states, "shape", [])),
+                },
+            }
+        )
         return compute_logits(sample_hidden_states)
     reasons: list[str] = []
     if spec_decode_metadata is not None:
@@ -246,10 +255,15 @@ def maybe_l20_flashsampling_compute_logits_or_sample(
     if not reasons and request:
         try:
             from l20_stack.epilogue.flash_sampling import FlashSamplingRequest, plan_flash_sampling_epilogue
-            decision = plan_flash_sampling_epilogue(FlashSamplingRequest(**request))
+            planner_request = {
+                key: value
+                for key, value in request.items()
+                if key in FlashSamplingRequest.__dataclass_fields__
+            }
+            decision = plan_flash_sampling_epilogue(FlashSamplingRequest(**planner_request))
             reasons.extend(decision.reasons)
         except Exception as exc:
-            reasons.append(f"plan_failed:{type(exc).__name__}")
+            reasons.append(f"plan_failed:{type(exc).__name__}:{str(exc)[:160]}")
 
     if reasons or not request or weight is None:
         _trace({"eligible": False, "reasons": sorted(set(reasons)), "request": request})
@@ -257,7 +271,12 @@ def maybe_l20_flashsampling_compute_logits_or_sample(
 
     try:
         import torch
-        from vllm.v1.outputs import SamplerOutput
+        try:
+            from vllm.v1.worker.gpu.sample.output import SamplerOutput
+            gpu_sampler_output = True
+        except Exception:  # pragma: no cover - older vLLM fallback.
+            from vllm.v1.outputs import SamplerOutput
+            gpu_sampler_output = False
         from l20_stack.ops.triton_lm_head_sampling import lm_head_sample_out, lm_head_sampling_launch_config
 
         batch = int(request["batch_size"])
@@ -285,6 +304,7 @@ def maybe_l20_flashsampling_compute_logits_or_sample(
             seeds = seeds[:batch]
         if positions is not None:
             positions = positions[:batch]
+        use_gumbel = request["sampling_mode"] == "gumbel"
         lm_head_sample_out(
             sample_hidden_states,
             weight,
@@ -294,19 +314,30 @@ def maybe_l20_flashsampling_compute_logits_or_sample(
             partial_tokens=workspace["partial_tokens"],
             seeds=seeds,
             positions=positions,
-            use_gumbel=request["sampling_mode"] == "gumbel",
-            temperature=float(request["temperature"]),
+            use_gumbel=use_gumbel,
+            temperature=float(request["temperature"]) if use_gumbel else 1.0,
         )
         sampled = workspace["tokens"].to(torch.int32).unsqueeze(-1)
-        setattr(
-            model_runner,
-            "_l20_flashsampling_sampler_output",
-            SamplerOutput(sampled_token_ids=sampled, logprobs_tensors=None),
-        )
+        if gpu_sampler_output:
+            seq_lens = getattr(input_batch, "seq_lens", None)
+            dtype = getattr(seq_lens, "dtype", torch.int32)
+            num_sampled = torch.ones((batch,), device=sample_hidden_states.device, dtype=dtype)
+            num_rejected = torch.zeros((batch,), device=sample_hidden_states.device, dtype=dtype)
+            num_nans = torch.zeros((batch,), device=sample_hidden_states.device, dtype=dtype)
+            sampler_output = SamplerOutput(
+                sampled_token_ids=sampled,
+                logprobs_tensors=None,
+                num_nans=num_nans,
+                num_sampled=num_sampled,
+                num_rejected=num_rejected,
+            )
+        else:
+            sampler_output = SamplerOutput(sampled_token_ids=sampled, logprobs_tensors=None)
+        setattr(model_runner, "_l20_flashsampling_sampler_output", sampler_output)
         _trace({"eligible": True, "reasons": [], "request": request, "policy": config.to_dict()})
         return None
     except Exception as exc:  # pragma: no cover - defensive runtime path.
-        _trace({"eligible": False, "reasons": [f"candidate_failed:{type(exc).__name__}"], "request": request})
+        _trace({"eligible": False, "reasons": [f"candidate_failed:{type(exc).__name__}:{str(exc)[:160]}"], "request": request})
         setattr(model_runner, "_l20_flashsampling_sampler_output", None)
         return compute_logits(sample_hidden_states)
 

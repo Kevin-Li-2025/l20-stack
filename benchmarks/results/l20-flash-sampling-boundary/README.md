@@ -90,12 +90,16 @@ scripts/run_vllm_l20_flashsampling_trace_campaign.sh \
   /home/hhai/vllm-l20-rfc
 ```
 
-This trace still runs after logits are materialized. A real serving win requires
-the next patch to move the candidate selection into the LM-head epilogue and
-show paired ITL movement.
+This trace still runs after logits are materialized. The first candidate patch
+now reaches the native vLLM decode path and skips logits materialization for the
+safe decode subset, but its standalone two-stage Triton LM-head sampler is not a
+throughput win yet. The next optimization must attach sampling to the existing
+LM-head GEMM epilogue rather than replacing GEMM with a separate candidate
+kernel.
 
 ## Artifacts
 
+- `qwen3-0p6b-o2-i512-c1c4-candidate-v1/`
 - `qwen3-0p6b-o2-i512-c1c4-trace-v1/`
 - `qwen3-b4-h1024-v151936-gumbel-v1.json`
 - `qwen25-b4-h1536-v151936-gumbel-v1.json`

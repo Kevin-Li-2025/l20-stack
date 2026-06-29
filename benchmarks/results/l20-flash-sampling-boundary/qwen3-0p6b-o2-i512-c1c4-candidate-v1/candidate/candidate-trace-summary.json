@@ -1,0 +1,8 @@
+{
+  "eligible": 773,
+  "events": 775,
+  "fallback": 2,
+  "reason_counts": {
+    "batch_gt_4": 2
+  }
+}

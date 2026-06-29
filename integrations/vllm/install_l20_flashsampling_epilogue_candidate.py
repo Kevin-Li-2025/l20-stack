@@ -18,6 +18,7 @@ IMPORT_LINE = (
     "maybe_take_l20_flashsampling_sampler_output\n"
 )
 V2_IMPORT_MARKER = "from vllm.v1.worker.gpu_input_batch import CachedRequestState, InputBatch\n"
+NATIVE_IMPORT_MARKER = "from vllm.v1.worker.gpu.sample.output import SamplerOutput\n"
 COMPUTE_PATCH_POINT = """                sample_hidden_states = hidden_states[logits_indices]
                 logits = self.model.compute_logits(sample_hidden_states)
 """
@@ -53,6 +54,72 @@ SAMPLE_PATCHED = """        sampler_output = maybe_take_l20_flashsampling_sample
 
             with record_function_or_nullcontext("gpu_model_runner: sample"):
                 sampler_output = self._sample(logits, spec_decode_metadata)
+"""
+NATIVE_COMPUTE_PATCH_POINT = """        sample_hidden_states = hidden_states[input_batch.logits_indices]
+        logits = self.model.compute_logits(sample_hidden_states)
+"""
+NATIVE_COMPUTE_PATCHED = """        sample_hidden_states = hidden_states[input_batch.logits_indices]
+        logits = maybe_l20_flashsampling_compute_logits_or_sample(
+            self,
+            input_batch,
+            None,
+            None,
+            sample_hidden_states,
+            self.model.compute_logits,
+        )
+"""
+NATIVE_SAMPLE_PATCH_POINT = """        if grammar_output is not None:
+            # Apply grammar bitmask to the logits in-place.
+            assert self.structured_outputs_worker is not None
+            self.structured_outputs_worker.apply_grammar_bitmask(
+                logits,
+                input_batch,
+                grammar_output.structured_output_request_ids,
+                grammar_output.grammar_bitmask,
+            )
+
+        if input_batch.num_draft_tokens == 0 or self.rejection_sampler is None:
+            assert self.sampler is not None
+            sampler_output = self.sampler(logits, input_batch)
+        else:
+            # Rejection sampling for spec decoding.
+            assert self.rejection_sampler is not None
+            assert self.speculator is not None
+            sampler_output = self.rejection_sampler(
+                logits,
+                input_batch,
+                # Draft logits are needed for probabilistic rejection sampling.
+                self.speculator.draft_logits,
+            )
+"""
+NATIVE_SAMPLE_PATCHED = """        sampler_output = maybe_take_l20_flashsampling_sampler_output(
+            self,
+            grammar_output,
+        )
+        if sampler_output is None:
+            if grammar_output is not None:
+                # Apply grammar bitmask to the logits in-place.
+                assert self.structured_outputs_worker is not None
+                self.structured_outputs_worker.apply_grammar_bitmask(
+                    logits,
+                    input_batch,
+                    grammar_output.structured_output_request_ids,
+                    grammar_output.grammar_bitmask,
+                )
+
+            if input_batch.num_draft_tokens == 0 or self.rejection_sampler is None:
+                assert self.sampler is not None
+                sampler_output = self.sampler(logits, input_batch)
+            else:
+                # Rejection sampling for spec decoding.
+                assert self.rejection_sampler is not None
+                assert self.speculator is not None
+                sampler_output = self.rejection_sampler(
+                    logits,
+                    input_batch,
+                    # Draft logits are needed for probabilistic rejection sampling.
+                    self.speculator.draft_logits,
+                )
 """
 
 
@@ -91,6 +158,41 @@ def patch_gpu_model_runner(text: str) -> str:
     return text
 
 
+def patch_native_gpu_model_runner(text: str) -> str:
+    if IMPORT_LINE not in text:
+        text = replace_once(
+            text,
+            NATIVE_IMPORT_MARKER,
+            NATIVE_IMPORT_MARKER + IMPORT_LINE,
+            "native candidate import",
+        )
+    text = replace_once(
+        text,
+        NATIVE_COMPUTE_PATCH_POINT,
+        NATIVE_COMPUTE_PATCHED,
+        "native candidate compute_logits",
+    )
+    text = replace_once(
+        text,
+        NATIVE_SAMPLE_PATCH_POINT,
+        NATIVE_SAMPLE_PATCHED,
+        "native candidate sampler output",
+    )
+    return text
+
+
+def _patch_file(target: Path, patcher) -> None:
+    if not target.exists():
+        return
+    original = target.read_text(encoding="utf-8")
+    patched = patcher(original)
+    if patched != original:
+        backup = _backup_path(target)
+        if not backup.exists():
+            shutil.copy2(target, backup)
+        target.write_text(patched, encoding="utf-8")
+
+
 def install(package: Path) -> None:
     if not HELPER_SOURCE.exists():
         raise RuntimeError(f"missing helper source: {HELPER_SOURCE}")
@@ -104,20 +206,18 @@ def install(package: Path) -> None:
         if not backup.exists():
             shutil.copy2(helper_target, backup)
     shutil.copy2(HELPER_SOURCE, helper_target)
-    original = target.read_text(encoding="utf-8")
-    patched = patch_gpu_model_runner(original)
-    if patched != original:
-        backup = _backup_path(target)
-        if not backup.exists():
-            shutil.copy2(target, backup)
-        target.write_text(patched, encoding="utf-8")
+    _patch_file(target, patch_gpu_model_runner)
+    _patch_file(package / "v1" / "worker" / "gpu" / "model_runner.py", patch_native_gpu_model_runner)
 
 
 def uninstall(package: Path) -> None:
-    target = package / "v1" / "worker" / "gpu_model_runner.py"
-    backup = _backup_path(target)
-    if backup.exists():
-        shutil.copy2(backup, target)
+    for target in (
+        package / "v1" / "worker" / "gpu_model_runner.py",
+        package / "v1" / "worker" / "gpu" / "model_runner.py",
+    ):
+        backup = _backup_path(target)
+        if backup.exists():
+            shutil.copy2(backup, target)
     helper_target = package / "v1" / "worker" / "gpu" / HELPER_NAME
     helper_backup = _backup_path(helper_target)
     if helper_backup.exists():

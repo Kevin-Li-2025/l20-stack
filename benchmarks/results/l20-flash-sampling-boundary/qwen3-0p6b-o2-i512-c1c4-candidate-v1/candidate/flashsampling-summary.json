@@ -1,0 +1,37 @@
+{
+  "avoidable_logits_bytes": 0,
+  "avoidable_logits_mib": 0.0,
+  "eligible_events": 0,
+  "eligible_fraction": 0.0,
+  "eligible_shape_counts": {},
+  "fallback_events": 775,
+  "reason_counts": {
+    "bad_words": 2,
+    "bad_words_unsupported": 2,
+    "batch_gt_4": 2,
+    "flashsampling_plan_failed:ValueError": 773,
+    "grammar_or_structured_output": 1,
+    "logit_bias_or_min_tokens": 2,
+    "logprobs_unsupported": 2,
+    "min_p": 2,
+    "not_single_token_decode": 30,
+    "penalties": 2,
+    "penalties_unsupported": 2,
+    "prefill": 30,
+    "structured_output_unsupported": 1,
+    "token_logprobs": 2,
+    "top_k_top_p_unsupported": 2,
+    "unexpected_logits_rank": 773
+  },
+  "schema_version": 1,
+  "shape_counts": {
+    "b1-h1024-v0-gumbel": 613,
+    "b2-h1024-v0-gumbel": 1,
+    "b256-h1024-v151936-gumbel": 2,
+    "b3-h1024-v0-gumbel": 35,
+    "b4-h1024-v0-gumbel": 124
+  },
+  "total_events": 775,
+  "total_logits_bytes": 155582464,
+  "total_logits_mib": 148.375
+}
