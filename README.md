@@ -1,239 +1,149 @@
 # L20 Stack
 
-Single-GPU LLM infrastructure experiments for an NVIDIA L20 48 GB machine.
+Single-GPU LLM serving research for NVIDIA L20 / Ada SM89.
 
-This repository is a measured L20 reference stack: training smoke tests,
-serving hooks, custom kernels, benchmark harnesses, and negative results are
-kept together so performance claims stay reproducible. It is not a replacement
-for vLLM, FlashInfer, Megatron-LM, PEFT, or TRL. The goal is narrower:
+This repository studies a narrow systems question:
 
-> Find which LLM training and serving optimizations are actually worth doing on
-> one L20, and document the boundary between kernel wins and end-to-end wins.
+> Which LLM inference optimizations are actually worth doing on one 48 GB L20,
+> and where do kernel-level wins disappear before they become serving wins?
 
-## What Is Here
+It is a research stack, not a replacement for vLLM, FlashInfer, TensorRT-LLM,
+Megatron-LM, PEFT, or TRL. The useful output is the measured boundary between
+microkernel speedups, vLLM integration behavior, and end-to-end token latency.
 
-- L20 hardware and memory budgeting helpers.
-- QLoRA planning, smoke training, contamination checks, adapter saves, and CUDA
-  telemetry.
-- Triton and CUDA kernels for RMSNorm, RoPE + KV-cache writes, paged decode,
-  FP8 KV-cache decode experiments, GPU sampling, and speculative verifier
-  attention.
-- vLLM integration patches guarded behind conservative runtime gates.
-- Benchmark scripts plus checked-in JSON reports for the measured L20 runs.
-- Research notes that separate production-worthy paths from experiments and
-  rejected hypotheses.
+## Best Current Result
 
-## Current Conclusions
+The strongest current conclusion is that more isolated RoPE/KV/sampling kernels
+are not the highest-leverage target anymore. Real L20 serving traces point to
+the LM-head / logits / sampling boundary.
 
-The most important result is not that every custom kernel wins. Several kernels
-win at the microbenchmark boundary and then disappear under vLLM scheduling,
-FlashInfer attention, CUDA Graphs, or sampling overhead. The repository keeps
-those negative results because they are the useful part of the L20 study.
+Recent Qwen3-0.6B O2 + FlashInfer trace:
 
-| Area | Status | L20 result |
+| Signal | Result |
+| --- | ---: |
+| Trace events | 775 |
+| Decode-eligible events | 744 / 96.00% |
+| Eligible logits materialization | 339.93 MiB |
+| Total logits materialization | 500.77 MiB |
+| c1 i512/o32 median ITL | 2.82024 ms |
+| c4 i512/o32 median ITL | 3.28006 ms |
+
+Artifact:
+`benchmarks/results/l20-vllm-logits-boundary-trace-p1/qwen3-0p6b-o2-v1/`
+
+Next engineering target:
+an upstream-shaped LM-head/logits epilogue or compiled sampler boundary that
+avoids materializing and mutating full logits for the safe decode subset.
+
+## What Is Real vs Experimental
+
+| Area | State | What the evidence says |
 | --- | --- | --- |
-| RoPE + KV-cache append | Strong kernel win, small serving win | Paged append is 2.37x-7.82x faster than FlashInfer/vLLM write-path baselines on measured cases, but full vLLM ITL improves only about 0.46%-0.72% under the safe gate. |
-| Q/K norm + RoPE + KV write | Proven O2 hook, small serving win | The L20 fused microkernel is correct and 1.26x-1.47x faster than vLLM's fused QK-norm/RoPE plus cache-write boundary for 1-64 tokens. With vLLM compile cache disabled, Nsight Systems now captures 1,260 custom kernel instances in a Qwen3-0.6B O2 i512/o16 serving run. Median ITL improves 4.52% in the paired 3-run matrix, but the custom kernel is only 1.6% of GPU kernel time, so the end-to-end win is Amdahl-limited. |
-| Residual RMSNorm | Shape-gated | Custom fused path is useful only above the measured hidden-size crossover; smaller shapes stay on the baseline path. |
-| GPU sampling | Production route win, custom hook loss | FlashInfer top-k/top-p with CUDA 13 prewarm beats torch/native sampling in 5/6 paired multi-model shapes, including all concurrency-4 cases. A follow-up Qwen3-0.6B matrix strict-wins at c2/c4/c8 for i512/o32 and at c1 for i512/o128; the remaining c1/o32 case improves ITL but not throughput. The self-written standalone L20 sampler still regresses real serving and stays disabled. |
-| LM-head top-k boundary | Negative but useful | A Qwen2.5-Coder-1.5B-shaped probe shows chunked no-full-logits top-k is still 1.10x-2.28x slower than full logits + `torch.topk`, and the best experimental Triton direct top-1 path is 1.02x slower than full logits top-1. A real win likely needs GEMM epilogue integration, not a standalone replacement kernel. |
-| Serving optimization ceiling | Active gate | NSYS family summaries show GEMM/GEMV reaches 62.10% of GPU kernel time, while standalone sampling reaches only 3.42% and the current custom Q/K/RoPE/KV kernel 1.58%. The next P0 target is a production GEMM/GEMV epilogue or upstream logits boundary, not another isolated sampler or QK microkernel. |
-| FP8 KV-cache decode | Correct, not production-ready | Fused FP8 dequant beats materializing K/V, but current CUDA/Triton split-decode kernels are still slower than BF16 predequantized attention, so vLLM dispatch is disabled. |
-| Speculative verifier attention | Experimental | Custom causal verifier kernels improved direct latency, but real vLLM serving remains tied or slower than native FlashInfer. |
-| Kernel-coding QLoRA | Negative so far | Training runs are healthy, but held-out KernelBench `fast_0` is still 0/3. A handwritten ReLU control proves the evaluator path. |
+| RoPE + paged KV append | Confirmed kernel win | 2.37x-7.82x write-path speedups, but only small vLLM serving gains after attention/model/runtime overhead. |
+| Q/K norm + Q/K RoPE + KV write | O2 path proven, Amdahl-limited | Custom path is live under vLLM O2 and correct on tested shapes; serving wins are low-single-digit because the path is a small fraction of GPU time. |
+| FlashInfer sampling route | Production route worth hardening | FlashInfer beats torch/native sampling in most paired serving shapes; the self-written standalone sampler regresses and stays disabled. |
+| LM-head/logits boundary | Active P0 | Standalone top-k/logits replacements lose, but trace data shows a large safe materialization budget for an epilogue/upstream boundary. |
+| FP8 KV fused attention | Correctness experiment | Fused dequant helps versus materializing K/V, but current paged decode kernels do not beat BF16 FlashInfer serving. |
+| Speculative verifier/tree attention | Experimental | Custom verifier kernels can win microbenchmarks; real vLLM speculative serving has not shown a stable win. |
+| Kernel-coding QLoRA | Negative so far | Training path is healthy, but held-out KernelBench `fast_0` remains 0/3. |
 
-## Reproducibility
+Full status map:
+`docs/experiment-status.md`
 
-Run the CPU-safe checks:
+## Reproduce the Golden Path
+
+CPU-safe checks:
 
 ```bash
 PYTHONPATH=src /usr/bin/python3 -m unittest discover -s tests
-PYTHONPATH=src /usr/bin/python3 -m l20_stack.cli plan --config configs/qlora_l20.json
-```
-
-Run the pytest checks used for the recent CUDA/vLLM integration work:
-
-```bash
 PYTHONPYCACHEPREFIX=/tmp/l20-pycache PYTHONPATH=src \
   /usr/bin/python3 -m pytest -q tests
 ```
 
-The GPU benchmarks expect an L20 host with PyTorch, Triton, FlashInfer, and
-vLLM installed. Most scripts write JSON under `benchmarks/results/`.
-
-## Key Benchmarks
-
-RoPE + paged KV write:
-
-```bash
-PYTHONPATH=src python scripts/benchmark_paged_rope_kv.py \
-  --output benchmarks/results/l20-paged-rope-policy-v3/t4096.json
-```
-
-Layer-level decode integration:
-
-```bash
-PYTHONPATH=src python scripts/benchmark_decode_layer.py \
-  --output benchmarks/results/l20-decode-layer-v1/example.json
-```
-
-Nsight Compute roofline summary:
-
-```bash
-scripts/profile_kernel.sh \
-  --output benchmarks/results/l20-vllm-rope-kv-profile/ncu/tokens-1024 \
-  -- python scripts/benchmark_paged_rope_kv.py --tokens 1024
-```
-
-The wrapper accepts `NCU_BIN=/path/to/ncu` and also auto-discovers common CUDA
-and Nsight Compute locations such as `/usr/local/cuda-13.0/bin/ncu`.
-
-FP8 paged decode CUDA experiment:
-
-```bash
-PYTHONPATH=src python scripts/benchmark_cuda_paged_fp8_decode.py \
-  --output benchmarks/results/l20-cuda-fp8-paged-decode/qwen3.json \
-  --batches 8 --contexts 4096 --q-heads 16 --kv-heads 8
-```
-
-Q/K norm + RoPE serving matrix:
+Trace the current P0 logits boundary on an L20 host:
 
 ```bash
 PYTHON=/home/hhai/venvs/vllm-l20/bin/python \
-PYTHONPATH=/home/hhai/vllm-l20-rfc:/home/hhai/l20-stack \
-RUNS=3 NUM_PROMPTS=32 OUTPUT_TOKENS=64 INPUTS="512 1024" \
-CONCURRENCIES="1 4 16" REQUEST_RATE=inf \
-scripts/run_vllm_l20_qk_norm_rope_serving_matrix.sh \
+INPUTS="512" CONCURRENCIES="1 4" RUNS=1 NUM_PROMPTS=16 \
+OUTPUT_TOKENS=32 REQUEST_RATE=inf EXECUTION_MODE=o2 \
+MAX_MODEL_LEN=2048 GPU_MEMORY_UTILIZATION=0.70 \
+scripts/run_vllm_l20_logits_boundary_trace_campaign.sh \
   /home/hhai/models/Qwen3-0.6B qwen3-0p6b \
-  benchmarks/results/l20-qk-norm-rope-serving/qwen3-0p6b-o2-full-rerun \
+  benchmarks/results/l20-vllm-logits-boundary-trace-p1/qwen3-0p6b-o2-v1 \
   /home/hhai/vllm-l20-rfc
 ```
 
-Serving-level Nsight Systems timeline:
+Summarize a trace:
 
 ```bash
-NSYS_BIN=/opt/nvidia/nsight-compute/2025.3.1/host/target-linux-x64/nsys \
-PYTHON=/home/hhai/venvs/vllm-l20/bin/python \
-EXECUTION_MODE=o2 ENABLE_LAYERWISE_NVTX=1 \
-scripts/run_vllm_l20_qk_norm_rope_kv_nsys_timeline.sh \
-  /home/hhai/models/Qwen3-0.6B qwen3-l20-nsys \
-  benchmarks/results/nsys/qk-norm-rope-kv/qwen3-0p6b-o2-c1-i512-v1 \
-  /home/hhai/vllm-l20-rfc
+PYTHONPYCACHEPREFIX=/tmp/l20-pycache /usr/bin/python3 \
+  scripts/summarize_l20_logits_boundary_trace.py \
+  benchmarks/results/l20-vllm-logits-boundary-trace-p1/qwen3-0p6b-o2-v1/logits-boundary-trace.jsonl \
+  --output-json /tmp/logits-boundary-summary.json \
+  --output-md /tmp/logits-boundary-summary.md
 ```
 
-FlashInfer stochastic sampling timeline:
+## Important Entry Points
 
-```bash
-NSYS_BIN=/opt/nvidia/nsight-compute/2025.3.1/host/target-linux-x64/nsys \
-PYTHON=/home/hhai/venvs/vllm-l20/bin/python \
-INPUT_TOKENS=512 OUTPUT_TOKENS=32 MAX_CONCURRENCY=4 \
-scripts/run_vllm_l20_sampling_nsys_timeline.sh \
-  /home/hhai/models/Qwen2.5-Coder-1.5B-Instruct qwen25-coder-1p5b \
-  flashinfer \
-  benchmarks/results/nsys/sampling/qwen25-coder-1p5b-flashinfer-c4-i512-o32-v2 \
-  /home/hhai/vllm-l20-rfc
+| Purpose | Entry point |
+| --- | --- |
+| Main serving case study | `docs/l20-serving-case-study.md` |
+| Experiment status and negative results | `docs/experiment-status.md` |
+| vLLM hook status | `integrations/vllm/README.md` |
+| Benchmark artifact index | `benchmarks/results/README.md` |
+| Next optimization plan | `docs/l20-next-improvements.md` |
+| Operator research log | `docs/l20-operator-research.md` |
+
+## vLLM Integrations
+
+The vLLM patches are deliberately gated. They are useful for reproducing local
+experiments and upstream-shaped prototypes, but they are not default production
+paths unless the corresponding policy enables them.
+
+Start here:
+`integrations/vllm/README.md`
+
+Most important hooks:
+
+- `install_l20_logits_boundary_trace.py`: behavior-preserving trace hook for
+  the current P0 logits/LM-head/sampling boundary.
+- `install_l20_qk_norm_rope_kv.py`: Q/K norm + Q/K RoPE + KV write prototype.
+- `install_l20_rope_kv.py`: older RoPE + KV-cache append hook.
+- `install_l20_topk_topp_sampler.py`: self-written sampler hook; kept for
+  research, disabled for production claims after serving regression.
+- `install_l20_fp8_paged_decode.py`: FP8 KV decode experiment; disabled unless
+  forced.
+
+## Repository Layout
+
+```text
+src/l20_stack/          CPU-safe planning, config, memory, and CLI utilities
+operators/              Triton/CUDA operator prototypes
+integrations/vllm/      Local vLLM patch installers and dispatch helpers
+scripts/                Benchmarks, profilers, campaign runners, summarizers
+benchmarks/results/     Checked-in JSON/Markdown evidence, not raw logs
+docs/                   Case studies, research notes, roadmaps
+tests/                  CPU-safe and source-level regression tests
 ```
 
-LM-head/top-k boundary probe:
+## Evidence Policy
 
-```bash
-PYTHONPATH=src python scripts/benchmark_lm_head_topk_boundary.py \
-  --batch 4 --hidden 1536 --vocab 151936 --top-k 50 \
-  --chunk-vocab 131072 \
-  --output benchmarks/results/l20-lm-head-topk-boundary/qwen25-b4-h1536-v151936-k50-cv131072.json
-```
+- Keep claims tied to hardware, model, command, and raw JSON.
+- Separate microbenchmark wins from serving wins.
+- Keep negative results when they change the engineering direction.
+- Commit compact reviewable artifacts: `README.md`, `run-config.json`,
+  summaries, and serving JSON.
+- Do not commit model weights, checkpoints, datasets, secrets, `server.log`,
+  `.nsys-rep`, SQLite exports, or large raw profiler captures.
 
-Speculative verifier and LongSpec-style tree attention:
+## Current Direction
 
-```bash
-PYTHONPATH=src python scripts/benchmark_tree_attention.py \
-  --output benchmarks/results/l20-tree-attention-v14/longspec-irregular-matrix.json
-```
+Do not spend the next iteration polishing standalone sampler or another small
+RoPE/KV microkernel. The measured system ceiling is now at the production
+LM-head/logits/sampling boundary:
 
-## vLLM Hooks
-
-The vLLM integrations are intentionally gated. They are useful for reproducing
-results and testing local patches, but they should not be treated as default
-production paths unless their policy function enables them.
-
-- `integrations/vllm/install_l20_rope_kv.py` installs the safe RoPE + KV-cache
-  append hook.
-- `integrations/vllm/install_l20_paged_decode.py` installs the CUDA paged-decode
-  prototype.
-- `integrations/vllm/install_l20_fp8_paged_decode.py` installs the FP8 paged
-  decode experiment. The policy is disabled after a real serving regression;
-  reproducing the experiment requires `VLLM_L20_FP8_PAGED_FORCE=1`.
-- `integrations/vllm/install_l20_tree_attention.py` installs the speculative
-  verifier/tree-attention hooks, which remain experimental.
-
-## Documentation
-
-- `docs/l20-serving-case-study.md` gives the main systems narrative: why a
-  `7.82x` write-path kernel win becomes a marginal service gain.
-- `docs/l20-serving-integration.md` covers vLLM integration, CUDA Graphs,
-  Nsight counters, and serving gates.
-- `benchmarks/results/nsys/qk-norm-rope-kv/README.md` contains the first
-  serving-level Nsight Systems kernel-count and launch-sequence artifact.
-- `benchmarks/results/nsys/sampling/README.md` contains the serving-level
-  FlashInfer sampling timeline and CPU-sync evidence.
-- `benchmarks/results/l20-vllm-sampling-winner/README.md` contains the paired
-  torch/native versus FlashInfer serving gate across Qwen2.5-Coder-1.5B,
-  Qwen3-0.6B, and Qwen3-1.7B.
-- `benchmarks/results/l20-vllm-sampling-winner-v2/README.md` contains the
-  Qwen3-0.6B follow-up matrix that separates short-output c1 noise from
-  c2/c4/c8 and c1 long-output strict wins.
-- `scripts/run_vllm_l20_sampling_winner_matrix.sh` runs the paired production
-  sampling matrix and emits strict-gate summaries.
-- `benchmarks/results/l20-serving-optimization-ceiling/README.md` converts the
-  NSYS family summaries into Amdahl ceilings and the current P0/P1/Stop list.
-- `benchmarks/results/l20-vllm-logits-boundary-scout/README.md` maps that P0
-  target onto concrete vLLM source patch points and a conservative first gate.
-- `integrations/vllm/install_l20_logits_boundary_trace.py` installs the
-  behavior-preserving trace hook for the first safe logits-boundary gate.
-- `scripts/summarize_l20_logits_boundary_trace.py` summarizes trace JSONL into
-  eligible/fallback counts.
-- `scripts/run_vllm_l20_logits_boundary_trace_campaign.sh` runs the real vLLM
-  serving trace campaign and emits per-shape serving reports plus gate summaries.
-- `scripts/benchmark_l20_topk_topp_sampling.py` benchmarks the first self-written
-  L20 top-k/top-p sampling prototype against PyTorch, CPU round-trip, and
-  FlashInfer.
-- `docs/l20-operator-research.md` tracks operator-level experiments and raw
-  benchmark interpretation.
-- `docs/l20-hybrid-tree-attention.md` covers speculative decoding and
-  LongSpec-style irregular attention.
-- `docs/l20-qlora-research.md` covers QLoRA capacity and kernel-coding
-  training results.
-- `docs/l20-next-improvements.md` turns the next five optimization directions
-  into executable scripts, gates, and benchmark outputs.
-- `docs/l20-top-tier-kernel-gaps.md` lists the remaining gaps before this can
-  be called a top-tier kernel project: profiling figures, deeper CUDA operator
-  coverage, and upstream PRs.
-- `docs/roadmap.md` contains the broader v0.1 to v1.0 roadmap.
-
-## Repository Policy
-
-- Do not commit API keys, Hugging Face tokens, wandb tokens, SSH keys, or local
-  credential files.
-- Do not commit raw datasets, checkpoints, model weights, or downloaded model
-  artifacts.
-- Keep performance claims tied to hardware, config, command, and raw JSON.
-- Prefer conservative dispatch gates over optimistic benchmark stories.
-
-## Current Next Step
-
-The strongest next technical target is a production GEMM/GEMV epilogue or
-upstream logits boundary for sampling/top-k state. The measured ceiling is much
-larger there than for standalone sampler kernels or another isolated Q/K/RoPE/KV
-microkernel. The trace matrix shows about 94.7% decode eligibility across
-Qwen3-0.6B, Qwen3-1.7B, and Qwen2.5-Coder-1.5B. The current kernel step is
-`scripts/benchmark_l20_topk_topp_sampling.py`, a narrow L20 two-stage
-top-k/top-p sampler prototype. It wins as a microbenchmark but loses real vLLM
-serving in `benchmarks/results/l20-vllm-sampling-itl/`, because the standalone
-hook adds RNG, Python gate, and uncaptured Triton launches. The production
-serving path is FlashInfer sampler hardening with CUDA 13 JIT prewarm and
-fallback checks; `benchmarks/results/l20-vllm-sampling-winner/` shows 5/6
-strict paired wins over torch/native sampling, and
-`benchmarks/results/l20-vllm-sampling-winner-v2/` shows Qwen3-0.6B strict wins
-for c2/c4/c8 short-output decode plus c1 long-output decode. P1 work should move
-to a compiled sampler/logits epilogue boundary instead of enabling the
-standalone hook by default.
+1. keep the trace-only gate conservative;
+2. prototype an epilogue/upstream boundary without changing unsupported
+   sampling semantics;
+3. compare against vLLM + FlashInfer with paired serving JSON;
+4. only then decide whether the path deserves an upstream PR.

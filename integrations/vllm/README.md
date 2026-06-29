@@ -1,0 +1,55 @@
+# vLLM Integration Status
+
+The files in this directory are local patch installers and dispatch helpers for
+research runs. They are intentionally conservative: most paths require explicit
+environment variables, L20/SM89 checks, or force flags before they can affect
+serving behavior.
+
+## Current Hooks
+
+| Installer | Status | Purpose | Default serving claim |
+| --- | --- | --- | --- |
+| `install_l20_logits_boundary_trace.py` | Safe trace | Records where an LM-head/logits/sampling epilogue could be legal. | Behavior-preserving only; no speed claim. |
+| `install_l20_qk_norm_rope_kv.py` | Experimental | Tests a fused Q/K norm + Q/K RoPE + KV write boundary. | Path proof and small serving signal, not a broad win. |
+| `install_l20_rope_kv.py` | Confirmed kernel / limited serving | Fuses RoPE and KV-cache append. | Useful case-study evidence; Amdahl-limited in full serving. |
+| `install_l20_topk_topp_sampler.py` | Negative serving result | Wires the self-written L20 sampler into vLLM. | Disabled for production claims after ITL regression. |
+| `install_l20_fp8_paged_decode.py` | Disabled experiment | Tests FP8 KV-cache paged decode with fused dequant. | Disabled unless forced; current serving baseline wins. |
+| `install_l20_paged_decode.py` | Experimental | Tests custom paged decode attention dispatch. | O2 path works, but serving boundary is too small. |
+| `install_l20_tree_attention.py` | Experimental | Speculative verifier/tree attention hook. | Research-only. |
+| `install_l20_shared_prefix_decode.py` | Experimental | Shared-prefix decode prototype. | Research-only. |
+| `install_l20_awq_gemv.py` | Experimental | AWQ/GEMV dispatch prototype. | No default production claim. |
+
+## Safe First Run
+
+Use the trace-only logits boundary hook before enabling any custom serving path:
+
+```bash
+PYTHON=/home/hhai/venvs/vllm-l20/bin/python \
+INPUTS="512" CONCURRENCIES="1 4" RUNS=1 NUM_PROMPTS=16 \
+OUTPUT_TOKENS=32 REQUEST_RATE=inf EXECUTION_MODE=o2 \
+scripts/run_vllm_l20_logits_boundary_trace_campaign.sh \
+  /home/hhai/models/Qwen3-0.6B qwen3-0p6b \
+  benchmarks/results/l20-vllm-logits-boundary-trace-p1/qwen3-0p6b-o2-v1 \
+  /home/hhai/vllm-l20-rfc
+```
+
+This hook writes JSONL events and never mutates logits, sampler state, KV-cache,
+or model outputs.
+
+## Dispatch Rules
+
+- Prefer trace-only hooks until the target boundary has a measured budget.
+- Require correctness before latency measurement.
+- Require paired vLLM serving reports before any end-to-end claim.
+- Keep fallback behavior explicit and auditable.
+- Treat CUDA graph/O2 path proof separately from latency proof.
+
+## Upstream Posture
+
+An upstreamable patch should be smaller than the research prototype:
+
+1. target one boundary only;
+2. gate on CUDA SM89 / L20 where appropriate;
+3. preserve all unsupported sampling/logits semantics by falling back;
+4. include raw serving JSON and profiler summaries;
+5. avoid presenting negative or smoke results as production wins.
