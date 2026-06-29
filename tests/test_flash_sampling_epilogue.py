@@ -77,6 +77,16 @@ def test_flash_sampling_gate_reports_each_fallback_reason(reason_name, overrides
     assert reason in decision.reasons
 
 
+def test_flash_sampling_gate_accepts_vllm_full_vocab_top_k_normalization():
+    module = _flash_sampling()
+    request = _request(top_k=151_936, top_p=1.0, sampling_mode="gumbel")
+
+    decision = module.plan_flash_sampling_epilogue(request)
+
+    assert decision.eligible
+    assert decision.reasons == ()
+
+
 def test_flash_sampling_policy_keeps_batch_one_measured_lm_head_top1_shape():
     module = _flash_sampling()
     policy = module.flash_sampling_launch_policy(_request(batch_size=1))

@@ -93,7 +93,8 @@ def next_power_of_2(value: int) -> int:
 
 
 def _uses_top_k_top_p(request: FlashSamplingRequest) -> bool:
-    top_k_enabled = request.top_k not in (None, -1, 0)
+    # vLLM normalizes full-vocabulary sampling to top_k == vocab_size.
+    top_k_enabled = request.top_k not in (None, -1, 0) and request.top_k < request.vocab_size
     top_p_enabled = request.top_p is not None and request.top_p != 1.0
     return top_k_enabled or top_p_enabled
 
