@@ -314,6 +314,33 @@ def _sampling_state_reasons(model_runner: Any, input_batch: Any) -> list[str]:
     return reasons
 
 
+def _shadow_epilogue_metadata(
+    eligible: bool,
+    reasons: list[str],
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
+    logits_bytes = metadata.get("logits_bytes")
+    return {
+        "prototype_boundary": "lm_head_logits_sampler_epilogue",
+        "mode": "shadow_trace_only",
+        "would_use_epilogue": eligible,
+        "mutates_outputs": False,
+        "fallback_reasons": reasons,
+        "covered_semantics": [
+            "temperature",
+            "top_k",
+            "top_p",
+            "multinomial_sampling_contract",
+        ],
+        "logits_materialization_bytes": logits_bytes,
+        "avoidable_logits_materialization_bytes": logits_bytes if eligible else 0,
+        "hidden_bytes": metadata.get("hidden_bytes"),
+        "num_reqs": metadata.get("num_reqs"),
+        "vocab_size": metadata.get("vocab_size"),
+        "hidden_dim": metadata.get("hidden_dim"),
+    }
+
+
 def l20_logits_boundary_gate(
     model_runner: Any,
     input_batch: Any,
@@ -388,7 +415,13 @@ def l20_logits_boundary_gate(
         reasons.append("logits_rows_not_num_reqs")
 
     reasons.extend(_sampling_state_reasons(model_runner, input_batch))
-    return len(reasons) == 0, reasons, metadata
+    eligible = len(reasons) == 0
+    metadata["shadow_epilogue"] = _shadow_epilogue_metadata(
+        eligible,
+        reasons,
+        metadata,
+    )
+    return eligible, reasons, metadata
 
 
 def maybe_trace_l20_logits_boundary(

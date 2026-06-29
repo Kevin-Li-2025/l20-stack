@@ -68,3 +68,4 @@ next boundary.
 
 The compact paper-style version is `docs/where-optimizations-stop-mattering.md`.
 The generated graph/table artifact is `benchmarks/results/l20-boundary-impact/`.
+The upstream-shaped proposal for the current P0 is `docs/logits-boundary-rfc.md`.

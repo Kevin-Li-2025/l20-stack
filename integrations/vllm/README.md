@@ -36,6 +36,11 @@ scripts/run_vllm_l20_logits_boundary_trace_campaign.sh \
 This hook writes JSONL events and never mutates logits, sampler state, KV-cache,
 or model outputs.
 
+The upstream-shaped proposal is in `docs/logits-boundary-rfc.md`. The trace
+events include `metadata.shadow_epilogue`, which records whether the request
+would use the future epilogue path and how many logits bytes would be avoidable
+under the current safe gate.
+
 ## Dispatch Rules
 
 - Prefer trace-only hooks until the target boundary has a measured budget.

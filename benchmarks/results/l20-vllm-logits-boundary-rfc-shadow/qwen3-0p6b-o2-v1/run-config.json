@@ -1,0 +1,29 @@
+{
+  "attention_backend": "FLASHINFER",
+  "concurrencies": [
+    "1",
+    "4"
+  ],
+  "cuda_home": "/home/hhai/venvs/vllm-l20/bin/../lib/python3.12/site-packages/nvidia/cu13",
+  "cudacxx": "/home/hhai/venvs/vllm-l20/bin/../lib/python3.12/site-packages/nvidia/cu13/bin/nvcc",
+  "execution_mode": "o2",
+  "gpu_memory_utilization": 0.7,
+  "inputs": [
+    "512"
+  ],
+  "max_model_len": 2048,
+  "min_p": 0.0,
+  "model": "/home/hhai/models/Qwen3-0.6B",
+  "num_prompts": 16,
+  "output_tokens": 32,
+  "request_rate": "inf",
+  "runs": 1,
+  "schema_version": 1,
+  "served_name": "qwen3-0p6b",
+  "temperature": 0.8,
+  "top_k": 50,
+  "top_p": 0.9,
+  "trace_jsonl": "/home/hhai/l20-stack/benchmarks/results/l20-vllm-logits-boundary-rfc-shadow/qwen3-0p6b-o2-v1/logits-boundary-trace.jsonl",
+  "trace_limit": 50000,
+  "vllm_source_dir": "/home/hhai/vllm-l20-rfc"
+}

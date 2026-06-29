@@ -135,6 +135,11 @@ def test_l20_logits_boundary_trace_records_eligible_event(tmp_path, monkeypatch)
     assert event["metadata"]["logits_bytes"] == 2 * 151936 * 2
     assert event["metadata"]["hidden_dim"] == 2048
     assert event["metadata"]["vocab_size"] == 151936
+    shadow = event["metadata"]["shadow_epilogue"]
+    assert shadow["mode"] == "shadow_trace_only"
+    assert shadow["would_use_epilogue"] is True
+    assert shadow["mutates_outputs"] is False
+    assert shadow["avoidable_logits_materialization_bytes"] == 2 * 151936 * 2
     assert event["metadata"]["sampling"]["temperature_min"] == 0.8
     assert event["metadata"]["sampling"]["top_k_max"] == 50.0
     assert event["metadata"]["sampling"]["top_p_min"] == 0.9
@@ -243,6 +248,10 @@ def test_l20_logits_boundary_trace_records_reject_reasons(tmp_path, monkeypatch)
     assert "logits_rows_not_num_reqs" in event["reasons"]
     assert "token_logprobs" in event["reasons"]
     assert "min_p" in event["reasons"]
+    shadow = event["metadata"]["shadow_epilogue"]
+    assert shadow["would_use_epilogue"] is False
+    assert shadow["avoidable_logits_materialization_bytes"] == 0
+    assert "min_p" in shadow["fallback_reasons"]
 
 
 def test_install_l20_logits_boundary_trace_patches_and_uninstalls(tmp_path):
@@ -360,7 +369,7 @@ def test_l20_logits_boundary_trace_summarizer_counts_reasons_and_shapes(tmp_path
     assert summary["fallback_events"] == 2
     assert summary["reason_counts"] == {"prefill": 2, "token_logprobs": 1}
     assert summary["logits_shape_counts"] == {"4x10": 2, "2x10": 1}
-    assert summary["schema_version"] == 2
+    assert summary["schema_version"] == 3
     assert summary["eligible_logits_bytes"] == 2 * 10 * 2
     assert summary["total_logits_bytes"] == (2 * 10 + 4 * 10 + 4 * 10) * 2
     assert summary["logits_unknown_bytes_events"] == 0
@@ -369,6 +378,53 @@ def test_l20_logits_boundary_trace_summarizer_counts_reasons_and_shapes(tmp_path
     assert shape_budget["2x10"]["eligible_logits_bytes"] == 2 * 10 * 2
     assert shape_budget["4x10"]["events"] == 2
     assert shape_budget["4x10"]["fallback_events"] == 2
+
+
+def test_l20_logits_boundary_trace_summarizer_counts_shadow_epilogue(tmp_path):
+    summarizer = load_module(
+        "scripts/summarize_l20_logits_boundary_trace.py",
+        "summarize_l20_logits_boundary_trace_shadow",
+    )
+    events = [
+        {
+            "eligible": True,
+            "reasons": [],
+            "metadata": {
+                "logits_shape": [1, 10],
+                "logits_dtype": "torch.float16",
+                "shadow_epilogue": {
+                    "would_use_epilogue": True,
+                    "avoidable_logits_materialization_bytes": 20,
+                    "fallback_reasons": [],
+                },
+            },
+        },
+        {
+            "eligible": False,
+            "reasons": ["prefill"],
+            "metadata": {
+                "logits_shape": [4, 10],
+                "logits_dtype": "torch.float16",
+                "shadow_epilogue": {
+                    "would_use_epilogue": False,
+                    "avoidable_logits_materialization_bytes": 0,
+                    "fallback_reasons": ["prefill"],
+                },
+            },
+        },
+    ]
+    trace = tmp_path / "trace.jsonl"
+    trace.write_text(
+        "\n".join(json.dumps(event) for event in events) + "\n",
+        encoding="utf-8",
+    )
+
+    summary = summarizer.summarize(summarizer.read_events(trace))
+    assert summary["shadow_events"] == 2
+    assert summary["shadow_eligible_events"] == 1
+    assert summary["shadow_fallback_events"] == 1
+    assert summary["shadow_reason_counts"] == {"prefill": 1}
+    assert summary["shadow_avoidable_logits_bytes"] == 20
 
 
 def test_l20_logits_boundary_campaign_summarizer_reads_serving_reports(tmp_path):

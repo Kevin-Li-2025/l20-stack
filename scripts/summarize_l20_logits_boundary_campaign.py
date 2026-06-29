@@ -91,6 +91,12 @@ def render_markdown(summary: dict) -> str:
         f"- Eligible logits materialization: `{trace.get('eligible_logits_mib', 0.0):.2f} MiB`",
         f"- Total logits materialization: `{trace.get('total_logits_mib', 0.0):.2f} MiB`",
         f"- Events without logits byte estimate: `{trace.get('logits_unknown_bytes_events', 0)}`",
+        f"- Shadow epilogue events: `{trace.get('shadow_events', 0)}`",
+        f"- Shadow epilogue eligible: `{trace.get('shadow_eligible_events', 0)}`",
+        (
+            "- Shadow avoidable logits materialization: "
+            f"`{trace.get('shadow_avoidable_logits_mib', 0.0):.2f} MiB`"
+        ),
         "",
         "## Serving Shapes",
         "",
@@ -98,7 +104,10 @@ def render_markdown(summary: dict) -> str:
     if summary["shapes"]:
         lines.extend(
             [
-                "| Concurrency | Input Tokens | Runs | Median TTFT ms | Median ITL ms | Output tok/s |",
+                (
+                    "| Concurrency | Input Tokens | Runs | Median TTFT ms | "
+                    "Median ITL ms | Output tok/s |"
+                ),
                 "| ---: | ---: | ---: | ---: | ---: | ---: |",
             ]
         )
@@ -130,6 +139,14 @@ def render_markdown(summary: dict) -> str:
             )
     else:
         lines.append("No logits materialization budget recorded.")
+    lines.extend(["", "## Shadow Epilogue Fallback Reasons", ""])
+    shadow_reason_counts = trace.get("shadow_reason_counts", {})
+    if shadow_reason_counts:
+        lines.extend(["| Reason | Count |", "| --- | ---: |"])
+        for reason, count in shadow_reason_counts.items():
+            lines.append(f"| `{reason}` | {count} |")
+    else:
+        lines.append("No shadow epilogue fallback reasons recorded.")
     lines.extend(["", "## Fallback Reasons", ""])
     reason_counts = trace.get("reason_counts", {})
     if reason_counts:
