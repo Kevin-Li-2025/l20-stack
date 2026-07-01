@@ -41,6 +41,17 @@ The next step is not to claim serving speedup. It is to wire this path into
 vLLM with an explicit opt-in gate and run paired ITL A/B on requests that use
 top-k/top-p plus penalties.
 
+The current vLLM installer now carries that opt-in boundary:
+
+```text
+VLLM_L20_TOPK_TOPP_DEFER_PENALTIES=1
+```
+
+When enabled, the patched vLLM path builds a bounded sparse history window from
+request token IDs and defers penalties into the custom sampler. If the custom
+sampler is not eligible, it fails fast instead of falling back to unpenalized
+sampling. The default path leaves vLLM penalty handling unchanged.
+
 ## Files
 
 - `qwen-vocab-b1-h128.json`

@@ -13,6 +13,7 @@ IMPORT_LINE = (
     "from vllm.v1.sample.ops.l20_topk_topp_sampling import "
     "maybe_l20_topk_topp_sample\n"
 )
+DEFER_ENV = "VLLM_L20_TOPK_TOPP_DEFER_PENALTIES"
 
 TOPK_IMPORT_MARKER = "from vllm.triton_utils import HAS_TRITON\n"
 FLASHINFER_PATCH_POINT = """    assert not (k is None and p is None)
@@ -111,6 +112,18 @@ SAMPLER_TOPK_CALL_PATCHED = """        random_sampled, processed_logprobs = self
             l20_repetition_penalties=sampling_metadata.repetition_penalties,
         )
 """
+SAMPLER_APPLY_PENALTIES = """        if sampling_metadata.no_penalties:
+            return logits
+
+        assert sampling_metadata.prompt_token_ids is not None
+"""
+SAMPLER_APPLY_PENALTIES_PATCHED = """        if sampling_metadata.no_penalties:
+            return logits
+        if getattr(sampling_metadata, "l20_defer_penalties", False):
+            return logits
+
+        assert sampling_metadata.prompt_token_ids is not None
+"""
 
 DUMMY_METADATA_MARKER = """            top_k=dummy_tensors(logits.size(1) - 1),
             generators={},
@@ -141,7 +154,7 @@ INPUT_BATCH_TOPK_REQS_PATCHED = """        self.top_k_reqs: set[str] = set()
             (max_num_reqs,), dtype=torch.int64, device=device
         )
         self.l20_sampler_seeds_cpu_tensor = torch.empty(
-            (max_num_reqs,), dtype=torch.int64, device=\"cpu\", pin_memory=PIN_MEMORY
+            (max_num_reqs,), dtype=torch.int64, device=\"cpu\", pin_memory=pin_memory
         )
         self.l20_sampler_seeds_cpu = self.l20_sampler_seeds_cpu_tensor.numpy()
         self.l20_sampler_positions = torch.empty(
@@ -152,6 +165,14 @@ INPUT_BATCH_TOPK_REQS_PATCHED = """        self.top_k_reqs: set[str] = set()
         )
 
         # Frequency penalty related data structures
+"""
+
+INPUT_BATCH_IMPORTS = """import numpy as np
+import torch
+"""
+INPUT_BATCH_IMPORTS_PATCHED = """import numpy as np
+import os
+import torch
 """
 
 INPUT_BATCH_TOPK_CPU = """            self.top_k_cpu[req_index] = top_k
@@ -189,10 +210,57 @@ INPUT_BATCH_METADATA_GENERATORS_PATCHED = """            generators=self.generat
             l20_expanded_idx_mapping=self.l20_sampler_indices[:num_reqs],
             l20_seeds=self.l20_sampler_seeds[:num_reqs],
             l20_positions=self.l20_sampler_positions[:num_reqs],
-            l20_history_tokens=None,
-            l20_history_lengths=None,
-            l20_defer_penalties=False,
+            l20_history_tokens=l20_history_tokens,
+            l20_history_lengths=l20_history_lengths,
+            l20_defer_penalties=l20_defer_penalties,
             max_num_logprobs=self.max_num_logprobs,
+"""
+
+INPUT_BATCH_METADATA_RETURN = """        return SamplingMetadata(
+            temperature=temperature,
+"""
+INPUT_BATCH_SPARSE_HISTORY = f"""        l20_history_tokens = None
+        l20_history_lengths = None
+        l20_defer_penalties = False
+        if (
+            os.environ.get("{DEFER_ENV}", "0").lower() in {{"1", "true", "yes", "on"}}
+            and not self.no_penalties
+            and num_reqs <= 4
+        ):
+            l20_max_history = 256
+            l20_history_cpu = torch.full(
+                (num_reqs, l20_max_history),
+                self.vocab_size,
+                dtype=torch.int64,
+                device="cpu",
+                pin_memory=self.pin_memory,
+            )
+            l20_lengths_cpu = torch.zeros(
+                (num_reqs,),
+                dtype=torch.int32,
+                device="cpu",
+                pin_memory=self.pin_memory,
+            )
+            for row in range(num_reqs):
+                token_count = int(self.num_tokens_no_spec[row])
+                start = max(0, token_count - l20_max_history)
+                active = self.token_ids_cpu[row, start:token_count]
+                length = min(int(active.shape[0]), l20_max_history)
+                if length > 0:
+                    l20_history_cpu[row, :length] = torch.as_tensor(
+                        active[:length], dtype=torch.int64
+                    )
+                l20_lengths_cpu[row] = length
+            l20_history_tokens = l20_history_cpu.to(
+                device=self.device, non_blocking=True
+            )
+            l20_history_lengths = l20_lengths_cpu.to(
+                device=self.device, non_blocking=True
+            )
+            l20_defer_penalties = True
+
+        return SamplingMetadata(
+            temperature=temperature,
 """
 
 WORKER_IMPORT_MARKER = "from vllm.v1.sample.ops.topk_topp_sampler import (\n"
@@ -289,11 +357,17 @@ def patch_sampling_metadata(source: str) -> str:
 
 
 def patch_active_sampler(source: str) -> str:
-    return replace_once(
+    source = replace_once(
         source,
         SAMPLER_TOPK_CALL,
         SAMPLER_TOPK_CALL_PATCHED,
         "active sampler topk_topp state pass",
+    )
+    return replace_once(
+        source,
+        SAMPLER_APPLY_PENALTIES,
+        SAMPLER_APPLY_PENALTIES_PATCHED,
+        "active sampler deferred penalties guard",
     )
 
 
@@ -307,6 +381,12 @@ def patch_gpu_model_runner(source: str) -> str:
 
 
 def patch_gpu_input_batch(source: str) -> str:
+    source = replace_once(
+        source,
+        INPUT_BATCH_IMPORTS,
+        INPUT_BATCH_IMPORTS_PATCHED,
+        "gpu input batch os import",
+    )
     source = replace_once(
         source,
         INPUT_BATCH_TOPK_REQS,
@@ -324,6 +404,12 @@ def patch_gpu_input_batch(source: str) -> str:
         INPUT_BATCH_COPY_TOPK,
         INPUT_BATCH_COPY_TOPK_PATCHED,
         "gpu input batch l20 copy",
+    )
+    source = replace_once(
+        source,
+        INPUT_BATCH_METADATA_RETURN,
+        INPUT_BATCH_SPARSE_HISTORY,
+        "gpu input batch sparse history metadata",
     )
     return replace_once(
         source,
@@ -348,13 +434,19 @@ def patch_worker_sampler(source: str) -> str:
     )
 
 
-def _install_target(path: Path, patcher) -> bool:
+def _install_target(path: Path, patcher, *, required: bool = True) -> bool:
     if not path.exists():
         return False
     backup = path.with_suffix(".py.l20-topk-topp-backup")
     if not backup.exists():
         shutil.copy2(path, backup)
-    path.write_text(patcher(path.read_text(encoding="utf-8")), encoding="utf-8")
+    try:
+        patched = patcher(path.read_text(encoding="utf-8"))
+    except RuntimeError:
+        if required:
+            raise
+        return False
+    path.write_text(patched, encoding="utf-8")
     return True
 
 
@@ -394,6 +486,7 @@ def install(package: Path) -> None:
         _install_target(
             package / "v1" / "worker" / "gpu" / "sample" / "sampler.py",
             patch_worker_sampler,
+            required=False,
         ),
     ]
     if not any(patched):

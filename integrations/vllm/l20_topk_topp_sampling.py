@@ -229,6 +229,11 @@ def maybe_l20_topk_topp_sample(
 
     if reasons:
         _trace({"eligible": False, "reasons": reasons, "metadata": metadata})
+        if defer_penalties:
+            raise RuntimeError(
+                "unsafe deferred L20 top-k/top-p penalties fallback: "
+                + ",".join(reasons)
+            )
         return None
 
     assert top_k is not None and top_p is not None

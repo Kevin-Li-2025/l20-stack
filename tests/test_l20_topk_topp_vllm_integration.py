@@ -41,8 +41,14 @@ class SamplingMetadata:
             sampling_metadata.top_k,
             sampling_metadata.top_p,
         )
+        if sampling_metadata.no_penalties:
+            return logits
+
+        assert sampling_metadata.prompt_token_ids is not None
 """
     gpu_input_batch_source = """
+import numpy as np
+import torch
         self.top_k_reqs: set[str] = set()
 
         # Frequency penalty related data structures
@@ -55,6 +61,8 @@ class SamplingMetadata:
             pass
             generators=self.generators,
             max_num_logprobs=self.max_num_logprobs,
+        return SamplingMetadata(
+            temperature=temperature,
 """
     gpu_model_runner_source = """
             top_k=dummy_tensors(logits.size(1) - 1),
@@ -104,11 +112,16 @@ def sample():
     assert "sampling_metadata.l20_history_tokens" in patched_active_sampler
     assert "sampling_metadata.l20_defer_penalties" in patched_active_sampler
     assert "sampling_metadata.frequency_penalties" in patched_active_sampler
+    assert 'getattr(sampling_metadata, "l20_defer_penalties", False)' in patched_active_sampler
     assert "self.l20_sampler_seeds" in patched_gpu_input_batch
+    assert "pin_memory=pin_memory" in patched_gpu_input_batch
     assert "self.l20_sampler_positions" in patched_gpu_input_batch
     assert "self.l20_sampler_indices[:num_reqs]" in patched_gpu_input_batch
-    assert "l20_history_tokens=None" in patched_gpu_input_batch
-    assert "l20_defer_penalties=False" in patched_gpu_input_batch
+    assert "import os" in patched_gpu_input_batch
+    assert "VLLM_L20_TOPK_TOPP_DEFER_PENALTIES" in patched_gpu_input_batch
+    assert "l20_history_cpu = torch.full" in patched_gpu_input_batch
+    assert "l20_defer_penalties = True" in patched_gpu_input_batch
+    assert "l20_history_tokens=l20_history_tokens" in patched_gpu_input_batch
     assert "l20_expanded_idx_mapping=torch.arange" in patched_gpu_model_runner
     assert "maybe_l20_topk_topp_sample" in patched_worker
     assert "expanded_idx_mapping=expanded_idx_mapping" in patched_worker
@@ -120,6 +133,12 @@ def sample():
         "sampled = flashinfer_sample(processed_logits, top_k, top_p).to(torch.int64)"
         in patched_worker
     )
+    assert "required: bool = True" in Path(
+        "integrations/vllm/install_l20_topk_topp_sampler.py"
+    ).read_text()
+    assert "required=False" in Path(
+        "integrations/vllm/install_l20_topk_topp_sampler.py"
+    ).read_text()
 
 
 def test_l20_topk_topp_helper_uses_vllm_rng_state():
@@ -134,6 +153,7 @@ def test_l20_topk_topp_helper_uses_vllm_rng_state():
     assert "history_lengths: torch.Tensor | None = None" in source
     assert "defer_penalties: bool = False" in source
     assert "missing_sparse_penalty_state" in source
+    assert "unsafe deferred L20 top-k/top-p penalties fallback" in source
     assert "sparse_penalty" in source
     assert "per_request_generators" in source
     assert "missing_vllm_rng_state" in source
