@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  cpu-safe:
+    name: CPU-safe checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run CPU-safe unittest suite
+        env:
+          PYTHONPATH: src
+        run: |
+          python -m unittest discover -s tests -p "test_cli.py" -q
+          python -m unittest discover -s tests -p "test_experiment.py" -q
+          python -m unittest discover -s tests -p "test_hardware.py" -q
+          python -m unittest discover -s tests -p "test_memory.py" -q
+          python -m unittest discover -s tests -p "test_operators.py" -q
+
+      - name: Run public-result planning tests
+        env:
+          PYTHONPATH: src
+        run: |
+          python -m pytest \
+            tests/test_sampling_semantics_probe.py \
+            tests/test_sampler_semantics_target_plan.py \
+            -q
+
+      - name: Compile source and scripts
+        env:
+          PYTHONPYCACHEPREFIX: /tmp/single-gpu-infer-pycache
+        run: |
+          python -m compileall -q src scripts

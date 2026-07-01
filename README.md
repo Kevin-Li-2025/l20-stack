@@ -1,5 +1,7 @@
 # Single-GPU Inference Lab
 
+[![CI](https://github.com/Kevin-Li-2025/single-gpu-inference-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/Kevin-Li-2025/single-gpu-inference-lab/actions/workflows/ci.yml)
+
 Evidence-driven LLM inference systems research for single-card serving.
 
 This repository studies where low-level inference optimizations actually matter
@@ -17,6 +19,18 @@ The short version:
 It is not a replacement for vLLM, FlashInfer, TensorRT-LLM, PEFT, TRL, or
 Megatron-LM. The useful output is the measured boundary between microkernel
 speedups, integration behavior, and end-to-end token latency.
+
+## What This Repo Proves
+
+- Modern vLLM greedy/no-penalty decode is already hard to beat.
+- Sampling semantics add a measurable 37%-42% median ITL tax in the current
+  A100 control run.
+- A fused top-k/top-p + dense-penalty primitive shows 1.36x-1.42x microbenchmark
+  speedup on the matching A100 shapes.
+- The next target is sparse token-history integration inside the real vLLM
+  sampling path, not another standalone greedy kernel.
+- Every public claim is tied to hardware, model, command, and a checked-in
+  artifact.
 
 ## Current Thesis
 
@@ -55,6 +69,24 @@ Artifact:
 
 The next implementation step is a sparse vLLM token-history version of that
 primitive, followed by real serving ITL validation.
+
+## Boundary Diagram
+
+```mermaid
+flowchart LR
+    A["vLLM decode step"] --> B["hidden states"]
+    B --> C["LM head / logits"]
+    C --> D["sampling semantics"]
+    D --> E["top-k / top-p"]
+    D --> F["penalties"]
+    D --> G["logprobs"]
+    E --> H["measured ITL tax"]
+    F --> H
+    G --> H
+    H --> I["fused sampling / logprob / penalty boundary"]
+    I --> J["sparse token-history vLLM integration"]
+    J --> K["paired serving ITL A/B"]
+```
 
 ## Hardware Scope
 
