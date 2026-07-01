@@ -46,6 +46,10 @@ def test_logits_boundary_docs_track_gemm_epilogue_scout():
     assert "f1cf6b0-clean-upstream" in rfc
     assert "f1cf6b0-clean-upstream" in status
     assert "clean upstream" in results_index
+    assert "l20-vllm-gemm-epilogue-trace/" in results_index
+    assert "f1cf6b0-clean-install-smoke" in rfc
+    assert "install_l20_gemm_epilogue_trace.py" in rfc
+    assert "install_l20_gemm_epilogue_trace.py" in read(Path("integrations/vllm/README.md"))
     assert "LogitsProcessor" in rfc
     assert "ParallelLMHead" in rfc
     assert "TopKTopPSampler" in rfc

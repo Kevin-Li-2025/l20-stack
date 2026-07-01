@@ -10,6 +10,7 @@ serving behavior.
 | Installer | Status | Purpose | Default serving claim |
 | --- | --- | --- | --- |
 | `install_l20_logits_boundary_trace.py` | Safe trace | Records where an LM-head/logits/sampling epilogue could be legal. | Behavior-preserving only; no speed claim. |
+| `install_l20_gemm_epilogue_trace.py` | Safe trace / API scaffold | Adds a fallback-first `LogitsProcessor.try_sample_from_lm_head` hook before `compute_logits`. | Behavior-preserving by default; install smoke only, no ITL claim. |
 | `l20_flashsampling_epilogue.py` | Shadow helper | Narrows the logits-boundary trace to the FlashSampling-style full-vocab Gumbel epilogue gate. | Behavior-preserving only; micro result is not serving proof. |
 | `install_l20_flashsampling_epilogue_trace.py` | Safe trace | Installs the logits-boundary trace plus the narrower FlashSampling gate into vLLM. | Behavior-preserving only; path-proof/fallback accounting. |
 | `install_l20_flashsampling_epilogue_candidate.py` | Experimental | Opt-in LM-head FlashSampling candidate for full-vocab decode. | Real native path works; current paired run is not a throughput win. |
@@ -38,6 +39,23 @@ scripts/run_vllm_l20_logits_boundary_trace_campaign.sh \
 
 This hook writes JSONL events and never mutates logits, sampler state, KV-cache,
 or model outputs.
+
+Install the fallback-first GEMM epilogue API scaffold when the question is
+whether the upstream `LogitsProcessor` boundary can host the next sampled-token
+epilogue:
+
+```bash
+python integrations/vllm/install_l20_gemm_epilogue_trace.py \
+  --vllm-source /home/hhai/vllm-l20-rfc
+
+VLLM_L20_GEMM_EPILOGUE_TRACE=/tmp/l20-gemm-epilogue.jsonl \
+VLLM_L20_GEMM_EPILOGUE_TRACE_LIMIT=4096 \
+  <run paired vLLM serving benchmark>
+```
+
+By default this hook returns `None` and falls back to vLLM's existing
+`compute_logits` plus sampler path. `VLLM_L20_GEMM_EPILOGUE_ENABLE=1` is reserved
+for explicit experiments where a future epilogue returns a `SamplerOutput`.
 
 The upstream-shaped proposal is in `docs/logits-boundary-rfc.md`. The trace
 events include `metadata.shadow_epilogue`, which records whether the request

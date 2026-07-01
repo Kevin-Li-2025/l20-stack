@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "result_type": "clean_upstream_install_smoke",
+  "hardware": {
+    "gpu": "NVIDIA A100-SXM4-80GB",
+    "role": "source-level control host only; not an L20 performance result"
+  },
+  "repo_commit": "9892ffb",
+  "vllm_source": {
+    "path": "/workspace/vllm-clean",
+    "branch": "main",
+    "commit": "f1cf6b0",
+    "dirty_before_install": false
+  },
+  "installer": "integrations/vllm/install_l20_gemm_epilogue_trace.py",
+  "helper": "integrations/vllm/l20_gemm_epilogue_trace.py",
+  "patched_files": [
+    "vllm/model_executor/layers/logits_processor.py",
+    "vllm/v1/worker/gpu/model_runner.py",
+    "vllm/v1/worker/gpu_model_runner.py",
+    "vllm/v1/worker/gpu/l20_gemm_epilogue_trace.py"
+  ],
+  "patch_points": {
+    "logits_processor_try_api": "vllm/model_executor/layers/logits_processor.py:75",
+    "native_model_runner_call": "vllm/v1/worker/gpu/model_runner.py:1055",
+    "two_stage_execute_call": "vllm/v1/worker/gpu_model_runner.py:4362",
+    "two_stage_sample_take": "vllm/v1/worker/gpu_model_runner.py:4470"
+  },
+  "checks": {
+    "remote_pytest": {
+      "command": "PYTHONPATH=src /workspace/venvs/l20-stack/bin/python -m pytest tests/test_l20_gemm_epilogue_trace.py tests/test_l20_gemm_epilogue_installer.py -q",
+      "result": "5 passed in 0.75s"
+    },
+    "remote_py_compile": {
+      "files": [
+        "/workspace/vllm-clean/vllm/model_executor/layers/logits_processor.py",
+        "/workspace/vllm-clean/vllm/v1/worker/gpu/model_runner.py",
+        "/workspace/vllm-clean/vllm/v1/worker/gpu_model_runner.py",
+        "/workspace/vllm-clean/vllm/v1/worker/gpu/l20_gemm_epilogue_trace.py"
+      ],
+      "result": "passed"
+    },
+    "install_status": {
+      "modified_tracked_files": 3,
+      "copied_helper_files": 1,
+      "backup_files_created": 3
+    },
+    "uninstall_status": {
+      "git_status_after_uninstall": "",
+      "result": "clean"
+    }
+  },
+  "claim_boundary": {
+    "does_prove": [
+      "the fallback-first LM-head epilogue API can be installed on clean upstream vLLM f1cf6b0",
+      "the modified vLLM files and copied helper pass Python compilation",
+      "uninstall restores a clean upstream checkout"
+    ],
+    "does_not_prove": [
+      "L20 performance",
+      "vLLM serving ITL improvement",
+      "CUDA graph compatibility under a real server run"
+    ]
+  },
+  "next_step": "Run real L20 vLLM serving with VLLM_L20_GEMM_EPILOGUE_TRACE enabled, then compare trace hit rate and ITL before implementing a non-None epilogue."
+}

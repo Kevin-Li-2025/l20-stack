@@ -14,6 +14,7 @@ of git.
 | `l20-logits-boundary-ab-smoke/` | Negative A/B smoke | Runs the first paired logits-boundary baseline vs sampler-boundary candidate; candidate path is traced but currently regresses ITL/throughput. |
 | `l20-vllm-logits-boundary-trace-p1/` | Active P0 | Measures the safe decode subset and logits materialization budget for the next LM-head/logits epilogue target. |
 | `l20-vllm-gemm-epilogue-scout/` | Active P0 scout | Scans both the patched L20 vLLM source and a clean upstream vLLM checkout, narrowing the next implementation to a `LogitsProcessor` / `ParallelLMHead` GEMM epilogue with fallback, not a sampler-only hook. |
+| `l20-vllm-gemm-epilogue-trace/` | Active P0 install smoke | Proves the fallback-first `LogitsProcessor.try_sample_from_lm_head` hook installs, compiles, and uninstalls cleanly on upstream vLLM; not a performance result. |
 | `l20-serving-optimization-ceiling/` | Active analysis | Converts NSYS family summaries into Amdahl ceilings and explains why small standalone kernels are no longer the best target. |
 | `l20-vllm-sampling-winner/` | Confirmed route | Shows FlashInfer sampling beating torch/native in most paired multi-model serving shapes. |
 | `l20-vllm-sampling-winner-v2/` | Confirmed follow-up | Separates c1 short-output noise from c2/c4/c8 and c1 long-output wins on Qwen3-0.6B. |

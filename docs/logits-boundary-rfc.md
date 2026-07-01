@@ -57,6 +57,7 @@ The latest boundary scout is:
 ```text
 benchmarks/results/l20-vllm-gemm-epilogue-scout/b81980aa5-patched-v1/
 benchmarks/results/l20-vllm-gemm-epilogue-scout/f1cf6b0-clean-upstream/
+benchmarks/results/l20-vllm-gemm-epilogue-trace/f1cf6b0-clean-install-smoke/
 ```
 
 The first artifact scanned the real L20 vLLM checkout after the standalone
@@ -79,6 +80,18 @@ The owner should be `LogitsProcessor` / `ParallelLMHead`, not
 `TopKTopPSampler`. `TopKTopPSampler` receives materialized logits, so a
 sampler-only hook is too late to remove the LM-head output traffic.
 
+The first fallback-first installer is now implemented:
+
+```text
+integrations/vllm/install_l20_gemm_epilogue_trace.py
+integrations/vllm/l20_gemm_epilogue_trace.py
+```
+
+It adds a default `LogitsProcessor.try_sample_from_lm_head(...)->None` API and
+calls it before `compute_logits`. Returning `None` keeps vLLM on the existing
+logits and sampler path; future experiments may return a `SamplerOutput` only
+under an explicit opt-in flag.
+
 ## Current Patch Points
 
 The trace-only implementation patches the vLLM V1 GPU runner after logits are
@@ -91,12 +104,14 @@ The relevant local installer is:
 
 ```text
 integrations/vllm/install_l20_logits_boundary_trace.py
+integrations/vllm/install_l20_gemm_epilogue_trace.py
 ```
 
 The copied helper is:
 
 ```text
 integrations/vllm/l20_logits_boundary_trace.py
+integrations/vllm/l20_gemm_epilogue_trace.py
 ```
 
 The shadow block is stored under:
@@ -125,6 +140,10 @@ precedent, but the sampled path still needs a new fallback-first API for
 top-k/top-p style semantics. The clean upstream scout removes the earlier
 patched-tree blocker for an RFC/trace PR; the next PR still needs a minimal
 diff generated directly against upstream main.
+
+The clean-install smoke on upstream vLLM `f1cf6b0` verifies that this API shape
+patches `logits_processor.py`, both V1 runner forms, passes Python compilation,
+and uninstalls back to a clean tree.
 
 ## First Safe Gate
 
@@ -165,6 +184,9 @@ distribution without changing behavior.
 
 ### Phase 1: Shadow Candidate Accounting
 
+Status: implemented for source-level install smoke; live L20 serving trace is
+still pending.
+
 Add a vLLM-local prototype branch that runs beside the normal sampler and emits
 per-step accounting:
 
@@ -183,7 +205,8 @@ The implementation should preserve the optimized LM-head path rather than
 replacing it with a slower standalone top-k path. The first prototype should be
 a `LogitsProcessor` / `ParallelLMHead` method that returns `None` for every
 unsupported request and lets vLLM continue through `compute_logits` plus the
-existing sampler.
+existing sampler. The current installer creates that API boundary but does not
+yet return sampled tokens in serving by default.
 
 ### Phase 3: Upstream PR
 
