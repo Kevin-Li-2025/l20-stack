@@ -31,12 +31,14 @@ jobs:
           python -m unittest discover -s tests -p "test_hardware.py" -q
           python -m unittest discover -s tests -p "test_memory.py" -q
           python -m unittest discover -s tests -p "test_operators.py" -q
+          python -m unittest discover -s tests -p "test_sampling.py" -q
 
       - name: Run public-result planning tests
         env:
           PYTHONPATH: src
         run: |
           python -m pytest \
+            tests/test_l20_topk_topp_vllm_integration.py \
             tests/test_sampling_semantics_probe.py \
             tests/test_sampler_semantics_target_plan.py \
             -q

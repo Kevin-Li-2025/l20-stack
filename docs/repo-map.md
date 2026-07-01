@@ -50,10 +50,12 @@ Relevant files:
 - `scripts/probe_vllm_sampling_semantics.py`
 - `scripts/plan_sampler_semantics_targets.py`
 - `scripts/benchmark_l20_topk_topp_penalty_sampling.py`
+- `scripts/benchmark_l20_sparse_topk_topp_penalty_sampling.py`
 - `src/l20_stack/epilogue/sampler_epilogue.py`
 - `src/l20_stack/ops/triton_sampling.py`
 - `benchmarks/results/a100-vllm-sampling-semantics-qwen25-05b/`
 - `benchmarks/results/a100-fused-topk-topp-penalty/`
+- `benchmarks/results/a100-sparse-topk-topp-penalty/`
 
 ## Naming Policy
 

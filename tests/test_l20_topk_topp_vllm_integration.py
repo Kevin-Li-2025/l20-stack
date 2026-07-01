@@ -85,17 +85,30 @@ def sample():
     assert "l20_expanded_idx_mapping: torch.Tensor | None = None" in patched_topk
     assert "l20_seeds: torch.Tensor | None = None" in patched_topk
     assert "l20_positions: torch.Tensor | None = None" in patched_topk
+    assert "l20_history_tokens: torch.Tensor | None = None" in patched_topk
+    assert "l20_history_lengths: torch.Tensor | None = None" in patched_topk
+    assert "l20_defer_penalties: bool = False" in patched_topk
     assert "expanded_idx_mapping=l20_expanded_idx_mapping" in patched_topk
+    assert "history_tokens=l20_history_tokens" in patched_topk
+    assert "defer_penalties=l20_defer_penalties" in patched_topk
     assert "return l20_sampled, None" in patched_topk
     assert "l20_expanded_idx_mapping: torch.Tensor | None" in patched_metadata
     assert "l20_seeds: torch.Tensor | None" in patched_metadata
     assert "l20_positions: torch.Tensor | None" in patched_metadata
+    assert "l20_history_tokens: torch.Tensor | None" in patched_metadata
+    assert "l20_history_lengths: torch.Tensor | None" in patched_metadata
+    assert "l20_defer_penalties: bool" in patched_metadata
     assert "sampling_metadata.l20_expanded_idx_mapping" in patched_active_sampler
     assert "sampling_metadata.l20_seeds" in patched_active_sampler
     assert "sampling_metadata.l20_positions" in patched_active_sampler
+    assert "sampling_metadata.l20_history_tokens" in patched_active_sampler
+    assert "sampling_metadata.l20_defer_penalties" in patched_active_sampler
+    assert "sampling_metadata.frequency_penalties" in patched_active_sampler
     assert "self.l20_sampler_seeds" in patched_gpu_input_batch
     assert "self.l20_sampler_positions" in patched_gpu_input_batch
     assert "self.l20_sampler_indices[:num_reqs]" in patched_gpu_input_batch
+    assert "l20_history_tokens=None" in patched_gpu_input_batch
+    assert "l20_defer_penalties=False" in patched_gpu_input_batch
     assert "l20_expanded_idx_mapping=torch.arange" in patched_gpu_model_runner
     assert "maybe_l20_topk_topp_sample" in patched_worker
     assert "expanded_idx_mapping=expanded_idx_mapping" in patched_worker
@@ -103,7 +116,10 @@ def sample():
     assert "positions=pos" in patched_worker
     assert "top_k_value=int(l20_top_k_values[0])" in patched_worker
     assert "sampled = l20_sampled.to(torch.int64)" in patched_worker
-    assert "sampled = flashinfer_sample(processed_logits, top_k, top_p).to(torch.int64)" in patched_worker
+    assert (
+        "sampled = flashinfer_sample(processed_logits, top_k, top_p).to(torch.int64)"
+        in patched_worker
+    )
 
 
 def test_l20_topk_topp_helper_uses_vllm_rng_state():
@@ -113,6 +129,12 @@ def test_l20_topk_topp_helper_uses_vllm_rng_state():
     assert "VLLM_L20_TOPK_TOPP_SAMPLER_TRACE" in source
     assert "should_prefer_l20_topk_topp_sampling" in source
     assert "topk_topp_sample_with_vllm_rng_out" in source
+    assert "topk_topp_sparse_penalty_sample_with_vllm_rng_out" in source
+    assert "history_tokens: torch.Tensor | None = None" in source
+    assert "history_lengths: torch.Tensor | None = None" in source
+    assert "defer_penalties: bool = False" in source
+    assert "missing_sparse_penalty_state" in source
+    assert "sparse_penalty" in source
     assert "per_request_generators" in source
     assert "missing_vllm_rng_state" in source
     assert "torch.rand" not in source

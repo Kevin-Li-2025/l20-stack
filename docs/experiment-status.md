@@ -23,6 +23,7 @@ negative results, and archived experiments so the README can stay small.
 | A100 greedy LM-head epilogue candidate | Functional proof / no speedup | `benchmarks/results/a100-vllm-gemm-epilogue-candidate/` | Output-changing vLLM path works, but no-trace median ITL is equal to baseline; do not optimize plain greedy argmax further. |
 | A100 sampling semantics probe | Direction-setting | `benchmarks/results/a100-vllm-sampling-semantics-qwen25-05b/` | Top-k/top-p, penalties, and logprobs are the next target because they add +37-42% median ITL over greedy/no-penalty control. |
 | Fused top-k/top-p + dense penalties | Positive micro result | `benchmarks/results/a100-fused-topk-topp-penalty/` | Carry forward to sparse vLLM token-history integration; do not claim serving win yet. |
+| Sparse top-k/top-p + penalties | Positive micro result | `benchmarks/results/a100-sparse-topk-topp-penalty/` | Serving-shaped sparse history path keeps 1.27x-1.31x wins over apply-then-sample; next proof must be paired vLLM ITL A/B. |
 | RoPE + paged KV append | Confirmed | `docs/l20-serving-case-study.md`, `benchmarks/results/l20-decode-layer-v1/` | Keep as case-study evidence; do not spend the next iteration on tiny append-only gains. |
 | Q/K norm + Q/K RoPE + KV write | Smoke / Amdahl-limited | `benchmarks/results/l20-qk-norm-rope-kv-serving/`, `benchmarks/results/nsys/qk-norm-rope-kv/` | Useful path proof, but not enough for an industry-leading claim by itself. |
 | vLLM native QK norm/RoPE fusion | Confirmed low-single-digit signal | `benchmarks/results/l20-qk-norm-rope-serving/` | Confirms the boundary matters; custom three-way integration still needs a stronger system win. |
@@ -68,7 +69,7 @@ The current public story should be:
 RoPE/KV micro wins -> vLLM serving dilution -> NSYS/Amdahl ceiling ->
 FlashInfer sampling hardening -> logits-boundary trace budget ->
 sampling semantics probe -> fused top-k/top-p + penalty prototype ->
-sparse serving integration
+sparse token-history prototype -> sparse serving integration
 ```
 
 That path is stronger than a list of kernels because it shows a complete systems

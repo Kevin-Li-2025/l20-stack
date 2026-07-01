@@ -143,6 +143,26 @@ def should_prefer_l20_topk_topp_sampling(
     )
 
 
+def should_use_l20_sparse_topk_topp_penalty_sampling(
+    batch: int,
+    vocab_size: int,
+    top_k: int,
+    top_p: float,
+    max_history: int,
+) -> bool:
+    """Conservative gate for sparse token-history penalty sampling.
+
+    This path is meant for vLLM serving states where prior token IDs are sparse
+    per request. It deliberately rejects long histories in v1 because the
+    scatter kernel scans the fixed history window to deduplicate repeated token
+    IDs before applying presence/repetition penalties.
+    """
+
+    if not should_prefer_l20_topk_topp_sampling(batch, vocab_size, top_k, top_p):
+        return False
+    return 0 < max_history <= 256
+
+
 if triton is not None:  # pragma: no cover - requires CUDA
 
     @triton.jit
@@ -298,6 +318,71 @@ if triton is not None:  # pragma: no cover - requires CUDA
             tl.store(partial_values + base + rank, max_value)
             tl.store(partial_tokens + base + rank, token)
             values = tl.where(offsets == token, -float("inf"), values)
+
+    @triton.jit
+    def _copy_logits_to_fp32_kernel(
+        logits,
+        adjusted_logits,
+        TOTAL: tl.constexpr,
+        BLOCK: tl.constexpr,
+    ):
+        block = tl.program_id(0)
+        offsets = block * BLOCK + tl.arange(0, BLOCK)
+        mask = offsets < TOTAL
+        values = tl.load(logits + offsets, mask=mask, other=0.0).to(tl.float32)
+        tl.store(adjusted_logits + offsets, values, mask=mask)
+
+    @triton.jit
+    def _sparse_token_penalty_scatter_kernel(
+        adjusted_logits,
+        history_tokens,
+        history_lengths,
+        frequency_penalties,
+        presence_penalties,
+        repetition_penalties,
+        VOCAB: tl.constexpr,
+        MAX_HISTORY: tl.constexpr,
+    ):
+        row = tl.program_id(0)
+        hist_idx = tl.program_id(1)
+        length = tl.load(history_lengths + row)
+        active = hist_idx < length
+        token = tl.load(
+            history_tokens + row * MAX_HISTORY + hist_idx,
+            mask=active,
+            other=VOCAB,
+        )
+        valid = active & (token >= 0) & (token < VOCAB)
+
+        seen_before = tl.full((), False, tl.int1)
+        count = tl.full((), 0, tl.int32)
+        for other_idx in tl.static_range(0, MAX_HISTORY):
+            other_active = other_idx < length
+            other_token = tl.load(
+                history_tokens + row * MAX_HISTORY + other_idx,
+                mask=other_active,
+                other=-1,
+            )
+            same_token = other_active & valid & (other_token == token)
+            seen_before = seen_before | (same_token & (other_idx < hist_idx))
+            count += tl.where(same_token, 1, 0)
+
+        should_write = valid & (~seen_before)
+        offset = row * VOCAB + token
+        value = tl.load(adjusted_logits + offset, mask=should_write, other=0.0).to(tl.float32)
+        frequency_penalty = tl.load(frequency_penalties + row).to(tl.float32)
+        presence_penalty = tl.load(presence_penalties + row).to(tl.float32)
+        repetition_penalty = tl.load(repetition_penalties + row).to(tl.float32)
+
+        repeated_value = tl.where(
+            value < 0.0,
+            value * repetition_penalty,
+            value / repetition_penalty,
+        )
+        value = tl.where(repetition_penalty != 1.0, repeated_value, value)
+        value -= count.to(tl.float32) * frequency_penalty
+        value -= presence_penalty
+        tl.store(adjusted_logits + offset, value, mask=should_write)
 
     @triton.jit
     def _topk_topp_reduce_sample_kernel(
@@ -905,6 +990,178 @@ def topk_topp_penalty_sample_from_uniform(
     return output
 
 
+def _copy_and_apply_sparse_token_penalties_out(
+    logits,
+    history_tokens,
+    history_lengths,
+    adjusted_logits,
+    *,
+    frequency_penalties,
+    presence_penalties,
+    repetition_penalties,
+):
+    if torch is None or triton is None:
+        raise RuntimeError("_copy_and_apply_sparse_token_penalties_out requires PyTorch and Triton")
+    if logits.ndim != 2 or adjusted_logits.shape != logits.shape:
+        raise ValueError("expected logits and adjusted_logits with shape [batch, vocab]")
+    if adjusted_logits.dtype != torch.float32:
+        raise ValueError("adjusted_logits must be float32")
+    if history_tokens.ndim != 2 or history_tokens.shape[0] != logits.shape[0]:
+        raise ValueError("history_tokens must have shape [batch, max_history]")
+    if history_lengths.shape != (logits.shape[0],):
+        raise ValueError("history_lengths must have shape [batch]")
+    for name, tensor in (
+        ("logits", logits),
+        ("history_tokens", history_tokens),
+        ("history_lengths", history_lengths),
+        ("adjusted_logits", adjusted_logits),
+        ("frequency_penalties", frequency_penalties),
+        ("presence_penalties", presence_penalties),
+        ("repetition_penalties", repetition_penalties),
+    ):
+        if not tensor.is_cuda:
+            raise ValueError(f"{name} must be a CUDA tensor")
+    batch, vocab = logits.shape
+    max_history = int(history_tokens.shape[1])
+    if max_history <= 0 or max_history > 256:
+        raise ValueError("max_history must be in [1, 256]")
+    if frequency_penalties.shape != (batch,):
+        raise ValueError("frequency_penalties must have shape [batch]")
+    if presence_penalties.shape != (batch,):
+        raise ValueError("presence_penalties must have shape [batch]")
+    if repetition_penalties.shape != (batch,):
+        raise ValueError("repetition_penalties must have shape [batch]")
+    total = int(batch) * int(vocab)
+    block = 1024
+    _copy_logits_to_fp32_kernel[((total + block - 1) // block,)](
+        logits,
+        adjusted_logits,
+        TOTAL=total,
+        BLOCK=block,
+        num_warps=4,
+        num_stages=1,
+    )
+    _sparse_token_penalty_scatter_kernel[(int(batch), max_history)](
+        adjusted_logits,
+        history_tokens,
+        history_lengths,
+        frequency_penalties,
+        presence_penalties,
+        repetition_penalties,
+        VOCAB=int(vocab),
+        MAX_HISTORY=max_history,
+        num_warps=1,
+        num_stages=1,
+    )
+    return None
+
+
+def topk_topp_sparse_penalty_sample_from_uniform_out(
+    logits,
+    history_tokens,
+    history_lengths,
+    uniforms,
+    output,
+    *,
+    adjusted_logits,
+    partial_values,
+    partial_tokens,
+    frequency_penalties,
+    presence_penalties,
+    repetition_penalties,
+    top_k: int,
+    top_p: float,
+    temperature: float = 1.0,
+    block_vocab_override: Optional[int] = None,
+):
+    """Write sparse-history penalty-adjusted top-k/top-p samples.
+
+    ``history_tokens`` is a padded sparse token-history tensor with shape
+    ``[batch, max_history]``. Each row contains prior prompt/output token IDs,
+    padded with any value outside ``[0, vocab)``. ``history_lengths`` gives the
+    active length for each row.
+    """
+
+    batch, vocab = logits.shape
+    if not should_use_l20_sparse_topk_topp_penalty_sampling(
+        int(batch), int(vocab), int(top_k), float(top_p), int(history_tokens.shape[1])
+    ):
+        raise ValueError("shape, history, or sampling policy is outside the sparse penalty gate")
+    _copy_and_apply_sparse_token_penalties_out(
+        logits,
+        history_tokens,
+        history_lengths,
+        adjusted_logits,
+        frequency_penalties=frequency_penalties,
+        presence_penalties=presence_penalties,
+        repetition_penalties=repetition_penalties,
+    )
+    topk_topp_sample_from_uniform_out(
+        adjusted_logits,
+        uniforms,
+        output,
+        partial_values=partial_values,
+        partial_tokens=partial_tokens,
+        top_k=top_k,
+        top_p=top_p,
+        temperature=temperature,
+        block_vocab_override=block_vocab_override,
+    )
+    return None
+
+
+def topk_topp_sparse_penalty_sample_with_vllm_rng_out(
+    logits,
+    history_tokens,
+    history_lengths,
+    output,
+    *,
+    adjusted_logits,
+    partial_values,
+    partial_tokens,
+    expanded_idx_mapping,
+    seeds,
+    positions,
+    frequency_penalties,
+    presence_penalties,
+    repetition_penalties,
+    top_k: int,
+    top_p: float,
+    temperature: float = 1.0,
+    block_vocab_override: Optional[int] = None,
+):
+    """Sparse-history penalty sampling with vLLM-style RNG tensors."""
+
+    batch, vocab = logits.shape
+    if not should_use_l20_sparse_topk_topp_penalty_sampling(
+        int(batch), int(vocab), int(top_k), float(top_p), int(history_tokens.shape[1])
+    ):
+        raise ValueError("shape, history, or sampling policy is outside the sparse penalty gate")
+    _copy_and_apply_sparse_token_penalties_out(
+        logits,
+        history_tokens,
+        history_lengths,
+        adjusted_logits,
+        frequency_penalties=frequency_penalties,
+        presence_penalties=presence_penalties,
+        repetition_penalties=repetition_penalties,
+    )
+    topk_topp_sample_with_vllm_rng_out(
+        adjusted_logits,
+        output,
+        partial_values=partial_values,
+        partial_tokens=partial_tokens,
+        expanded_idx_mapping=expanded_idx_mapping,
+        seeds=seeds,
+        positions=positions,
+        top_k=top_k,
+        top_p=top_p,
+        temperature=temperature,
+        block_vocab_override=block_vocab_override,
+    )
+    return None
+
+
 def topk_topp_sample_with_vllm_rng_out(
     logits,
     output,
@@ -1051,6 +1308,60 @@ def apply_dense_token_penalties_reference(
     return values
 
 
+def _row_penalty_value(value, row: int):
+    if torch is not None and hasattr(value, "ndim"):
+        if value.ndim == 0:
+            return float(value.item())
+        return float(value[row].item())
+    return float(value)
+
+
+def apply_sparse_token_penalties_reference(
+    logits,
+    history_tokens,
+    history_lengths,
+    *,
+    frequency_penalties=0.0,
+    presence_penalties=0.0,
+    repetition_penalties=1.0,
+):
+    """PyTorch reference for sparse token-history penalties."""
+
+    if torch is None:
+        raise RuntimeError("apply_sparse_token_penalties_reference requires PyTorch")
+    if logits.ndim != 2:
+        raise ValueError("expected logits with shape [batch, vocab]")
+    if history_tokens.ndim != 2 or history_tokens.shape[0] != logits.shape[0]:
+        raise ValueError("history_tokens must have shape [batch, max_history]")
+    if history_lengths.shape != (logits.shape[0],):
+        raise ValueError("history_lengths must have shape [batch]")
+    values = logits.float().clone()
+    batch, vocab = values.shape
+    for row in range(int(batch)):
+        length = max(0, min(int(history_lengths[row].item()), int(history_tokens.shape[1])))
+        if length == 0:
+            continue
+        tokens = history_tokens[row, :length].to(device=values.device, dtype=torch.long)
+        tokens = tokens[(tokens >= 0) & (tokens < vocab)]
+        if tokens.numel() == 0:
+            continue
+        unique_tokens, counts = torch.unique(tokens, sorted=False, return_counts=True)
+        freq = _row_penalty_value(frequency_penalties, row)
+        pres = _row_penalty_value(presence_penalties, row)
+        rep = _row_penalty_value(repetition_penalties, row)
+        if rep <= 0:
+            raise ValueError("repetition_penalties must be positive")
+        row_values = values[row, unique_tokens]
+        if rep != 1.0:
+            row_values = torch.where(row_values < 0, row_values * rep, row_values / rep)
+        if freq != 0.0:
+            row_values = row_values - counts.to(row_values.dtype) * freq
+        if pres != 0.0:
+            row_values = row_values - pres
+        values[row, unique_tokens] = row_values
+    return values
+
+
 def topk_topp_penalty_sample_from_uniform_reference(
     logits,
     token_counts,
@@ -1071,6 +1382,38 @@ def topk_topp_penalty_sample_from_uniform_reference(
         frequency_penalty=frequency_penalty,
         presence_penalty=presence_penalty,
         repetition_penalty=repetition_penalty,
+    )
+    return topk_topp_sample_from_uniform_reference(
+        adjusted,
+        uniforms,
+        top_k=top_k,
+        top_p=top_p,
+        temperature=temperature,
+    )
+
+
+def topk_topp_sparse_penalty_sample_from_uniform_reference(
+    logits,
+    history_tokens,
+    history_lengths,
+    uniforms,
+    *,
+    top_k: int,
+    top_p: float,
+    temperature: float = 1.0,
+    frequency_penalties=0.0,
+    presence_penalties=0.0,
+    repetition_penalties=1.0,
+):
+    """Reference for sparse-history penalties plus top-k/top-p sampling."""
+
+    adjusted = apply_sparse_token_penalties_reference(
+        logits,
+        history_tokens,
+        history_lengths,
+        frequency_penalties=frequency_penalties,
+        presence_penalties=presence_penalties,
+        repetition_penalties=repetition_penalties,
     )
     return topk_topp_sample_from_uniform_reference(
         adjusted,

@@ -17,6 +17,7 @@ import torch
 
 from l20_stack.ops.triton_sampling import (
     should_prefer_l20_topk_topp_sampling,
+    topk_topp_sparse_penalty_sample_with_vllm_rng_out,
     topk_topp_sample_with_vllm_rng_out,
     topk_topp_sampling_launch_config,
 )
@@ -26,6 +27,9 @@ TRACE_ENV = "VLLM_L20_TOPK_TOPP_SAMPLER_TRACE"
 ALLOW_NON_L20_ENV = "VLLM_L20_TOPK_TOPP_ALLOW_NON_L20"
 
 _WORKSPACE_CACHE: dict[tuple[Any, ...], tuple[torch.Tensor, torch.Tensor]] = {}
+_SPARSE_WORKSPACE_CACHE: dict[
+    tuple[Any, ...], tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+] = {}
 _TRACE_COUNT = 0
 
 
@@ -110,6 +114,41 @@ def _workspace(
     return partial_values, partial_tokens
 
 
+def _sparse_workspace(
+    logits: torch.Tensor,
+    *,
+    top_k: int,
+    block_vocab_override: int | None = None,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    batch, vocab = (int(logits.shape[0]), int(logits.shape[1]))
+    config = topk_topp_sampling_launch_config(
+        vocab,
+        top_k,
+        batch=batch,
+        block_vocab_override=block_vocab_override,
+    )
+    partial_shape = (batch, config.blocks_per_row, top_k)
+    key = (
+        logits.device.type,
+        int(logits.device.index or 0),
+        str(logits.dtype),
+        batch,
+        vocab,
+        top_k,
+        config.block_vocab,
+        "sparse_penalty",
+    )
+    cached = _SPARSE_WORKSPACE_CACHE.get(key)
+    if cached is not None and cached[0].shape == (batch, vocab):
+        return cached
+    adjusted_logits = torch.empty((batch, vocab), device=logits.device, dtype=torch.float32)
+    partial_values = torch.empty(partial_shape, device=logits.device, dtype=torch.float32)
+    partial_tokens = torch.empty(partial_shape, device=logits.device, dtype=torch.int64)
+    cached = (adjusted_logits, partial_values, partial_tokens)
+    _SPARSE_WORKSPACE_CACHE[key] = cached
+    return cached
+
+
 def maybe_l20_topk_topp_sample(
     logits: torch.Tensor,
     k: torch.Tensor | None,
@@ -119,6 +158,12 @@ def maybe_l20_topk_topp_sample(
     expanded_idx_mapping: torch.Tensor | None = None,
     seeds: torch.Tensor | None = None,
     positions: torch.Tensor | None = None,
+    history_tokens: torch.Tensor | None = None,
+    history_lengths: torch.Tensor | None = None,
+    frequency_penalties: torch.Tensor | None = None,
+    presence_penalties: torch.Tensor | None = None,
+    repetition_penalties: torch.Tensor | None = None,
+    defer_penalties: bool = False,
     top_k_value: int | None = None,
     top_p_value: float | None = None,
 ) -> torch.Tensor | None:
@@ -128,6 +173,10 @@ def maybe_l20_topk_topp_sample(
     metadata: dict[str, Any] = {
         "logits_shape": list(logits.shape) if hasattr(logits, "shape") else None,
         "logits_dtype": str(getattr(logits, "dtype", None)),
+        "defer_penalties": defer_penalties,
+        "history_shape": (
+            list(history_tokens.shape) if hasattr(history_tokens, "shape") else None
+        ),
     }
     if not _env_flag(ENABLE_ENV):
         reasons.append("disabled")
@@ -142,6 +191,14 @@ def maybe_l20_topk_topp_sample(
         reasons.append("missing_topk_or_topp")
     if expanded_idx_mapping is None or seeds is None or positions is None:
         reasons.append("missing_vllm_rng_state")
+    if defer_penalties and (
+        history_tokens is None
+        or history_lengths is None
+        or frequency_penalties is None
+        or presence_penalties is None
+        or repetition_penalties is None
+    ):
+        reasons.append("missing_sparse_penalty_state")
 
     top_k: int | None = None
     top_p: float | None = None
@@ -176,21 +233,47 @@ def maybe_l20_topk_topp_sample(
 
     assert top_k is not None and top_p is not None
     output = torch.empty((logits.shape[0],), device=logits.device, dtype=torch.int64)
-    partial_values, partial_tokens = _workspace(logits, top_k=top_k)
     assert expanded_idx_mapping is not None
     assert seeds is not None
     assert positions is not None
-    topk_topp_sample_with_vllm_rng_out(
-        logits,
-        output,
-        partial_values=partial_values,
-        partial_tokens=partial_tokens,
-        expanded_idx_mapping=expanded_idx_mapping,
-        seeds=seeds,
-        positions=positions,
-        top_k=top_k,
-        top_p=top_p,
-        temperature=1.0,
-    )
+    if defer_penalties:
+        assert history_tokens is not None
+        assert history_lengths is not None
+        assert frequency_penalties is not None
+        assert presence_penalties is not None
+        assert repetition_penalties is not None
+        adjusted_logits, partial_values, partial_tokens = _sparse_workspace(logits, top_k=top_k)
+        topk_topp_sparse_penalty_sample_with_vllm_rng_out(
+            logits,
+            history_tokens,
+            history_lengths,
+            output,
+            adjusted_logits=adjusted_logits,
+            partial_values=partial_values,
+            partial_tokens=partial_tokens,
+            expanded_idx_mapping=expanded_idx_mapping,
+            seeds=seeds,
+            positions=positions,
+            frequency_penalties=frequency_penalties,
+            presence_penalties=presence_penalties,
+            repetition_penalties=repetition_penalties,
+            top_k=top_k,
+            top_p=top_p,
+            temperature=1.0,
+        )
+    else:
+        partial_values, partial_tokens = _workspace(logits, top_k=top_k)
+        topk_topp_sample_with_vllm_rng_out(
+            logits,
+            output,
+            partial_values=partial_values,
+            partial_tokens=partial_tokens,
+            expanded_idx_mapping=expanded_idx_mapping,
+            seeds=seeds,
+            positions=positions,
+            top_k=top_k,
+            top_p=top_p,
+            temperature=1.0,
+        )
     _trace({"eligible": True, "reasons": [], "metadata": metadata})
     return output

@@ -27,8 +27,10 @@ speedups, integration behavior, and end-to-end token latency.
   A100 control run.
 - A fused top-k/top-p + dense-penalty primitive shows 1.36x-1.42x microbenchmark
   speedup on the matching A100 shapes.
-- The next target is sparse token-history integration inside the real vLLM
-  sampling path, not another standalone greedy kernel.
+- A sparse token-history version keeps 1.27x-1.31x microbenchmark speedup
+  versus apply-then-sample without assuming dense `[batch, vocab]` counts.
+- The next target is real vLLM serving ITL A/B for the sparse token-history
+  path, not another standalone greedy kernel.
 - Every public claim is tied to hardware, model, command, and a checked-in
   artifact.
 
@@ -67,8 +69,19 @@ wins the corresponding microbenchmark:
 Artifact:
 `benchmarks/results/a100-fused-topk-topp-penalty/`
 
-The next implementation step is a sparse vLLM token-history version of that
-primitive, followed by real serving ITL validation.
+The sparse token-history follow-up removes the unrealistic dense-count
+assumption and still beats a separate penalty-then-sampling path:
+
+| Shape | Sparse history path | Apply penalty then sample | Speedup |
+| --- | ---: | ---: | ---: |
+| batch 1, vocab 151936, history 128 | 0.1531 ms | 0.1944 ms | 1.27x |
+| batch 4, vocab 151936, history 128 | 0.1800 ms | 0.2365 ms | 1.31x |
+
+Artifact:
+`benchmarks/results/a100-sparse-topk-topp-penalty/`
+
+The next implementation step is real vLLM serving ITL validation for this sparse
+token-history path.
 
 ## Boundary Diagram
 
@@ -109,6 +122,7 @@ See `docs/hardware-scope.md` for the exact claim policy.
 | Greedy LM-head epilogue | Functional proof, no speedup | Real output-changing vLLM path works, but median ITL is equal to baseline. |
 | Sampling semantics boundary | Active P0 | Top-k/top-p, penalties, and logprobs are the next target. |
 | Fused top-k/top-p + dense penalties | Positive micro result | Carry forward to sparse vLLM token-history integration. |
+| Sparse top-k/top-p + penalties | Positive micro result | Carry forward to real vLLM serving ITL A/B; do not claim serving win yet. |
 | FP8 KV fused attention | Experimental | Keep disabled until repeated serving ITL beats BF16/FlashInfer. |
 | Speculative/tree attention | Experimental | Useful research branch; no stable serving win yet. |
 | Kernel-coding QLoRA | Negative so far | Training stack is healthy, but held-out KernelBench `fast_0` remains zero. |

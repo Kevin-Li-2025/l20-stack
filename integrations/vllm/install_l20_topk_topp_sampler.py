@@ -40,6 +40,12 @@ TOPK_FORWARD_SIGNATURE_PATCHED = """    def forward_cuda(
         l20_expanded_idx_mapping: torch.Tensor | None = None,
         l20_seeds: torch.Tensor | None = None,
         l20_positions: torch.Tensor | None = None,
+        l20_history_tokens: torch.Tensor | None = None,
+        l20_history_lengths: torch.Tensor | None = None,
+        l20_defer_penalties: bool = False,
+        l20_frequency_penalties: torch.Tensor | None = None,
+        l20_presence_penalties: torch.Tensor | None = None,
+        l20_repetition_penalties: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
 """
 TOPK_FLASHINFER_RETURN = """        return flashinfer_sample(logits.contiguous(), k, p, generators), None
@@ -53,6 +59,12 @@ TOPK_FLASHINFER_RETURN_PATCHED = """        contiguous_logits = logits.contiguou
             expanded_idx_mapping=l20_expanded_idx_mapping,
             seeds=l20_seeds,
             positions=l20_positions,
+            history_tokens=l20_history_tokens,
+            history_lengths=l20_history_lengths,
+            frequency_penalties=l20_frequency_penalties,
+            presence_penalties=l20_presence_penalties,
+            repetition_penalties=l20_repetition_penalties,
+            defer_penalties=l20_defer_penalties,
         )
         if l20_sampled is not None:
             return l20_sampled, None
@@ -69,6 +81,9 @@ METADATA_GENERATORS_PATCHED = """    generators: dict[int, torch.Generator]
     l20_expanded_idx_mapping: torch.Tensor | None
     l20_seeds: torch.Tensor | None
     l20_positions: torch.Tensor | None
+    l20_history_tokens: torch.Tensor | None
+    l20_history_lengths: torch.Tensor | None
+    l20_defer_penalties: bool
 
     # None means no logprobs, 0 means sampled token logprobs only
 """
@@ -88,6 +103,12 @@ SAMPLER_TOPK_CALL_PATCHED = """        random_sampled, processed_logprobs = self
             l20_expanded_idx_mapping=sampling_metadata.l20_expanded_idx_mapping,
             l20_seeds=sampling_metadata.l20_seeds,
             l20_positions=sampling_metadata.l20_positions,
+            l20_history_tokens=sampling_metadata.l20_history_tokens,
+            l20_history_lengths=sampling_metadata.l20_history_lengths,
+            l20_defer_penalties=sampling_metadata.l20_defer_penalties,
+            l20_frequency_penalties=sampling_metadata.frequency_penalties,
+            l20_presence_penalties=sampling_metadata.presence_penalties,
+            l20_repetition_penalties=sampling_metadata.repetition_penalties,
         )
 """
 
@@ -105,6 +126,9 @@ DUMMY_METADATA_PATCHED = """            top_k=dummy_tensors(logits.size(1) - 1),
             l20_positions=torch.arange(
                 num_reqs, dtype=torch.int64, device=self.device
             ),
+            l20_history_tokens=None,
+            l20_history_lengths=None,
+            l20_defer_penalties=False,
 """
 
 INPUT_BATCH_TOPK_REQS = """        self.top_k_reqs: set[str] = set()
@@ -165,6 +189,9 @@ INPUT_BATCH_METADATA_GENERATORS_PATCHED = """            generators=self.generat
             l20_expanded_idx_mapping=self.l20_sampler_indices[:num_reqs],
             l20_seeds=self.l20_sampler_seeds[:num_reqs],
             l20_positions=self.l20_sampler_positions[:num_reqs],
+            l20_history_tokens=None,
+            l20_history_lengths=None,
+            l20_defer_penalties=False,
             max_num_logprobs=self.max_num_logprobs,
 """
 
