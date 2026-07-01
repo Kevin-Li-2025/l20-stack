@@ -54,6 +54,7 @@ serving win unless the full stack improves.
 | Standalone LM-head top-k | Chunked top-k and batch-1 direct top-1 are slower than full logits | Not worth serving integration | Avoid standalone replacement |
 | Batched LM-head greedy top-1 | Batch-4 direct top-1 reaches 0.677 ms vs 0.712 ms full logits, a 4.8% micro speedup | No vLLM serving integration and no top-k/top-p semantics yet | Keep as epilogue prototype evidence |
 | FlashSampling-style LM-head Gumbel | Tile-policy-v2 improves the standalone candidate policy; batch-4 h1024 reaches 0.911x candidate/full-logits ratio | Native vLLM candidate path is wired, but c1 policy-v2 smoke still loses throughput and TTFT | Negative standalone result |
+| A100 output-changing greedy LM-head epilogue | Candidate returns `SamplerOutput` for 378/378 eligible decode events without full-logits materialization | Same-session no-trace Qwen2.5-0.5B median ITL is 6.733 ms vs 6.727 ms baseline | Functional boundary proof, not a speedup |
 | LM-head/logits epilogue | 96.00% trace eligibility; 339.93 MiB eligible logits materialization in latest smoke | A/B sampler hook and standalone FlashSampling candidate both regressed serving throughput | Current P0: true GEMM epilogue only |
 
 The generated artifact for this table is:
@@ -72,6 +73,9 @@ The negative results are part of the contribution:
 - FlashSampling-style full-vocabulary Gumbel reaches the native vLLM path, but
   the standalone replacement still loses serving throughput after tile-policy
   repair;
+- the first output-changing A100 greedy LM-head epilogue reaches real vLLM
+  serving and mutates the sampled path, but no-trace median ITL is equal to the
+  baseline in the safe greedy/no-penalty subset;
 - current FP8 KV-cache decode prototypes do not justify a vLLM dispatch gate;
 - custom RoPE/KV-style kernels are often Amdahl-limited once attention and
   model compute are included.
@@ -108,3 +112,6 @@ survives O2/CUDA graph execution and production sampler semantics.
 
 The public staging note for that paired experiment is
 [`docs/logits-boundary-ab.md`](logits-boundary-ab.md).
+
+The first output-changing A100 boundary artifact is:
+`benchmarks/results/a100-vllm-gemm-epilogue-candidate/`.

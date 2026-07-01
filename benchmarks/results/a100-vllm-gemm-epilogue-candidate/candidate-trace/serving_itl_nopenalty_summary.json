@@ -1,0 +1,36 @@
+{
+  "chunks": {
+    "max": 64,
+    "mean": 64,
+    "median": 64,
+    "min": 64
+  },
+  "itl_ms": {
+    "max": 48.239954810086935,
+    "mean": 28.250640250801567,
+    "median": 24.367310381161847,
+    "min": 18.654288651074268
+  },
+  "max_tokens": 64,
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "ok_runs": 5,
+  "runs": 5,
+  "sampling_overrides": {
+    "frequency_penalty": 0.0,
+    "presence_penalty": 0.0,
+    "repetition_penalty": 1.0
+  },
+  "total_ms": {
+    "max": 3064.2508909804747,
+    "mean": 1798.94497981295,
+    "median": 1553.1893070437945,
+    "min": 1192.1669670264237
+  },
+  "ttft_ms": {
+    "max": 25.044937967322767,
+    "mean": 19.082658016122878,
+    "median": 17.996943031903356,
+    "min": 14.444261032622308
+  },
+  "warmup": 1
+}

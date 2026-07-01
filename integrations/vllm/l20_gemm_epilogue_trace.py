@@ -4,6 +4,11 @@ This helper is intentionally behavior-preserving with the default vLLM patch:
 it calls a new ``LogitsProcessor.try_sample_from_lm_head`` API only when tracing
 or explicit experimentation is enabled. The default API returns ``None``, so the
 runner falls back to vLLM's existing ``compute_logits`` plus sampler path.
+
+When ``VLLM_L20_GEMM_EPILOGUE_ENABLE=1`` is set, the helper may take a narrow
+output-changing greedy path: batch-1, single-token decode, no penalties,
+temperature=0, no logprobs, no structured output, TP=1. Everything else stays on
+the baseline path.
 """
 
 from __future__ import annotations
@@ -104,6 +109,18 @@ def _array_non_default(values: Any, default: float) -> bool:
         return any(value != default for value in values)
 
 
+def _array_minmax(values: Any, default: float) -> tuple[float, float]:
+    if values is None:
+        return default, default
+    try:
+        return float(values.min()), float(values.max())
+    except Exception:
+        data = list(values)
+        if not data:
+            return default, default
+        return float(min(data)), float(max(data))
+
+
 def _non_empty_attr(input_batch: Any, field: str) -> bool:
     value = getattr(input_batch, field, None)
     try:
@@ -138,6 +155,8 @@ def _sampling_reasons(input_batch: Any) -> list[str]:
     reasons: list[str] = []
     if _non_empty_attr(input_batch, "num_logprobs"):
         reasons.append("token_logprobs")
+    if _non_empty_attr(input_batch, "num_prompt_logprobs"):
+        reasons.append("prompt_logprobs")
     if _non_empty_attr(input_batch, "logprob_token_ids"):
         reasons.append("logprob_token_ids")
     if _non_empty_attr(input_batch, "has_allowed_token_ids"):
@@ -158,6 +177,46 @@ def _sampling_reasons(input_batch: Any) -> list[str]:
         reasons.append("penalties")
     if _array_non_default(_active_values(input_batch, "min_p_cpu"), 0.0):
         reasons.append("min_p")
+    return sorted(set(reasons))
+
+
+def _greedy_epilogue_reasons(input_batch: Any, hidden_states: Any) -> list[str]:
+    reasons: list[str] = []
+    hidden_shape = _shape(hidden_states)
+    if hidden_shape is None or len(hidden_shape) != 2:
+        reasons.append("bad_hidden_shape")
+    else:
+        if hidden_shape[0] != 1:
+            reasons.append("batch_not_one")
+
+    all_greedy = getattr(input_batch, "all_greedy", None)
+    if all_greedy is not None:
+        if not bool(all_greedy):
+            reasons.append("not_all_greedy")
+        if not bool(getattr(input_batch, "no_top_p", True)):
+            reasons.append("top_p")
+        if not bool(getattr(input_batch, "no_top_k", True)):
+            reasons.append("top_k")
+        return sorted(set(reasons))
+
+    temperature_min, temperature_max = _array_minmax(
+        _active_values(input_batch, "temperature_cpu"),
+        0.0,
+    )
+    top_p_min, top_p_max = _array_minmax(_active_values(input_batch, "top_p_cpu"), 1.0)
+    top_k_min, top_k_max = _array_minmax(_active_values(input_batch, "top_k_cpu"), -1.0)
+    if temperature_min != temperature_max:
+        reasons.append("mixed_temperature")
+    if abs(temperature_max) > 1e-6:
+        reasons.append("non_greedy_temperature")
+    if top_p_min != top_p_max:
+        reasons.append("mixed_top_p")
+    if abs(top_p_max - 1.0) > 1e-6:
+        reasons.append("top_p")
+    if top_k_min != top_k_max:
+        reasons.append("mixed_top_k")
+    if int(top_k_max) not in {-1, 0, 1}:
+        reasons.append("top_k")
     return sorted(set(reasons))
 
 
@@ -183,6 +242,150 @@ def _embedding_bias(lm_head: Any) -> Any | None:
     return getattr(lm_head, "bias", None)
 
 
+def _lm_head_weight(lm_head: Any) -> Any | None:
+    weight = getattr(lm_head, "weight", None)
+    if weight is not None:
+        return weight
+    getter = getattr(lm_head, "get_output_embeddings", None)
+    if getter is None:
+        return None
+    try:
+        embeddings = getter()
+    except Exception:
+        return None
+    return getattr(embeddings, "weight", None)
+
+
+def _vocab_size(input_batch: Any, weight: Any) -> int:
+    from_weight = _shape(weight)
+    weight_vocab = int(from_weight[0]) if from_weight else 0
+    value = _safe_int(getattr(input_batch, "vocab_size", None), weight_vocab)
+    if value is None or value <= 0:
+        return weight_vocab
+    return value
+
+
+def _make_sampler_output(sampled_token_ids: Any) -> Any:
+    from vllm.v1.outputs import SamplerOutput
+
+    return SamplerOutput(
+        sampled_token_ids=sampled_token_ids,
+        logprobs_tensors=None,
+    )
+
+
+def _try_lm_head_greedy_sampler_output(
+    model_runner: Any,
+    input_batch: Any,
+    sample_hidden_states: Any,
+    lm_head: Any,
+    embedding_bias: Any | None,
+) -> tuple[Any | None, str | None, dict[str, Any]]:
+    details: dict[str, Any] = {
+        "mode": "greedy_argmax",
+        "returned_output": False,
+        "uses_full_logits": False,
+    }
+    if embedding_bias is not None:
+        return None, "embedding_bias", details
+    try:
+        import torch
+        from l20_stack.ops.triton_lm_head_sampling import (
+            lm_head_sample_out,
+            lm_head_sampling_launch_config,
+        )
+    except Exception as exc:  # pragma: no cover - depends on runtime install.
+        return None, f"candidate_import_failed:{type(exc).__name__}", details
+
+    weight = _lm_head_weight(lm_head)
+    if weight is None:
+        return None, "missing_lm_head_weight", details
+    if not getattr(sample_hidden_states, "is_cuda", False):
+        return None, "not_cuda", details
+    if not getattr(weight, "is_cuda", False):
+        return None, "weight_not_cuda", details
+    hidden_shape = _shape(sample_hidden_states)
+    weight_shape = _shape(weight)
+    if hidden_shape is None or weight_shape is None or len(weight_shape) != 2:
+        return None, "bad_weight_shape", details
+    batch, hidden_size = int(hidden_shape[0]), int(hidden_shape[1])
+    real_vocab = _vocab_size(input_batch, weight)
+    if real_vocab <= 0 or real_vocab > int(weight_shape[0]):
+        return None, "bad_vocab_size", details
+    if int(weight_shape[1]) != hidden_size:
+        return None, "weight_hidden_mismatch", details
+    try:
+        config = lm_head_sampling_launch_config(batch, real_vocab, hidden_size)
+    except Exception as exc:
+        return None, f"bad_launch_shape:{type(exc).__name__}", details
+
+    cache = getattr(model_runner, "_l20_gemm_epilogue_workspace", {})
+    key = (
+        batch,
+        real_vocab,
+        hidden_size,
+        str(getattr(sample_hidden_states, "dtype", "")),
+        str(getattr(sample_hidden_states, "device", "")),
+    )
+    workspace = cache.get(key)
+    if workspace is None:
+        workspace = {
+            "values": torch.empty(
+                (batch,),
+                device=sample_hidden_states.device,
+                dtype=torch.float32,
+            ),
+            "tokens": torch.empty(
+                (batch,),
+                device=sample_hidden_states.device,
+                dtype=torch.int64,
+            ),
+            "partial_values": torch.empty(
+                (batch, config.blocks_per_row),
+                device=sample_hidden_states.device,
+                dtype=torch.float32,
+            ),
+            "partial_tokens": torch.empty(
+                (batch, config.blocks_per_row),
+                device=sample_hidden_states.device,
+                dtype=torch.int64,
+            ),
+        }
+        cache[key] = workspace
+        setattr(model_runner, "_l20_gemm_epilogue_workspace", cache)
+
+    try:
+        if not sample_hidden_states.is_contiguous():
+            sample_hidden_states = sample_hidden_states.contiguous()
+        sampled_weight = weight[:real_vocab, :]
+        dummy_seeds = torch.empty((batch,), device=sample_hidden_states.device, dtype=torch.int32)
+        lm_head_sample_out(
+            sample_hidden_states,
+            sampled_weight,
+            workspace["values"],
+            workspace["tokens"],
+            partial_values=workspace["partial_values"],
+            partial_tokens=workspace["partial_tokens"],
+            seeds=dummy_seeds,
+            use_gumbel=False,
+        )
+        sampled = workspace["tokens"].to(torch.int32).unsqueeze(-1)
+        output = _make_sampler_output(sampled)
+    except Exception as exc:  # pragma: no cover - runtime kernel path.
+        return None, f"candidate_failed:{type(exc).__name__}:{str(exc)[:160]}", details
+
+    details.update(
+        {
+            "returned_output": True,
+            "batch": batch,
+            "vocab_size": real_vocab,
+            "hidden_size": hidden_size,
+            "policy": config.to_dict(),
+        }
+    )
+    return output, None, details
+
+
 def _write_trace(event: dict[str, Any]) -> None:
     path = os.environ.get(TRACE_ENV)
     if not path:
@@ -204,6 +407,7 @@ def _base_event(
     scheduler_output: Any,
     reasons: list[str],
     api: dict[str, Any],
+    epilogue: dict[str, Any],
 ) -> dict[str, Any]:
     return {
         "event": "l20_gemm_epilogue_boundary",
@@ -219,6 +423,7 @@ def _base_event(
                 getattr(scheduler_output, "total_num_scheduled_tokens", None)
             ),
             "api": api,
+            "epilogue": epilogue,
             "mutates_outputs": False,
         },
     }
@@ -255,6 +460,8 @@ def maybe_try_l20_gemm_epilogue(
     expected_reqs = _active_num_reqs(input_batch)
     reasons.extend(_scheduled_reasons(scheduler_output, expected_reqs))
     reasons.extend(_sampling_reasons(input_batch))
+    if _env_flag(ENABLE_ENV):
+        reasons.extend(_greedy_epilogue_reasons(input_batch, sample_hidden_states))
 
     parallel_config = getattr(model_runner, "parallel_config", None)
     tp_size = _safe_int(getattr(parallel_config, "tensor_parallel_size", 1), 1)
@@ -270,6 +477,11 @@ def maybe_try_l20_gemm_epilogue(
         "api_called": False,
         "api_returned_output": False,
         "output_enabled": _env_flag(ENABLE_ENV),
+        "fallback_to_compute_logits": True,
+    }
+    epilogue = {
+        "attempted": False,
+        "returned_output": False,
         "fallback_to_compute_logits": True,
     }
     if logits_processor is None:
@@ -290,8 +502,32 @@ def maybe_try_l20_gemm_epilogue(
         )
         api["api_returned_output"] = output is not None
         api["fallback_to_compute_logits"] = output is None or not _env_flag(ENABLE_ENV)
+        if output is None and _env_flag(ENABLE_ENV):
+            epilogue["attempted"] = True
+            output, candidate_reason, candidate_details = _try_lm_head_greedy_sampler_output(
+                model_runner,
+                input_batch,
+                sample_hidden_states,
+                lm_head,
+                _embedding_bias(lm_head),
+            )
+            epilogue.update(candidate_details)
+            epilogue["returned_output"] = output is not None
+            epilogue["fallback_to_compute_logits"] = output is None
+            if candidate_reason is not None:
+                reasons.append(candidate_reason)
+                api["fallback_to_compute_logits"] = True
+            elif output is not None:
+                api["fallback_to_compute_logits"] = False
 
-    event = _base_event(input_batch, sample_hidden_states, scheduler_output, reasons, api)
+    event = _base_event(
+        input_batch,
+        sample_hidden_states,
+        scheduler_output,
+        reasons,
+        api,
+        epilogue,
+    )
     if output is not None and _env_flag(ENABLE_ENV):
         event["metadata"]["mutates_outputs"] = True
     _write_trace(event)

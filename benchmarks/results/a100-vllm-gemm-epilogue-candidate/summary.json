@@ -1,0 +1,41 @@
+{
+  "artifact": "a100-vllm-gemm-epilogue-candidate",
+  "gpu": "A100",
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "vllm_version": "0.10.2",
+  "mode": "batch1_greedy_no_penalties_no_logprobs",
+  "candidate": {
+    "env": {
+      "VLLM_L20_GEMM_EPILOGUE_ENABLE": "1"
+    },
+    "description": "output-changing Triton LM-head greedy argmax candidate that returns SamplerOutput without materializing full logits",
+    "notrace": {
+      "median_itl_ms": 6.732725047243996,
+      "mean_itl_ms": 6.133350799814039,
+      "median_ttft_ms": 11.68649349710904,
+      "median_total_ms": 434.5042550121434
+    },
+    "trace": {
+      "events": 384,
+      "eligible": 378,
+      "attempted": 378,
+      "returned_output": 378,
+      "mutates_outputs": 378
+    }
+  },
+  "baseline": {
+    "notrace": {
+      "median_itl_ms": 6.727468063463531,
+      "mean_itl_ms": 6.259752893834222,
+      "median_ttft_ms": 12.42471850127913,
+      "median_total_ms": 435.4637605138123
+    }
+  },
+  "comparison": {
+    "median_itl_delta_ms": 0.005256983780464943,
+    "median_itl_delta_pct": 0.07814356213969002,
+    "mean_itl_delta_pct": -2.019286929643507,
+    "decision": "no serving speedup; treat median ITL as equal within run noise"
+  },
+  "claim_boundary": "A100 sanity and vLLM boundary validation only; not an L20 speed claim"
+}

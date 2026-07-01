@@ -200,13 +200,24 @@ Still no token-output mutation.
 
 ### Phase 2: Minimal Epilogue Prototype
 
-Only after Phase 1 is stable, add a candidate epilogue path for the safe subset.
-The implementation should preserve the optimized LM-head path rather than
-replacing it with a slower standalone top-k path. The first prototype should be
-a `LogitsProcessor` / `ParallelLMHead` method that returns `None` for every
-unsupported request and lets vLLM continue through `compute_logits` plus the
-existing sampler. The current installer creates that API boundary but does not
-yet return sampled tokens in serving by default.
+Status: implemented as an opt-in A100 sanity prototype for the narrow greedy
+subset; rejected as a speed claim.
+
+The candidate path returns sampled tokens from a no-full-logits Triton greedy
+LM-head argmax only when `VLLM_L20_GEMM_EPILOGUE_ENABLE=1` is set and the
+request is batch-1, decode-only, greedy, no-penalty, no-logprob, no-structured
+output, TP=1. Unsupported requests still fall back before `compute_logits`.
+
+The first real vLLM run proves the path mutates outputs for 378/378 eligible
+decode events on A100/Qwen2.5-0.5B, but same-session no-trace median ITL is
+6.733 ms versus 6.727 ms baseline. This makes it a functional boundary proof,
+not a serving optimization.
+
+Artifact:
+
+```text
+benchmarks/results/a100-vllm-gemm-epilogue-candidate/
+```
 
 ### Phase 3: Upstream PR
 

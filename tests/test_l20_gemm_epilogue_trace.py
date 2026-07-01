@@ -42,6 +42,15 @@ class InputBatch:
     generators = {}
 
 
+class GreedyInputBatch(InputBatch):
+    all_greedy = True
+    no_top_p = True
+    no_top_k = True
+    temperature_cpu = np.array([-1.0], dtype=np.float32)
+    top_k_cpu = np.array([32_000], dtype=np.int32)
+    top_p_cpu = np.array([1.0], dtype=np.float32)
+
+
 class SchedulerOutput:
     num_scheduled_tokens = {"req0": 1}
     total_num_scheduled_tokens = 1
@@ -157,7 +166,7 @@ def test_gemm_epilogue_enable_can_surface_non_none_output(tmp_path, monkeypatch)
 
     result = module.maybe_try_l20_gemm_epilogue(
         Runner(LogitsProcessor(output=output)),
-        InputBatch(),
+        GreedyInputBatch(),
         None,
         Tensor(),
         SchedulerOutput(),
@@ -170,3 +179,69 @@ def test_gemm_epilogue_enable_can_surface_non_none_output(tmp_path, monkeypatch)
     assert event["metadata"]["api"]["output_enabled"] is True
     assert event["metadata"]["api"]["fallback_to_compute_logits"] is False
     assert event["metadata"]["mutates_outputs"] is True
+
+
+def test_gemm_epilogue_enable_can_surface_greedy_candidate_output(tmp_path, monkeypatch):
+    module = load_helper()
+    module._TRACE_COUNT = 0
+    trace = tmp_path / "gemm.jsonl"
+    output = object()
+
+    def fake_candidate(*args, **kwargs):
+        return output, None, {
+            "attempted": True,
+            "mode": "greedy_argmax",
+            "returned_output": True,
+            "fallback_to_compute_logits": False,
+        }
+
+    monkeypatch.setattr(module, "_try_lm_head_greedy_sampler_output", fake_candidate)
+    monkeypatch.setenv("VLLM_L20_GEMM_EPILOGUE_TRACE", str(trace))
+    monkeypatch.setenv("VLLM_L20_GEMM_EPILOGUE_ENABLE", "1")
+    monkeypatch.setenv("VLLM_L20_LOGITS_BOUNDARY_ALLOW_NON_L20", "1")
+
+    result = module.maybe_try_l20_gemm_epilogue(
+        Runner(LogitsProcessor(output=None)),
+        GreedyInputBatch(),
+        None,
+        Tensor(),
+        SchedulerOutput(),
+        None,
+    )
+
+    assert result is output
+    event = read_event(trace)
+    assert event["eligible"] is True
+    assert event["metadata"]["api"]["api_called"] is True
+    assert event["metadata"]["api"]["api_returned_output"] is False
+    assert event["metadata"]["api"]["fallback_to_compute_logits"] is False
+    assert event["metadata"]["epilogue"]["attempted"] is True
+    assert event["metadata"]["epilogue"]["returned_output"] is True
+    assert event["metadata"]["mutates_outputs"] is True
+
+
+def test_gemm_epilogue_enable_rejects_non_greedy_candidate(tmp_path, monkeypatch):
+    module = load_helper()
+    module._TRACE_COUNT = 0
+    trace = tmp_path / "gemm.jsonl"
+    monkeypatch.setenv("VLLM_L20_GEMM_EPILOGUE_TRACE", str(trace))
+    monkeypatch.setenv("VLLM_L20_GEMM_EPILOGUE_ENABLE", "1")
+    monkeypatch.setenv("VLLM_L20_LOGITS_BOUNDARY_ALLOW_NON_L20", "1")
+
+    result = module.maybe_try_l20_gemm_epilogue(
+        Runner(LogitsProcessor(output=None)),
+        InputBatch(),
+        None,
+        Tensor(),
+        SchedulerOutput(),
+        None,
+    )
+
+    assert result is None
+    event = read_event(trace)
+    assert event["eligible"] is False
+    assert "non_greedy_temperature" in event["reasons"]
+    assert "top_k" in event["reasons"]
+    assert "top_p" in event["reasons"]
+    assert event["metadata"]["api"]["api_called"] is False
+    assert event["metadata"]["epilogue"]["attempted"] is False
