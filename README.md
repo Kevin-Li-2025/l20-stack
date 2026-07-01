@@ -1,66 +1,123 @@
-# L20 Stack
+# l20-stack
 
-Single-GPU LLM serving research for NVIDIA L20 / Ada SM89.
+Single-GPU LLM inference systems research.
 
-This repository studies a narrow systems question:
+This repository studies where low-level inference optimizations actually matter
+once they are placed inside a real serving stack. The primary target is the
+NVIDIA L20 because its 48 GB GDDR6 memory system exposes bottlenecks that HBM
+GPUs often hide, but the repo now keeps A100 cross-checks for portability and
+claim discipline.
 
-> Which LLM inference optimizations are actually worth doing on one 48 GB L20,
-> and where do kernel-level wins disappear before they become serving wins?
+The short version:
 
-It is a research stack, not a replacement for vLLM, FlashInfer, TensorRT-LLM,
-Megatron-LM, PEFT, or TRL. The useful output is the measured boundary between
-microkernel speedups, vLLM integration behavior, and end-to-end token latency.
+> l20-stack is an evidence-driven lab for vLLM, FlashInfer, Triton, CUDA, and
+> single-GPU decode serving. It keeps both wins and negative results, then uses
+> them to decide the next kernel boundary.
 
-## Best Current Result
+It is not a replacement for vLLM, FlashInfer, TensorRT-LLM, PEFT, TRL, or
+Megatron-LM. The useful output is the measured boundary between microkernel
+speedups, integration behavior, and end-to-end token latency.
 
-The strongest current conclusion is that more isolated RoPE/KV/sampling kernels
-are not the highest-leverage target anymore. Real L20 serving traces point to
-the LM-head / logits / sampling boundary.
+## Current Thesis
 
-Recent Qwen3-0.6B O2 + FlashInfer trace:
+The strongest current result is not "one custom kernel beats vLLM." The stronger
+systems result is:
 
-| Signal | Result |
-| --- | ---: |
-| Trace events | 775 |
-| Decode-eligible events | 744 / 96.00% |
-| Eligible logits materialization | 339.93 MiB |
-| Total logits materialization | 500.77 MiB |
-| c1 i512/o32 median ITL | 2.82024 ms |
-| c4 i512/o32 median ITL | 3.28006 ms |
+> Plain greedy/no-penalty decode is already hard to improve in modern vLLM, but
+> sampling semantics such as top-k/top-p, repetition penalties, and logprobs add
+> a large measurable ITL tax. The next useful kernel boundary is therefore a
+> fused sampling/logprob/penalty path or a true producer-side LM-head epilogue,
+> not another standalone greedy argmax kernel.
+
+Recent A100 sanity data makes the direction clear:
+
+| Case | Median ITL | Delta vs greedy |
+| --- | ---: | ---: |
+| Greedy, no penalties | 6.720 ms | 0.00% |
+| Repetition penalty | 9.224 ms | +37.27% |
+| Top-k/top-p | 9.544 ms | +42.03% |
+| Top-k/top-p + penalties | 9.562 ms | +42.29% |
+| Token logprobs | 9.336 ms | +38.94% |
 
 Artifact:
-`benchmarks/results/l20-vllm-logits-boundary-trace-p1/qwen3-0p6b-o2-v1/`
+`benchmarks/results/a100-vllm-sampling-semantics-qwen25-05b/`
 
-Next engineering target:
-an upstream-shaped LM-head/logits epilogue or compiled sampler boundary that
-avoids materializing and mutating full logits for the safe decode subset.
+The first fused top-k/top-p + dense-penalty primitive is now correct on A100 and
+wins the corresponding microbenchmark:
 
-## What Is Real vs Experimental
+| Shape | Fused | Apply penalty then sample | Speedup |
+| --- | ---: | ---: | ---: |
+| batch 1, vocab 151936 | 0.1407 ms | 0.1915 ms | 1.36x |
+| batch 4, vocab 151936 | 0.1647 ms | 0.2334 ms | 1.42x |
 
-| Area | State | What the evidence says |
+Artifact:
+`benchmarks/results/a100-fused-topk-topp-penalty/`
+
+The next implementation step is a sparse vLLM token-history version of that
+primitive, followed by real serving ITL validation.
+
+## Hardware Scope
+
+| Hardware | Role in this repo |
+| --- | --- |
+| L20 / Ada SM89 / 48 GB GDDR6 | Primary target. Optimizations are tuned against single-card bandwidth, launch overhead, KV pressure, and vLLM decode behavior. |
+| A100 / SM80 / HBM | Cross-check target. Used to prove that boundaries, Triton policies, and negative results are not artifacts of one local L20 setup. |
+| H100/H200/Blackwell | Reference ecosystem only. The repo compares against their public direction but does not claim results on them unless measured. |
+
+See `docs/hardware-scope.md` for the exact claim policy.
+
+## Result Map
+
+| Boundary | Status | Decision |
 | --- | --- | --- |
-| RoPE + paged KV append | Confirmed kernel win | 2.37x-7.82x write-path speedups, but only small vLLM serving gains after attention/model/runtime overhead. |
-| Q/K norm + Q/K RoPE + KV write | O2 path proven, Amdahl-limited | Custom path is live under vLLM O2 and correct on tested shapes; serving wins are low-single-digit because the path is a small fraction of GPU time. |
-| FlashInfer sampling route | Production route worth hardening | FlashInfer beats torch/native sampling in most paired serving shapes; the self-written standalone sampler regresses and stays disabled. |
-| LM-head/logits boundary | Active P0 | Standalone top-k/logits replacements lose, but trace data shows a large safe materialization budget for an epilogue/upstream boundary. |
-| FP8 KV fused attention | Correctness experiment | Fused dequant helps versus materializing K/V, but current paged decode kernels do not beat BF16 FlashInfer serving. |
-| Speculative verifier/tree attention | Experimental | Custom verifier kernels can win microbenchmarks; real vLLM speculative serving has not shown a stable win. |
-| Kernel-coding QLoRA | Negative so far | Training path is healthy, but held-out KernelBench `fast_0` remains 0/3. |
+| RoPE + paged KV append | Confirmed kernel win | Keep as case-study evidence; serving gains are Amdahl-limited. |
+| Q/K norm + Q/K RoPE + KV write | Path proof | Correct and live under vLLM O2, but too small alone for a broad claim. |
+| FlashInfer sampling route | Production route | Harden and prewarm; it beats the custom standalone sampler in serving. |
+| Standalone custom sampler | Negative serving result | Keep disabled; useful only as a control. |
+| Greedy LM-head epilogue | Functional proof, no speedup | Real output-changing vLLM path works, but median ITL is equal to baseline. |
+| Sampling semantics boundary | Active P0 | Top-k/top-p, penalties, and logprobs are the next target. |
+| Fused top-k/top-p + dense penalties | Positive micro result | Carry forward to sparse vLLM token-history integration. |
+| FP8 KV fused attention | Experimental | Keep disabled until repeated serving ITL beats BF16/FlashInfer. |
+| Speculative/tree attention | Experimental | Useful research branch; no stable serving win yet. |
+| Kernel-coding QLoRA | Negative so far | Training stack is healthy, but held-out KernelBench `fast_0` remains zero. |
 
 Full status map:
 `docs/experiment-status.md`
 
-## Reproduce the Golden Path
+## Reproduce
 
 CPU-safe checks:
 
 ```bash
-PYTHONPATH=src /usr/bin/python3 -m unittest discover -s tests
-PYTHONPYCACHEPREFIX=/tmp/l20-pycache PYTHONPATH=src \
-  /usr/bin/python3 -m pytest -q tests
+PYTHONPATH=src python -m unittest discover -s tests
 ```
 
-Trace the current P0 logits boundary on an L20 host:
+Run the A100 sampling-semantics probe against an OpenAI-compatible vLLM server:
+
+```bash
+PYTHONPATH=src python scripts/probe_vllm_sampling_semantics.py \
+  --url http://127.0.0.1:18080/v1/completions \
+  --model Qwen/Qwen2.5-0.5B-Instruct \
+  --output-dir /tmp/sampling-semantics \
+  --warmup 2 \
+  --runs 10 \
+  --max-tokens 64
+```
+
+Run the fused top-k/top-p + dense-penalty microbenchmark:
+
+```bash
+PYTHONPATH=src python scripts/benchmark_l20_topk_topp_penalty_sampling.py \
+  --batch 1 \
+  --vocab 151936 \
+  --top-k 50 \
+  --top-p 0.9 \
+  --warmup 30 \
+  --rounds 60 \
+  --output /tmp/fused-topk-topp-penalty-b1.json
+```
+
+Trace the original L20 logits-boundary budget on an L20 host:
 
 ```bash
 PYTHON=/home/hhai/venvs/vllm-l20/bin/python \
@@ -73,85 +130,43 @@ scripts/run_vllm_l20_logits_boundary_trace_campaign.sh \
   /home/hhai/vllm-l20-rfc
 ```
 
-Summarize a trace:
+## Repository Map
 
-```bash
-PYTHONPYCACHEPREFIX=/tmp/l20-pycache /usr/bin/python3 \
-  scripts/summarize_l20_logits_boundary_trace.py \
-  benchmarks/results/l20-vllm-logits-boundary-trace-p1/qwen3-0p6b-o2-v1/logits-boundary-trace.jsonl \
-  --output-json /tmp/logits-boundary-summary.json \
-  --output-md /tmp/logits-boundary-summary.md
-```
-
-## Important Entry Points
-
-| Purpose | Entry point |
+| Area | Purpose |
 | --- | --- |
-| One-page research summary | `docs/where-optimizations-stop-mattering.md` |
-| Logits-boundary RFC | `docs/logits-boundary-rfc.md` |
-| Logits-boundary A/B plan | `docs/logits-boundary-ab.md` |
-| Boundary-impact graph/table | `benchmarks/results/l20-boundary-impact/` |
-| Serving ceiling/Amdahl report | `benchmarks/results/l20-serving-optimization-ceiling/README.md` |
-| Logits-boundary scout report | `benchmarks/results/l20-vllm-logits-boundary-scout/README.md` |
-| Top-tier kernel gap checklist | `docs/l20-top-tier-kernel-gaps.md` |
-| Main serving case study | `docs/l20-serving-case-study.md` |
-| Experiment status and negative results | `docs/experiment-status.md` |
-| vLLM hook status | `integrations/vllm/README.md` |
-| Benchmark artifact index | `benchmarks/results/README.md` |
-| Top-k/top-p sampling benchmark | `scripts/benchmark_l20_topk_topp_sampling.py` |
-| Next optimization plan | `docs/l20-next-improvements.md` |
-| Operator research log | `docs/l20-operator-research.md` |
+| `src/l20_stack/` | CPU-safe planners, policy gates, memory calculators, and Triton/CUDA operator wrappers. |
+| `integrations/vllm/` | Local vLLM patch installers and guarded dispatch helpers. |
+| `scripts/` | Benchmarks, profiling wrappers, serving campaigns, scouts, and summarizers. |
+| `benchmarks/results/` | Compact checked-in evidence: JSON summaries, serving reports, and short Markdown notes. |
+| `docs/` | Research narrative, status map, hardware scope, and upstream/RFC notes. |
+| `tests/` | CPU-safe and source-level regression tests. GPU benchmarks live under `scripts/`. |
 
-## vLLM Integrations
+Start with:
 
-The vLLM patches are deliberately gated. They are useful for reproducing local
-experiments and upstream-shaped prototypes, but they are not default production
-paths unless the corresponding policy enables them.
-
-Start here:
-`integrations/vllm/README.md`
-
-Most important hooks:
-
-- `install_l20_logits_boundary_trace.py`: behavior-preserving trace hook for
-  the current P0 logits/LM-head/sampling boundary.
-- `install_l20_qk_norm_rope_kv.py`: Q/K norm + Q/K RoPE + KV write prototype.
-- `install_l20_rope_kv.py`: older RoPE + KV-cache append hook.
-- `install_l20_topk_topp_sampler.py`: self-written sampler hook; kept for
-  research, disabled for production claims after serving regression.
-- `install_l20_fp8_paged_decode.py`: FP8 KV decode experiment; disabled unless
-  forced.
-
-## Repository Layout
-
-```text
-src/l20_stack/          CPU-safe planning, config, memory, and CLI utilities
-operators/              Triton/CUDA operator prototypes
-integrations/vllm/      Local vLLM patch installers and dispatch helpers
-scripts/                Benchmarks, profilers, campaign runners, summarizers
-benchmarks/results/     Checked-in JSON/Markdown evidence, not raw logs
-docs/                   Case studies, research notes, roadmaps
-tests/                  CPU-safe and source-level regression tests
-```
+- `docs/repo-map.md`
+- `docs/hardware-scope.md`
+- `docs/where-optimizations-stop-mattering.md`
+- `benchmarks/results/README.md`
+- `integrations/vllm/README.md`
 
 ## Evidence Policy
 
-- Keep claims tied to hardware, model, command, and raw JSON.
-- Separate microbenchmark wins from serving wins.
-- Keep negative results when they change the engineering direction.
-- Commit compact reviewable artifacts: `README.md`, `run-config.json`,
-  summaries, and serving JSON.
+- Every performance claim must name hardware, model, command, and artifact.
+- Microbenchmark wins are not serving wins.
+- Negative results stay in the repo when they change the direction.
+- Checked-in artifacts should be compact and reviewable: `README.md`,
+  `summary.json`, campaign summaries, and small serving JSON reports.
 - Do not commit model weights, checkpoints, datasets, secrets, `server.log`,
   `.nsys-rep`, SQLite exports, or large raw profiler captures.
 
-## Current Direction
+## Why The Name Still Says L20
 
-Do not spend the next iteration polishing standalone sampler or another small
-RoPE/KV microkernel. The measured system ceiling is now at the production
-LM-head/logits/sampling boundary:
+The original target is still important: L20 is a widely available single GPU
+with a very different bandwidth/compute balance from HBM parts. That makes it a
+good stress test for decode serving bottlenecks. The repo keeps the name for
+continuity, but the project scope is now broader:
 
-1. keep the trace-only gate conservative;
-2. prototype an epilogue/upstream boundary without changing unsupported
-   sampling semantics;
-3. compare against vLLM + FlashInfer with paired serving JSON;
-4. only then decide whether the path deserves an upstream PR.
+```text
+L20-first single-GPU inference research, with A100 controls and upstream-shaped
+vLLM/FlashInfer/Triton prototypes.
+```

@@ -10,6 +10,9 @@ of git.
 | Result directory | Status | Why it matters |
 | --- | --- | --- |
 | `a100-lmhead-flashsampling-boundary/` | A100 control | Shows the standalone LM-head/Gumbel candidate compiles on A100/Triton 3.4 after `BLOCK_BATCH=16` padding and beats full-logits reference by 1.07x-1.21x on four shapes. |
+| `a100-vllm-gemm-epilogue-candidate/` | A100 boundary proof | Shows the output-changing greedy LM-head epilogue path reaches real vLLM serving but does not beat same-session baseline ITL. |
+| `a100-vllm-sampling-semantics-qwen25-05b/` | A100 direction-setting | Shows top-k/top-p, penalties, and logprobs add roughly +37-42% median ITL over greedy/no-penalty control. |
+| `a100-fused-topk-topp-penalty/` | A100 positive micro result | Validates the fused dense-count top-k/top-p + penalty primitive with 1.36x-1.42x microbenchmark wins versus apply-then-sample. |
 | `l20-boundary-impact/` | Paper-summary artifact | Converts the repo's key positive and negative results into one table, JSON, CSV, and SVG graph. |
 | `l20-vllm-logits-boundary-rfc-shadow/` | RFC shadow smoke | Confirms the trace hook emits `metadata.shadow_epilogue` in real vLLM O2 serving without mutating outputs; see the next-stage A/B plan in `docs/logits-boundary-ab.md`. |
 | `l20-logits-boundary-ab-smoke/` | Negative A/B smoke | Runs the first paired logits-boundary baseline vs sampler-boundary candidate; candidate path is traced but currently regresses ITL/throughput. |
@@ -50,5 +53,5 @@ Do not commit:
 - `nsys.log`
 - model weights, datasets, checkpoints, cache directories, or secrets
 
-When in doubt, keep the raw artifact on the L20 host and commit only the
-derived JSON/Markdown summary needed to reproduce the claim.
+When in doubt, keep the raw artifact on the GPU host and commit only the derived
+JSON/Markdown summary needed to reproduce the claim.

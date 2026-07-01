@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "l20-stack"
 version = "0.1.0"
-description = "Single-GPU L20 LLM infrastructure experiments."
+description = "L20-first single-GPU LLM inference systems research with vLLM, FlashInfer, Triton, and A100 controls."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
