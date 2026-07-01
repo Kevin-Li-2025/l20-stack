@@ -1,0 +1,93 @@
+{
+  "baseline_case": "greedy_no_penalty",
+  "baseline_median_itl_ms": 6.719665238051675,
+  "decision": "target_sampling_semantics_boundary",
+  "recommended_next_target": {
+    "case": "sample_topk_topp_penalty",
+    "median_itl_ms": 9.561551996739581,
+    "observed_itl_delta_vs_greedy_pct": 42.292088340875345,
+    "plan": {
+      "eligible_for_next_prototype": true,
+      "expected_itl_delta_vs_greedy_pct": 42.0,
+      "priority": "p0",
+      "reasons": [
+        "penalties",
+        "topk_topp"
+      ],
+      "target": "fused_topk_topp+penalty"
+    }
+  },
+  "rows": [
+    {
+      "case": "greedy_no_penalty",
+      "median_itl_ms": 6.719665238051675,
+      "observed_itl_delta_vs_greedy_pct": 0.0,
+      "plan": {
+        "eligible_for_next_prototype": false,
+        "expected_itl_delta_vs_greedy_pct": 0.0,
+        "priority": "control",
+        "reasons": [],
+        "target": "greedy_no_penalty_control"
+      }
+    },
+    {
+      "case": "greedy_default_repetition",
+      "median_itl_ms": 9.224146517226472,
+      "observed_itl_delta_vs_greedy_pct": 37.27092333398674,
+      "plan": {
+        "eligible_for_next_prototype": true,
+        "expected_itl_delta_vs_greedy_pct": 37.0,
+        "priority": "p1",
+        "reasons": [
+          "penalties"
+        ],
+        "target": "fused_repetition_penalty"
+      }
+    },
+    {
+      "case": "sample_topk_topp",
+      "median_itl_ms": 9.54369199462235,
+      "observed_itl_delta_vs_greedy_pct": 42.02630125945803,
+      "plan": {
+        "eligible_for_next_prototype": true,
+        "expected_itl_delta_vs_greedy_pct": 42.0,
+        "priority": "p0",
+        "reasons": [
+          "topk_topp"
+        ],
+        "target": "fused_topk_topp"
+      }
+    },
+    {
+      "case": "sample_topk_topp_penalty",
+      "median_itl_ms": 9.561551996739581,
+      "observed_itl_delta_vs_greedy_pct": 42.292088340875345,
+      "plan": {
+        "eligible_for_next_prototype": true,
+        "expected_itl_delta_vs_greedy_pct": 42.0,
+        "priority": "p0",
+        "reasons": [
+          "penalties",
+          "topk_topp"
+        ],
+        "target": "fused_topk_topp+penalty"
+      }
+    },
+    {
+      "case": "greedy_token_logprobs",
+      "median_itl_ms": 9.33613203233108,
+      "observed_itl_delta_vs_greedy_pct": 38.937457471289626,
+      "plan": {
+        "eligible_for_next_prototype": true,
+        "expected_itl_delta_vs_greedy_pct": 39.0,
+        "priority": "p0",
+        "reasons": [
+          "token_logprobs"
+        ],
+        "target": "fused_token_logprobs"
+      }
+    }
+  ],
+  "schema_version": 1,
+  "source_model": "Qwen/Qwen2.5-0.5B-Instruct"
+}

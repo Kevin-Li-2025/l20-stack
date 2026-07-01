@@ -16,8 +16,17 @@ The greedy/no-penalty path is already the fast control at 6.72 ms median ITL. En
 
 The next useful kernel boundary is therefore not batch-1 greedy argmax. It is a fused sampling/logprob/penalty path, or a producer-side LM-head epilogue that preserves the optimized matmul while avoiding the expensive semantics boundary.
 
+## Target Plan
+
+The machine-readable target planner selects `fused_topk_topp+penalty` as the
+next P0 prototype target because it has the largest observed median ITL delta
+in this probe. `fused_token_logprobs` is also P0, and plain
+`fused_repetition_penalty` is P1.
+
 ## Files
 
 - `sampling_semantics_raw.jsonl`: all warmup and measured streaming requests.
 - `sampling_semantics_summary.json`: full probe summary.
 - `summary.json`: compact repo-facing summary.
+- `target-plan.json`: CPU-safe planner output for the next prototype.
+- `target-plan.md`: markdown rendering of the target plan.

@@ -223,6 +223,8 @@ A follow-up A100 semantics probe confirms why the greedy epilogue is not enough:
 greedy/no-penalty median ITL is 6.720 ms, while repetition penalty, top-k/top-p,
 and token logprobs move median ITL to 9.22-9.56 ms. The next output-changing
 prototype should target those semantics rather than plain greedy argmax.
+The current planner selects `fused_topk_topp+penalty` as the first P0 target,
+with `fused_token_logprobs` also marked P0.
 
 Artifact:
 

@@ -4,6 +4,7 @@ from l20_stack.epilogue import (
     SamplerConfig,
     build_boundary_impacts,
     load_logits_boundary_budget,
+    plan_sampler_optimization,
     sampler_gate_reasons,
 )
 from l20_stack.epilogue.logits_boundary import budget_from_summary
@@ -59,6 +60,52 @@ def test_sampler_epilogue_gate_accepts_simple_decode_and_rejects_complex_cases()
     assert "min_p" in reasons
     assert "penalties" in reasons
     assert "per_request_generators" in reasons
+
+
+def test_sampler_optimization_plan_marks_greedy_as_control():
+    plan = plan_sampler_optimization(
+        SamplerConfig(temperature=0.0, top_k=-1, top_p=1.0)
+    )
+
+    assert plan.target == "greedy_no_penalty_control"
+    assert plan.priority == "control"
+    assert plan.eligible_for_next_prototype is False
+    assert plan.expected_itl_delta_vs_greedy_pct == 0.0
+
+
+def test_sampler_optimization_plan_targets_topk_topp_and_logprobs_first():
+    topk = plan_sampler_optimization(
+        SamplerConfig(temperature=0.8, top_k=50, top_p=0.9)
+    )
+    logprobs = plan_sampler_optimization(
+        SamplerConfig(temperature=0.0, top_k=-1, top_p=1.0, num_logprobs=5)
+    )
+
+    assert topk.target == "fused_topk_topp"
+    assert topk.priority == "p0"
+    assert topk.eligible_for_next_prototype is True
+    assert topk.expected_itl_delta_vs_greedy_pct == 42.0
+    assert logprobs.target == "fused_token_logprobs"
+    assert logprobs.priority == "p0"
+    assert logprobs.eligible_for_next_prototype is True
+    assert logprobs.expected_itl_delta_vs_greedy_pct == 39.0
+
+
+def test_sampler_optimization_plan_keeps_penalties_and_unsafe_semantics_separate():
+    penalty = plan_sampler_optimization(
+        SamplerConfig(temperature=0.0, top_k=-1, top_p=1.0, has_penalties=True)
+    )
+    unsafe = plan_sampler_optimization(
+        SamplerConfig(temperature=0.8, top_k=50, top_p=0.9, has_grammar=True)
+    )
+
+    assert penalty.target == "fused_repetition_penalty"
+    assert penalty.priority == "p1"
+    assert penalty.eligible_for_next_prototype is True
+    assert unsafe.target == "unsupported_semantics"
+    assert unsafe.priority == "defer"
+    assert unsafe.eligible_for_next_prototype is False
+    assert "grammar_or_structured_output" in unsafe.reasons
 
 
 def test_boundary_impacts_include_negative_controls_and_p0_budget():

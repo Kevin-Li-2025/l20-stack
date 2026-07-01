@@ -21,7 +21,12 @@ from l20_stack.epilogue.intervention import (
     render_logits_boundary_ab_markdown,
     summarize_logits_boundary_ab,
 )
-from l20_stack.epilogue.sampler_epilogue import SamplerConfig, sampler_gate_reasons
+from l20_stack.epilogue.sampler_epilogue import (
+    SamplerConfig,
+    SamplerOptimizationPlan,
+    plan_sampler_optimization,
+    sampler_gate_reasons,
+)
 
 __all__ = [
     "BoundaryImpact",
@@ -37,8 +42,10 @@ __all__ = [
     "LogitsBoundaryBudget",
     "NEEDS_MORE_RUNS",
     "SamplerConfig",
+    "SamplerOptimizationPlan",
     "build_boundary_impacts",
     "load_logits_boundary_budget",
+    "plan_sampler_optimization",
     "render_logits_boundary_ab_markdown",
     "sampler_gate_reasons",
     "summarize_logits_boundary_ab",
