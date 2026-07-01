@@ -43,6 +43,9 @@ def test_logits_boundary_docs_track_gemm_epilogue_scout():
     assert artifact in rfc
     assert artifact in status
     assert "l20-vllm-gemm-epilogue-scout/" in results_index
+    assert "f1cf6b0-clean-upstream" in rfc
+    assert "f1cf6b0-clean-upstream" in status
+    assert "clean upstream" in results_index
     assert "LogitsProcessor" in rfc
     assert "ParallelLMHead" in rfc
     assert "TopKTopPSampler" in rfc

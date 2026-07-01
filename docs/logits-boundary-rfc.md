@@ -56,11 +56,15 @@ The latest boundary scout is:
 
 ```text
 benchmarks/results/l20-vllm-gemm-epilogue-scout/b81980aa5-patched-v1/
+benchmarks/results/l20-vllm-gemm-epilogue-scout/f1cf6b0-clean-upstream/
 ```
 
-It scanned the real L20 vLLM checkout after the standalone FlashSampling
-candidate lost real serving throughput/TTFT. The actionable conclusion is that
-the first real implementation must live at the LM-head producer boundary:
+The first artifact scanned the real L20 vLLM checkout after the standalone
+FlashSampling candidate lost real serving throughput/TTFT. The second artifact
+rescanned a clean upstream `vllm-project/vllm` checkout at commit `f1cf6b0`
+with no local L20 patches and found the same required patch points. The
+actionable conclusion is that the first real implementation must live at the
+LM-head producer boundary:
 
 ```text
 try_sample_from_lm_head(
@@ -118,9 +122,9 @@ The epilogue scout identifies the next patch boundary as:
 
 `LogitsProcessor.get_top_tokens()` already provides a greedy/vocab-parallel
 precedent, but the sampled path still needs a new fallback-first API for
-top-k/top-p style semantics. The scanned source tree was dirty and contained
-local L20 patches, so any upstream PR diff must be regenerated from a clean
-vLLM checkout before publication.
+top-k/top-p style semantics. The clean upstream scout removes the earlier
+patched-tree blocker for an RFC/trace PR; the next PR still needs a minimal
+diff generated directly against upstream main.
 
 ## First Safe Gate
 
