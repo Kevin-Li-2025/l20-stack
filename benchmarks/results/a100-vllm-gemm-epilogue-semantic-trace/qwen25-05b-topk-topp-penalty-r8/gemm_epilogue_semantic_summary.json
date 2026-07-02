@@ -1,0 +1,37 @@
+{
+  "api_called": 310,
+  "decode_estimated_logits_bytes_fp32": 188400640,
+  "decode_estimated_logits_mib_fp32": 179.6728515625,
+  "decode_semantic_candidate_eligible": 310,
+  "decode_semantic_candidate_eligible_fraction": 0.96875,
+  "estimated_logits_bytes_fp32": 194478080,
+  "estimated_logits_mib_fp32": 185.46875,
+  "event_eligible": 310,
+  "event_eligible_fraction": 0.96875,
+  "event_reasons": {
+    "not_single_token_decode": 10,
+    "scheduled_tokens_mismatch": 10
+  },
+  "events": 320,
+  "fallback_to_compute_logits": 320,
+  "features": {
+    "sparse_penalties": 320,
+    "topk_topp": 320
+  },
+  "hidden_shapes": {
+    "1x896": 320
+  },
+  "history_sources": {
+    "input_batch_token_ids_cpu": 320
+  },
+  "priorities": {
+    "p0": 320
+  },
+  "schema_version": 1,
+  "semantic_candidate_eligible": 320,
+  "semantic_candidate_eligible_fraction": 1.0,
+  "semantic_reasons": {},
+  "targets": {
+    "fused_topk_topp_sparse_penalty_lm_head_epilogue": 320
+  }
+}

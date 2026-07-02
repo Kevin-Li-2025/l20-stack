@@ -1,0 +1,17 @@
+{
+  "case": "sample_topk_topp_penalty",
+  "flashinfer_sampler": true,
+  "gpu": "NVIDIA A100-SXM4-80GB",
+  "max_tokens": 32,
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "nvcc": "Build cuda_13.3.r13.3/compiler.38244171_0",
+  "output_changing_enable": false,
+  "runs": 8,
+  "schema_version": 1,
+  "served_model": "qwen25-05b",
+  "torch_cuda_version": "12.8",
+  "torch_version": "2.8.0+cu128",
+  "trace_env": "VLLM_L20_GEMM_EPILOGUE_TRACE",
+  "vllm_version": "0.10.2",
+  "warmup": 2
+}
