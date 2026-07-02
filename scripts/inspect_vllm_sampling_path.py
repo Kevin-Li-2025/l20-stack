@@ -13,7 +13,7 @@ PATTERNS = {
     "flashinfer": re.compile(r"flashinfer", re.IGNORECASE),
     "sampling": re.compile(r"sampl", re.IGNORECASE),
     "cpu": re.compile(r"\bcpu\b", re.IGNORECASE),
-    "fallback": re.compile(r"fallback|fall back", re.IGNORECASE),
+    "fallback": re.compile(r"(?<!disable_)fallback|fall back", re.IGNORECASE),
     "cuda13": re.compile(r"cuda\s*13|cu13|nvcc", re.IGNORECASE),
 }
 

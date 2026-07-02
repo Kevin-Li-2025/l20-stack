@@ -82,6 +82,20 @@ def build_probe_cases() -> list[ProbeCase]:
             },
         ),
         ProbeCase(
+            "sample_topk_topp_penalty_logprobs",
+            "Stochastic top-k/top-p sampling with penalties and token logprobs.",
+            {
+                **no_penalty,
+                "temperature": 0.8,
+                "top_p": 0.9,
+                "top_k": 50,
+                "frequency_penalty": 0.1,
+                "presence_penalty": 0.1,
+                "repetition_penalty": 1.05,
+                "logprobs": 5,
+            },
+        ),
+        ProbeCase(
             "greedy_token_logprobs",
             "Greedy decode requesting token logprobs.",
             {

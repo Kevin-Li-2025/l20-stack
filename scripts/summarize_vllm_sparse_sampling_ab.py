@@ -114,6 +114,11 @@ def build_summary(root: Path) -> dict[str, Any]:
         "schema_version": 1,
         "artifact": root.name,
         "config": load_json(config_path) if config_path.exists() else {},
+        "case": {
+            "name": baseline.get("case"),
+            "description": baseline.get("description"),
+            "sampling": baseline.get("sampling"),
+        },
         "baseline": {
             "mode": "vllm_flashinfer_topk_topp_penalty",
             "ok_runs": baseline.get("ok_runs"),
@@ -164,6 +169,7 @@ def render_markdown(summary: dict[str, Any]) -> str:
     delta = summary["delta"]
     trace = summary.get("trace_proof") or {}
     prewarm = summary.get("flashinfer_prewarm") or {}
+    case = summary.get("case") or {}
     lines = [
         f"# {summary['artifact']}",
         "",
@@ -181,6 +187,7 @@ def render_markdown(summary: dict[str, Any]) -> str:
         f"- Output length: {config.get('max_tokens', 'unknown')} tokens",
         f"- Probe: {config.get('warmup', 'unknown')} warmup, "
         f"{config.get('runs', 'unknown')} measured requests",
+        f"- Case: `{case.get('name', config.get('probe_case', 'unknown'))}`",
         "",
         "## Result",
         "",

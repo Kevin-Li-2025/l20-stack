@@ -115,6 +115,7 @@ def sample():
     assert "l20_history_lengths: torch.Tensor | None" in patched_metadata
     assert "l20_defer_penalties: bool" in patched_metadata
     assert "sampling_metadata.l20_expanded_idx_mapping" in patched_active_sampler
+    assert "sampling_metadata.max_num_logprobs is None" in patched_active_sampler
     assert "sampling_metadata.l20_seeds" in patched_active_sampler
     assert "sampling_metadata.l20_positions" in patched_active_sampler
     assert "sampling_metadata.l20_history_tokens" in patched_active_sampler
@@ -129,6 +130,7 @@ def sample():
     assert "self.l20_sampler_indices[:num_reqs]" in patched_gpu_input_batch
     assert "import os" in patched_gpu_input_batch
     assert "VLLM_L20_TOPK_TOPP_DEFER_PENALTIES" in patched_gpu_input_batch
+    assert "and self.max_num_logprobs is None" in patched_gpu_input_batch
     assert "l20_history_cpu = torch.full" in patched_gpu_input_batch
     assert "l20_defer_penalties = True" in patched_gpu_input_batch
     assert "l20_history_tokens=l20_history_tokens" in patched_gpu_input_batch
@@ -186,6 +188,7 @@ def test_l20_topk_topp_installer_patches_forward_level_penalty_guard():
     patched = module.patch_active_sampler(active_sampler_source)
 
     assert "sampling_metadata.l20_expanded_idx_mapping" in patched
+    assert "sampling_metadata.max_num_logprobs is None" in patched
     assert "sampling_metadata.l20_history_tokens" in patched
     assert 'getattr(sampling_metadata, "l20_defer_penalties", False)' in patched
     assert "if not getattr" in patched
@@ -258,6 +261,24 @@ class TopKTopPSampler:
     patched_twice = module.patch_topk_topp_sampler(patched_once)
 
     assert patched_twice == patched_once
+
+
+def test_l20_topk_topp_installer_upgrades_old_active_sampler_patch():
+    module = load_installer()
+    source = module.SAMPLER_TOPK_CALL_PATCHED_NO_LOGPROBS_GATE + """
+        if sampling_metadata.no_penalties:
+            return logits
+
+        assert sampling_metadata.prompt_token_ids is not None
+"""
+
+    patched = module.patch_active_sampler(source)
+    patched_twice = module.patch_active_sampler(patched)
+
+    assert patched_twice == patched
+    assert "sampling_metadata.max_num_logprobs is None" in patched
+    assert "else False" in patched
+    assert "l20_defer_penalties=sampling_metadata.l20_defer_penalties" not in patched
 
 
 def test_l20_topk_topp_installer_forces_forward_cuda_without_flashinfer():

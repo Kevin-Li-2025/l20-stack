@@ -177,6 +177,23 @@ def test_sampling_has_serving_nsys_timeline_entrypoint():
     assert "l20-topk-topp-summary.json" in source
 
 
+def test_flashinfer_sparse_ab_runner_supports_logprobs_workload():
+    runner = Path("scripts/run_vllm_a100_flashinfer_sparse_sampling_ab.sh").read_text()
+    summary = Path("scripts/summarize_vllm_sparse_sampling_ab.py").read_text()
+    probe = Path("scripts/probe_vllm_sampling_semantics.py").read_text()
+    assert "PROBE_CASE" in runner
+    assert '--case "$probe_case"' in runner
+    assert 'python_dir=$(cd "$(dirname "$python_bin")" && pwd)' in runner
+    assert 'export PATH="$python_dir:$CUDA_HOME/bin:$PATH"' in runner
+    assert "KV_CACHE_MEMORY_BYTES" in runner
+    assert "--kv-cache-memory-bytes" in runner
+    assert "sample_topk_topp_penalty_logprobs" in runner
+    assert '"logprobs": 5' in runner
+    assert '"case"' in summary
+    assert "Case:" in summary
+    assert "sample_topk_topp_penalty_logprobs" in probe
+
+
 def test_serving_optimization_ceiling_tracks_next_target():
     source = Path("scripts/analyze_serving_optimization_ceiling.py").read_text()
     scout = Path("scripts/scout_vllm_logits_boundary.py").read_text()

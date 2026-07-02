@@ -184,7 +184,7 @@ SAMPLER_TOPK_CALL = """        random_sampled, processed_logprobs = self.topk_to
             sampling_metadata.top_p,
         )
 """
-SAMPLER_TOPK_CALL_PATCHED = """        random_sampled, processed_logprobs = self.topk_topp_sampler(
+SAMPLER_TOPK_CALL_PATCHED_NO_LOGPROBS_GATE = """        random_sampled, processed_logprobs = self.topk_topp_sampler(
             logits,
             sampling_metadata.generators,
             sampling_metadata.top_k,
@@ -195,6 +195,46 @@ SAMPLER_TOPK_CALL_PATCHED = """        random_sampled, processed_logprobs = self
             l20_history_tokens=sampling_metadata.l20_history_tokens,
             l20_history_lengths=sampling_metadata.l20_history_lengths,
             l20_defer_penalties=sampling_metadata.l20_defer_penalties,
+            l20_frequency_penalties=sampling_metadata.frequency_penalties,
+            l20_presence_penalties=sampling_metadata.presence_penalties,
+            l20_repetition_penalties=sampling_metadata.repetition_penalties,
+        )
+"""
+SAMPLER_TOPK_CALL_PATCHED = """        random_sampled, processed_logprobs = self.topk_topp_sampler(
+            logits,
+            sampling_metadata.generators,
+            sampling_metadata.top_k,
+            sampling_metadata.top_p,
+            l20_expanded_idx_mapping=(
+                sampling_metadata.l20_expanded_idx_mapping
+                if sampling_metadata.max_num_logprobs is None
+                else None
+            ),
+            l20_seeds=(
+                sampling_metadata.l20_seeds
+                if sampling_metadata.max_num_logprobs is None
+                else None
+            ),
+            l20_positions=(
+                sampling_metadata.l20_positions
+                if sampling_metadata.max_num_logprobs is None
+                else None
+            ),
+            l20_history_tokens=(
+                sampling_metadata.l20_history_tokens
+                if sampling_metadata.max_num_logprobs is None
+                else None
+            ),
+            l20_history_lengths=(
+                sampling_metadata.l20_history_lengths
+                if sampling_metadata.max_num_logprobs is None
+                else None
+            ),
+            l20_defer_penalties=(
+                sampling_metadata.l20_defer_penalties
+                if sampling_metadata.max_num_logprobs is None
+                else False
+            ),
             l20_frequency_penalties=sampling_metadata.frequency_penalties,
             l20_presence_penalties=sampling_metadata.presence_penalties,
             l20_repetition_penalties=sampling_metadata.repetition_penalties,
@@ -365,6 +405,7 @@ INPUT_BATCH_SPARSE_HISTORY = f"""        l20_history_tokens = None
         if (
             os.environ.get("{DEFER_ENV}", "0").lower() in {{"1", "true", "yes", "on"}}
             and not self.no_penalties
+            and self.max_num_logprobs is None
             and num_reqs <= 4
         ):
             l20_max_history = 256
@@ -543,6 +584,11 @@ def patch_sampling_metadata(source: str) -> str:
 
 
 def patch_active_sampler(source: str) -> str:
+    source = source.replace(
+        SAMPLER_TOPK_CALL_PATCHED_NO_LOGPROBS_GATE,
+        SAMPLER_TOPK_CALL_PATCHED,
+        1,
+    )
     source = replace_once(
         source,
         SAMPLER_TOPK_CALL,
@@ -574,6 +620,14 @@ def patch_gpu_model_runner(source: str) -> str:
 
 
 def patch_gpu_input_batch(source: str) -> str:
+    source = source.replace(
+        "            and not self.no_penalties\n"
+        "            and num_reqs <= 4\n",
+        "            and not self.no_penalties\n"
+        "            and self.max_num_logprobs is None\n"
+        "            and num_reqs <= 4\n",
+        1,
+    )
     source = replace_once(
         source,
         INPUT_BATCH_IMPORTS,

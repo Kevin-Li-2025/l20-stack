@@ -20,9 +20,11 @@ max_tokens=${MAX_TOKENS:-48}
 trace_runs=${TRACE_RUNS:-3}
 trace_warmup=${TRACE_WARMUP:-1}
 trace_max_tokens=${TRACE_MAX_TOKENS:-16}
+probe_case=${PROBE_CASE:-sample_topk_topp_penalty}
 server_timeout=${SERVER_TIMEOUT:-300}
 gpu_memory_utilization=${GPU_MEMORY_UTILIZATION:-0.30}
 max_model_len=${MAX_MODEL_LEN:-1024}
+kv_cache_memory_bytes=${KV_CACHE_MEMORY_BYTES:-}
 require_idle=${REQUIRE_IDLE:-1}
 gpu_util_limit=${GPU_UTIL_LIMIT:-20}
 keep_model_cache=${KEEP_MODEL_CACHE:-0}
@@ -35,7 +37,8 @@ else
 fi
 
 export CUDA_HOME=${CUDA_HOME:-/usr/local/cuda-13.0}
-export PATH="$CUDA_HOME/bin:$PATH"
+python_dir=$(cd "$(dirname "$python_bin")" && pwd)
+export PATH="$python_dir:$CUDA_HOME/bin:$PATH"
 export LD_LIBRARY_PATH="$CUDA_HOME/compat:$CUDA_HOME/lib64:${LD_LIBRARY_PATH:-}"
 export PYTHONPATH="$repo_root/src:${PYTHONPATH:-}"
 export HF_HOME="$hf_home"
@@ -126,17 +129,23 @@ start_server() {
   if [[ -n "$trace_path" ]]; then
     env_args+=("VLLM_L20_TOPK_TOPP_SAMPLER_TRACE=$trace_path")
   fi
+  local -a server_args=(
+    --model "$model"
+    --served-model-name "$served_model"
+    --host 127.0.0.1
+    --port "$port"
+    --gpu-memory-utilization "$gpu_memory_utilization"
+    --max-model-len "$max_model_len"
+    --disable-log-requests
+  )
+  if [[ -n "$kv_cache_memory_bytes" ]]; then
+    server_args+=(--kv-cache-memory-bytes "$kv_cache_memory_bytes")
+  fi
 
   (
     cd "$repo_root"
     env "${env_args[@]}" "$python_bin" -m vllm.entrypoints.openai.api_server \
-      --model "$model" \
-      --served-model-name "$served_model" \
-      --host 127.0.0.1 \
-      --port "$port" \
-      --gpu-memory-utilization "$gpu_memory_utilization" \
-      --max-model-len "$max_model_len" \
-      --disable-log-requests \
+      "${server_args[@]}" \
       >"$log" 2>&1
   ) &
   echo $! >"$pid_file"
@@ -153,7 +162,7 @@ run_probe() {
     --url "http://127.0.0.1:$port/v1/completions" \
     --model "$served_model" \
     --output-dir "$run_dir/probe" \
-    --case sample_topk_topp_penalty \
+    --case "$probe_case" \
     --warmup "$probe_warmup" \
     --runs "$probe_runs" \
     --max-tokens "$probe_tokens" \
@@ -211,6 +220,8 @@ config = {
     "trace_runs": int(${trace_runs@Q}),
     "trace_warmup": int(${trace_warmup@Q}),
     "trace_max_tokens": int(${trace_max_tokens@Q}),
+    "probe_case": ${probe_case@Q},
+    "kv_cache_memory_bytes": ${kv_cache_memory_bytes@Q} or None,
     "sampling": {
         "temperature": 0.8,
         "top_k": 50,
@@ -218,6 +229,7 @@ config = {
         "frequency_penalty": 0.1,
         "presence_penalty": 0.1,
         "repetition_penalty": 1.05,
+        **({"logprobs": 5} if ${probe_case@Q} == "sample_topk_topp_penalty_logprobs" else {}),
     },
 }
 with open(sys.argv[1], "w", encoding="utf-8") as handle:

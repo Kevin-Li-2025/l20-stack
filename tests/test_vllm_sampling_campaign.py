@@ -44,6 +44,7 @@ def test_sampling_path_inspector_reports_cpu_fallback_evidence():
     assert '"fallback"' in source
     assert '"cpu"' in source
     assert "cpu_fallback_suspected" in source
+    assert "(?<!disable_)fallback" in source
 
 
 def test_flashinfer_prewarm_reports_structured_errors():

@@ -20,6 +20,7 @@ def test_probe_cases_cover_next_epilogue_boundaries():
     assert "greedy_default_repetition" in cases
     assert "sample_topk_topp" in cases
     assert "sample_topk_topp_penalty" in cases
+    assert "sample_topk_topp_penalty_logprobs" in cases
     assert "greedy_token_logprobs" in cases
 
     assert cases["greedy_no_penalty"].sampling["temperature"] == 0.0
@@ -27,6 +28,8 @@ def test_probe_cases_cover_next_epilogue_boundaries():
     assert cases["sample_topk_topp"].sampling["temperature"] > 0.0
     assert cases["sample_topk_topp"].sampling["top_k"] == 50
     assert cases["sample_topk_topp_penalty"].sampling["presence_penalty"] > 0.0
+    assert cases["sample_topk_topp_penalty_logprobs"].sampling["presence_penalty"] > 0.0
+    assert cases["sample_topk_topp_penalty_logprobs"].sampling["logprobs"] == 5
     assert cases["greedy_token_logprobs"].sampling["logprobs"] == 5
 
 

@@ -153,13 +153,24 @@ See `docs/hardware-scope.md` for the exact claim policy.
 | Greedy LM-head epilogue | Functional proof, no speedup | Real output-changing vLLM path works, but median ITL is equal to baseline. |
 | Sampling semantics boundary | Active P0 | Top-k/top-p, penalties, and logprobs are the next target. |
 | Fused top-k/top-p + dense penalties | Positive micro result | Carry forward to sparse vLLM token-history integration. |
-| Sparse top-k/top-p + penalties | Positive A100 serving A/B | Real vLLM path wins versus native PyTorch sampler and shows a smaller low-single-digit win versus FlashInfer on A100; next repeat on L20 and larger models. |
+| Sparse top-k/top-p + penalties | Positive A100 serving A/B | Real vLLM path wins versus native PyTorch sampler and shows a smaller low-single-digit win versus FlashInfer on A100; logprobs requests are gated out after a negative smoke and need a dedicated fused logprob path. |
 | FP8 KV fused attention | Experimental | Keep disabled until repeated serving ITL beats BF16/FlashInfer. |
 | Speculative/tree attention | Experimental | Useful research branch; no stable serving win yet. |
 | Kernel-coding QLoRA | Negative so far | Training stack is healthy, but held-out KernelBench `fast_0` remains zero. |
 
 Full status map:
 `docs/experiment-status.md`
+
+Artifact index:
+`benchmarks/results/README.md`; serving-ceiling analysis:
+`benchmarks/results/l20-serving-optimization-ceiling/README.md`; logits-boundary
+scout: `benchmarks/results/l20-vllm-logits-boundary-scout/README.md`; top-tier
+kernel gaps: `docs/l20-top-tier-kernel-gaps.md`.
+Related boundary scripts:
+`integrations/vllm/install_l20_logits_boundary_trace.py`,
+`scripts/summarize_l20_logits_boundary_trace.py`,
+`scripts/run_vllm_l20_logits_boundary_trace_campaign.sh`,
+`scripts/benchmark_l20_topk_topp_sampling.py`
 
 ## Reproduce
 
