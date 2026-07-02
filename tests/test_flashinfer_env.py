@@ -22,11 +22,15 @@ def test_configure_flashinfer_cuda13_env_updates_build_vars(monkeypatch, tmp_pat
     nvcc.parent.mkdir(parents=True)
     nvcc.write_text("#!/bin/sh\necho 'Cuda compilation tools, release 13.0, V13.0.88'\n")
     nvcc.chmod(0o755)
+    (root / "lib").mkdir()
+    (root / "lib64").mkdir()
 
     monkeypatch.setenv("L20_FLASHINFER_CUDA_HOME", str(root))
     monkeypatch.setenv("PATH", "/usr/bin")
     monkeypatch.delenv("CUDA_HOME", raising=False)
     monkeypatch.delenv("CUDACXX", raising=False)
+    monkeypatch.delenv("LD_LIBRARY_PATH", raising=False)
+    monkeypatch.delenv("LIBRARY_PATH", raising=False)
     monkeypatch.setattr(flashinfer_env, "_python_site_roots", lambda: [])
 
     env = flashinfer_env.configure_flashinfer_cuda13_env()
@@ -40,3 +44,9 @@ def test_configure_flashinfer_cuda13_env_updates_build_vars(monkeypatch, tmp_pat
     path_entries = flashinfer_env.os.environ["PATH"].split(":")
     assert path_entries[0] == str(root.resolve() / "bin")
     assert path_entries[1] == str(Path(flashinfer_env.sys.executable).parent)
+    assert env.library_paths == (
+        str(root.resolve() / "lib64"),
+        str(root.resolve() / "lib"),
+    )
+    assert flashinfer_env.os.environ["LD_LIBRARY_PATH"].split(":")[:2] == list(env.library_paths)
+    assert flashinfer_env.os.environ["LIBRARY_PATH"].split(":")[:2] == list(env.library_paths)
