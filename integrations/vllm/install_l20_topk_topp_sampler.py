@@ -10,12 +10,14 @@ from pathlib import Path
 
 
 IMPORT_LINE = (
+    "import os\n"
     "from vllm.v1.sample.ops.l20_topk_topp_sampling import "
     "maybe_l20_topk_topp_sample\n"
 )
 DEFER_ENV = "VLLM_L20_TOPK_TOPP_DEFER_PENALTIES"
 
 TOPK_IMPORT_MARKER = "from vllm.triton_utils import HAS_TRITON\n"
+TOPK_IMPORT_MARKER_V010 = "from vllm.platforms import current_platform\n"
 FLASHINFER_PATCH_POINT = """    assert not (k is None and p is None)
     if k is None:
 """
@@ -49,6 +51,90 @@ TOPK_FORWARD_SIGNATURE_PATCHED = """    def forward_cuda(
         l20_repetition_penalties: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
 """
+TOPK_FORWARD_SIGNATURE_OPTIONAL = """    def forward_cuda(
+        self,
+        logits: torch.Tensor,
+        generators: dict[int, torch.Generator],
+        k: Optional[torch.Tensor],
+        p: Optional[torch.Tensor],
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
+"""
+TOPK_FORWARD_SIGNATURE_OPTIONAL_PATCHED = """    def forward_cuda(
+        self,
+        logits: torch.Tensor,
+        generators: dict[int, torch.Generator],
+        k: Optional[torch.Tensor],
+        p: Optional[torch.Tensor],
+        *,
+        l20_expanded_idx_mapping: Optional[torch.Tensor] = None,
+        l20_seeds: Optional[torch.Tensor] = None,
+        l20_positions: Optional[torch.Tensor] = None,
+        l20_history_tokens: Optional[torch.Tensor] = None,
+        l20_history_lengths: Optional[torch.Tensor] = None,
+        l20_defer_penalties: bool = False,
+        l20_frequency_penalties: Optional[torch.Tensor] = None,
+        l20_presence_penalties: Optional[torch.Tensor] = None,
+        l20_repetition_penalties: Optional[torch.Tensor] = None,
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
+"""
+TOPK_NATIVE_SIGNATURE = """    def forward_native(
+        self,
+        logits: torch.Tensor,
+        generators: dict[int, torch.Generator],
+        k: torch.Tensor | None,
+        p: torch.Tensor | None,
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+"""
+TOPK_NATIVE_SIGNATURE_PATCHED = """    def forward_native(
+        self,
+        logits: torch.Tensor,
+        generators: dict[int, torch.Generator],
+        k: torch.Tensor | None,
+        p: torch.Tensor | None,
+        **_: object,
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+"""
+TOPK_NATIVE_SIGNATURE_OPTIONAL = """    def forward_native(
+        self,
+        logits: torch.Tensor,
+        generators: dict[int, torch.Generator],
+        k: Optional[torch.Tensor],
+        p: Optional[torch.Tensor],
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
+"""
+TOPK_NATIVE_SIGNATURE_OPTIONAL_PATCHED = """    def forward_native(
+        self,
+        logits: torch.Tensor,
+        generators: dict[int, torch.Generator],
+        k: Optional[torch.Tensor],
+        p: Optional[torch.Tensor],
+        **_: object,
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
+"""
+TOPK_FORCE_FORWARD_MARKER = """        self.logprobs_mode = logprobs_mode
+        # flashinfer optimization does not apply if intermediate
+        # logprobs/logits after top_k/top_p need to be returned
+        if logprobs_mode not in (LogprobsMode.PROCESSED_LOGITS,
+                                 LogprobsMode.PROCESSED_LOGPROBS
+                                 ) and current_platform.is_cuda():
+"""
+TOPK_FORCE_FORWARD_PATCHED = """        self.logprobs_mode = logprobs_mode
+        if (
+            os.environ.get("VLLM_L20_TOPK_TOPP_SAMPLER", "0").lower()
+            in {"1", "true", "yes", "on"}
+            and logprobs_mode not in (LogprobsMode.PROCESSED_LOGITS,
+                                      LogprobsMode.PROCESSED_LOGPROBS)
+            and current_platform.is_cuda()
+        ):
+            logger.info_once(
+                "Using experimental L20 top-p & top-k sampler hook.")
+            self.forward = self.forward_cuda
+        # flashinfer optimization does not apply if intermediate
+        # logprobs/logits after top_k/top_p need to be returned
+        elif logprobs_mode not in (LogprobsMode.PROCESSED_LOGITS,
+                                   LogprobsMode.PROCESSED_LOGPROBS
+                                   ) and current_platform.is_cuda():
+"""
 TOPK_FLASHINFER_RETURN = """        return flashinfer_sample(logits.contiguous(), k, p, generators), None
 """
 TOPK_FLASHINFER_RETURN_PATCHED = """        contiguous_logits = logits.contiguous()
@@ -69,6 +155,8 @@ TOPK_FLASHINFER_RETURN_PATCHED = """        contiguous_logits = logits.contiguou
         )
         if l20_sampled is not None:
             return l20_sampled, None
+        if "is_flashinfer_available" in globals() and not is_flashinfer_available:
+            return self.forward_native(logits, generators, k, p)
         return flashinfer_sample(contiguous_logits, k, p, generators), None
 """
 
@@ -124,6 +212,13 @@ SAMPLER_APPLY_PENALTIES_PATCHED = """        if sampling_metadata.no_penalties:
 
         assert sampling_metadata.prompt_token_ids is not None
 """
+SAMPLER_FORWARD_APPLY_PENALTIES = """        # Apply penalties (e.g., min_tokens, freq_penalties).
+        logits = self.apply_penalties(logits, sampling_metadata)
+"""
+SAMPLER_FORWARD_APPLY_PENALTIES_PATCHED = """        # Apply penalties (e.g., min_tokens, freq_penalties).
+        if not getattr(sampling_metadata, "l20_defer_penalties", False):
+            logits = self.apply_penalties(logits, sampling_metadata)
+"""
 
 DUMMY_METADATA_MARKER = """            top_k=dummy_tensors(logits.size(1) - 1),
             generators={},
@@ -148,6 +243,10 @@ INPUT_BATCH_TOPK_REQS = """        self.top_k_reqs: set[str] = set()
 
         # Frequency penalty related data structures
 """
+INPUT_BATCH_TOPK_REQS_V010 = """        self.top_k_reqs: set[str] = set()
+
+        # IDs of requests which do not support spec decoding
+"""
 INPUT_BATCH_TOPK_REQS_PATCHED = """        self.top_k_reqs: set[str] = set()
 
         self.l20_sampler_seeds = torch.empty(
@@ -160,11 +259,37 @@ INPUT_BATCH_TOPK_REQS_PATCHED = """        self.top_k_reqs: set[str] = set()
         self.l20_sampler_positions = torch.empty(
             (max_num_reqs,), dtype=torch.int64, device=device
         )
+        self.l20_sampler_positions_cpu_tensor = torch.empty(
+            (max_num_reqs,), dtype=torch.int64, device="cpu", pin_memory=pin_memory
+        )
+        self.l20_sampler_positions_cpu = self.l20_sampler_positions_cpu_tensor.numpy()
         self.l20_sampler_indices = torch.arange(
             max_num_reqs, dtype=torch.int64, device=device
         )
 
         # Frequency penalty related data structures
+"""
+INPUT_BATCH_TOPK_REQS_V010_PATCHED = """        self.top_k_reqs: set[str] = set()
+
+        self.l20_sampler_seeds = torch.empty(
+            (max_num_reqs,), dtype=torch.int64, device=device
+        )
+        self.l20_sampler_seeds_cpu_tensor = torch.empty(
+            (max_num_reqs,), dtype=torch.int64, device="cpu", pin_memory=pin_memory
+        )
+        self.l20_sampler_seeds_cpu = self.l20_sampler_seeds_cpu_tensor.numpy()
+        self.l20_sampler_positions = torch.empty(
+            (max_num_reqs,), dtype=torch.int64, device=device
+        )
+        self.l20_sampler_positions_cpu_tensor = torch.empty(
+            (max_num_reqs,), dtype=torch.int64, device="cpu", pin_memory=pin_memory
+        )
+        self.l20_sampler_positions_cpu = self.l20_sampler_positions_cpu_tensor.numpy()
+        self.l20_sampler_indices = torch.arange(
+            max_num_reqs, dtype=torch.int64, device=device
+        )
+
+        # IDs of requests which do not support spec decoding
 """
 
 INPUT_BATCH_IMPORTS = """import numpy as np
@@ -187,6 +312,20 @@ INPUT_BATCH_TOPK_CPU_PATCHED = """            self.top_k_cpu[req_index] = top_k
             self.l20_sampler_seeds_cpu[req_index] = l20_seed
             self.frequency_penalties_cpu[req_index] = sampling_params.frequency_penalty
 """
+INPUT_BATCH_TOPK_CPU_V010 = """            self.top_k_cpu[req_index] = top_k
+            self.frequency_penalties_cpu[
+                req_index] = sampling_params.frequency_penalty
+"""
+INPUT_BATCH_TOPK_CPU_V010_PATCHED = """            self.top_k_cpu[req_index] = top_k
+            l20_seed = sampling_params.seed
+            if l20_seed is None:
+                l20_seed = np.random.randint(
+                    np.iinfo(np.int64).min, np.iinfo(np.int64).max
+                )
+            self.l20_sampler_seeds_cpu[req_index] = l20_seed
+            self.frequency_penalties_cpu[
+                req_index] = sampling_params.frequency_penalty
+"""
 
 INPUT_BATCH_COPY_TOPK = """        if not self.no_top_k:
             copy_slice(self.top_k_cpu_tensor, self.top_k, num_reqs)
@@ -196,8 +335,9 @@ INPUT_BATCH_COPY_TOPK = """        if not self.no_top_k:
 INPUT_BATCH_COPY_TOPK_PATCHED = """        if not self.no_top_k:
             copy_slice(self.top_k_cpu_tensor, self.top_k, num_reqs)
         copy_slice(self.l20_sampler_seeds_cpu_tensor, self.l20_sampler_seeds, num_reqs)
+        self.l20_sampler_positions_cpu[:num_reqs] = self.num_tokens_no_spec[:num_reqs]
         copy_slice(
-            self.num_tokens_no_spec_cpu_tensor, self.l20_sampler_positions, num_reqs
+            self.l20_sampler_positions_cpu_tensor, self.l20_sampler_positions, num_reqs
         )
 
         if not self.no_penalties:
@@ -321,24 +461,68 @@ def replace_once(source: str, old: str, new: str, label: str) -> str:
 
 
 def patch_topk_topp_sampler(source: str) -> str:
-    source = replace_once(
-        source,
-        TOPK_IMPORT_MARKER,
-        TOPK_IMPORT_MARKER + IMPORT_LINE,
-        "topk_topp_sampler import",
-    )
-    source = replace_once(
-        source,
-        FLASHINFER_PATCH_POINT,
-        FLASHINFER_PATCHED,
-        "flashinfer_sample hook",
-    )
-    source = replace_once(
-        source,
-        TOPK_FORWARD_SIGNATURE,
-        TOPK_FORWARD_SIGNATURE_PATCHED,
-        "topk_topp forward_cuda signature",
-    )
+    if TOPK_IMPORT_MARKER in source or IMPORT_LINE in source:
+        source = replace_once(
+            source,
+            TOPK_IMPORT_MARKER,
+            TOPK_IMPORT_MARKER + IMPORT_LINE,
+            "topk_topp_sampler import",
+        )
+    else:
+        source = replace_once(
+            source,
+            TOPK_IMPORT_MARKER_V010,
+            TOPK_IMPORT_MARKER_V010 + IMPORT_LINE,
+            "topk_topp_sampler v0.10 import",
+        )
+    if FLASHINFER_PATCH_POINT in source:
+        source = replace_once(
+            source,
+            FLASHINFER_PATCH_POINT,
+            FLASHINFER_PATCHED,
+            "flashinfer_sample hook",
+        )
+    if (
+        TOPK_FORWARD_SIGNATURE in source
+        or TOPK_FORWARD_SIGNATURE_PATCHED in source
+    ):
+        source = replace_once(
+            source,
+            TOPK_FORWARD_SIGNATURE,
+            TOPK_FORWARD_SIGNATURE_PATCHED,
+            "topk_topp forward_cuda signature",
+        )
+    else:
+        source = replace_once(
+            source,
+            TOPK_FORWARD_SIGNATURE_OPTIONAL,
+            TOPK_FORWARD_SIGNATURE_OPTIONAL_PATCHED,
+            "topk_topp forward_cuda optional signature",
+        )
+    if TOPK_NATIVE_SIGNATURE in source or TOPK_NATIVE_SIGNATURE_PATCHED in source:
+        source = replace_once(
+            source,
+            TOPK_NATIVE_SIGNATURE,
+            TOPK_NATIVE_SIGNATURE_PATCHED,
+            "topk_topp forward_native signature",
+        )
+    elif (
+        TOPK_NATIVE_SIGNATURE_OPTIONAL in source
+        or TOPK_NATIVE_SIGNATURE_OPTIONAL_PATCHED in source
+    ):
+        source = replace_once(
+            source,
+            TOPK_NATIVE_SIGNATURE_OPTIONAL,
+            TOPK_NATIVE_SIGNATURE_OPTIONAL_PATCHED,
+            "topk_topp forward_native optional signature",
+        )
+    if TOPK_FORCE_FORWARD_MARKER in source or TOPK_FORCE_FORWARD_PATCHED in source:
+        source = replace_once(
+            source,
+            TOPK_FORCE_FORWARD_MARKER,
+            TOPK_FORCE_FORWARD_PATCHED,
+            "topk_topp force l20 forward_cuda",
+        )
     return replace_once(
         source,
         TOPK_FLASHINFER_RETURN,
@@ -363,11 +547,18 @@ def patch_active_sampler(source: str) -> str:
         SAMPLER_TOPK_CALL_PATCHED,
         "active sampler topk_topp state pass",
     )
+    if SAMPLER_APPLY_PENALTIES in source or SAMPLER_APPLY_PENALTIES_PATCHED in source:
+        return replace_once(
+            source,
+            SAMPLER_APPLY_PENALTIES,
+            SAMPLER_APPLY_PENALTIES_PATCHED,
+            "active sampler deferred penalties guard",
+        )
     return replace_once(
         source,
-        SAMPLER_APPLY_PENALTIES,
-        SAMPLER_APPLY_PENALTIES_PATCHED,
-        "active sampler deferred penalties guard",
+        SAMPLER_FORWARD_APPLY_PENALTIES,
+        SAMPLER_FORWARD_APPLY_PENALTIES_PATCHED,
+        "active sampler forward deferred penalties guard",
     )
 
 
@@ -387,18 +578,34 @@ def patch_gpu_input_batch(source: str) -> str:
         INPUT_BATCH_IMPORTS_PATCHED,
         "gpu input batch os import",
     )
-    source = replace_once(
-        source,
-        INPUT_BATCH_TOPK_REQS,
-        INPUT_BATCH_TOPK_REQS_PATCHED,
-        "gpu input batch l20 buffers",
-    )
-    source = replace_once(
-        source,
-        INPUT_BATCH_TOPK_CPU,
-        INPUT_BATCH_TOPK_CPU_PATCHED,
-        "gpu input batch l20 seed init",
-    )
+    if INPUT_BATCH_TOPK_REQS in source or INPUT_BATCH_TOPK_REQS_PATCHED in source:
+        source = replace_once(
+            source,
+            INPUT_BATCH_TOPK_REQS,
+            INPUT_BATCH_TOPK_REQS_PATCHED,
+            "gpu input batch l20 buffers",
+        )
+    else:
+        source = replace_once(
+            source,
+            INPUT_BATCH_TOPK_REQS_V010,
+            INPUT_BATCH_TOPK_REQS_V010_PATCHED,
+            "gpu input batch v0.10 l20 buffers",
+        )
+    if INPUT_BATCH_TOPK_CPU in source or INPUT_BATCH_TOPK_CPU_PATCHED in source:
+        source = replace_once(
+            source,
+            INPUT_BATCH_TOPK_CPU,
+            INPUT_BATCH_TOPK_CPU_PATCHED,
+            "gpu input batch l20 seed init",
+        )
+    else:
+        source = replace_once(
+            source,
+            INPUT_BATCH_TOPK_CPU_V010,
+            INPUT_BATCH_TOPK_CPU_V010_PATCHED,
+            "gpu input batch v0.10 l20 seed init",
+        )
     source = replace_once(
         source,
         INPUT_BATCH_COPY_TOPK,

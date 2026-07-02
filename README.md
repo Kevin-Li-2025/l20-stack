@@ -29,8 +29,9 @@ speedups, integration behavior, and end-to-end token latency.
   speedup on the matching A100 shapes.
 - A sparse token-history version keeps 1.27x-1.31x microbenchmark speedup
   versus apply-then-sample without assuming dense `[batch, vocab]` counts.
-- The next target is real vLLM serving ITL A/B for the sparse token-history
-  path, not another standalone greedy kernel.
+- A real A100 vLLM serving A/B now shows the opt-in sparse token-history sampler
+  reducing median ITL from 9.544 ms to 4.093 ms versus vLLM's native PyTorch
+  top-k/top-p + penalty path in a FlashInfer-absent environment.
 - Every public claim is tied to hardware, model, command, and a checked-in
   artifact.
 
@@ -80,8 +81,20 @@ assumption and still beats a separate penalty-then-sampling path:
 Artifact:
 `benchmarks/results/a100-sparse-topk-topp-penalty/`
 
-The next implementation step is real vLLM serving ITL validation for this sparse
-token-history path.
+The sparse path is now wired into an opt-in vLLM serving hook and has a first
+real A100 HTTP serving A/B:
+
+| Mode | Median ITL | Median ms/output token | Notes |
+| --- | ---: | ---: | --- |
+| vLLM native PyTorch top-k/top-p + penalties | 9.544 ms | 9.593 ms | FlashInfer not installed |
+| Opt-in sparse token-history sampler | 4.093 ms | 4.244 ms | no trace overhead |
+
+Trace proof from a separate run recorded `576 / 578` eligible sampler events
+through the custom path. This is a serving win versus vLLM's native PyTorch
+sampler path, not a claim against a FlashInfer-enabled production sampler.
+
+Artifact:
+`benchmarks/results/a100-vllm-sparse-penalty-sampling/`
 
 ## Boundary Diagram
 
@@ -122,7 +135,7 @@ See `docs/hardware-scope.md` for the exact claim policy.
 | Greedy LM-head epilogue | Functional proof, no speedup | Real output-changing vLLM path works, but median ITL is equal to baseline. |
 | Sampling semantics boundary | Active P0 | Top-k/top-p, penalties, and logprobs are the next target. |
 | Fused top-k/top-p + dense penalties | Positive micro result | Carry forward to sparse vLLM token-history integration. |
-| Sparse top-k/top-p + penalties | Positive micro result | Carry forward to real vLLM serving ITL A/B; do not claim serving win yet. |
+| Sparse top-k/top-p + penalties | Positive A100 serving A/B | Real vLLM path wins versus native PyTorch sampler; next repeat on L20, larger models, and FlashInfer-prewarmed baselines. |
 | FP8 KV fused attention | Experimental | Keep disabled until repeated serving ITL beats BF16/FlashInfer. |
 | Speculative/tree attention | Experimental | Useful research branch; no stable serving win yet. |
 | Kernel-coding QLoRA | Negative so far | Training stack is healthy, but held-out KernelBench `fast_0` remains zero. |

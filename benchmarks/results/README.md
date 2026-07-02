@@ -14,6 +14,7 @@ of git.
 | `a100-vllm-sampling-semantics-qwen25-05b/` | A100 direction-setting | Shows top-k/top-p, penalties, and logprobs add roughly +37-42% median ITL over greedy/no-penalty control. |
 | `a100-fused-topk-topp-penalty/` | A100 positive micro result | Validates the fused dense-count top-k/top-p + penalty primitive with 1.36x-1.42x microbenchmark wins versus apply-then-sample. |
 | `a100-sparse-topk-topp-penalty/` | A100 serving-shaped micro result | Replaces dense counts with sparse token history and keeps 1.27x-1.31x wins versus apply-then-sample on Qwen-vocab shapes. |
+| `a100-vllm-sparse-penalty-sampling/` | A100 positive serving A/B | Runs the opt-in sparse token-history sampler in real vLLM HTTP serving, reducing median ITL 9.544 ms -> 4.093 ms versus the native PyTorch sampler path; not a FlashInfer comparison. |
 | `l20-boundary-impact/` | Paper-summary artifact | Converts the repo's key positive and negative results into one table, JSON, CSV, and SVG graph. |
 | `l20-vllm-logits-boundary-rfc-shadow/` | RFC shadow smoke | Confirms the trace hook emits `metadata.shadow_epilogue` in real vLLM O2 serving without mutating outputs; see the next-stage A/B plan in `docs/logits-boundary-ab.md`. |
 | `l20-logits-boundary-ab-smoke/` | Negative A/B smoke | Runs the first paired logits-boundary baseline vs sampler-boundary candidate; candidate path is traced but currently regresses ITL/throughput. |

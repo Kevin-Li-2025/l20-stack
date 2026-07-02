@@ -1,0 +1,15 @@
+{
+  "eligible_events": 576,
+  "eligible_fraction": 0.9965397923875432,
+  "fallback_events": 2,
+  "logits_shape_counts": {
+    "1x151936": 576,
+    "256x151936": 2
+  },
+  "reason_counts": {
+    "outside_l20_profitability_gate": 2
+  },
+  "schema_version": 1,
+  "total_events": 578,
+  "trace": "/root/sgi-serving-smoke/candidate/l20-topk-topp-trace.jsonl"
+}

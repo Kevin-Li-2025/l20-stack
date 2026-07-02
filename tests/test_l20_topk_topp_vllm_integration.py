@@ -19,6 +19,14 @@ def flashinfer_sample(logits, k, p, generators={}):
     if k is None:
         return None
 class TopKTopPSampler:
+    def forward_native(
+        self,
+        logits: torch.Tensor,
+        generators: dict[int, torch.Generator],
+        k: Optional[torch.Tensor],
+        p: Optional[torch.Tensor],
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
+        return logits, None
     def forward_cuda(
         self,
         logits: torch.Tensor,
@@ -116,6 +124,8 @@ def sample():
     assert "self.l20_sampler_seeds" in patched_gpu_input_batch
     assert "pin_memory=pin_memory" in patched_gpu_input_batch
     assert "self.l20_sampler_positions" in patched_gpu_input_batch
+    assert "self.l20_sampler_positions_cpu_tensor" in patched_gpu_input_batch
+    assert "self.l20_sampler_positions_cpu[:num_reqs]" in patched_gpu_input_batch
     assert "self.l20_sampler_indices[:num_reqs]" in patched_gpu_input_batch
     assert "import os" in patched_gpu_input_batch
     assert "VLLM_L20_TOPK_TOPP_DEFER_PENALTIES" in patched_gpu_input_batch
@@ -158,3 +168,130 @@ def test_l20_topk_topp_helper_uses_vllm_rng_state():
     assert "per_request_generators" in source
     assert "missing_vllm_rng_state" in source
     assert "torch.rand" not in source
+
+
+def test_l20_topk_topp_installer_patches_forward_level_penalty_guard():
+    module = load_installer()
+    active_sampler_source = """
+        random_sampled, processed_logprobs = self.topk_topp_sampler(
+            logits,
+            sampling_metadata.generators,
+            sampling_metadata.top_k,
+            sampling_metadata.top_p,
+        )
+        # Apply penalties (e.g., min_tokens, freq_penalties).
+        logits = self.apply_penalties(logits, sampling_metadata)
+"""
+
+    patched = module.patch_active_sampler(active_sampler_source)
+
+    assert "sampling_metadata.l20_expanded_idx_mapping" in patched
+    assert "sampling_metadata.l20_history_tokens" in patched
+    assert 'getattr(sampling_metadata, "l20_defer_penalties", False)' in patched
+    assert "if not getattr" in patched
+    assert "logits = self.apply_penalties(logits, sampling_metadata)" in patched
+
+
+def test_l20_topk_topp_installer_patches_v010_topk_sampler_shape():
+    module = load_installer()
+    topk_source = """
+from typing import Optional
+
+import torch
+from vllm.platforms import current_platform
+class TopKTopPSampler:
+    def forward_native(
+        self,
+        logits: torch.Tensor,
+        generators: dict[int, torch.Generator],
+        k: Optional[torch.Tensor],
+        p: Optional[torch.Tensor],
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
+        return logits, None
+    def forward_cuda(
+        self,
+        logits: torch.Tensor,
+        generators: dict[int, torch.Generator],
+        k: Optional[torch.Tensor],
+        p: Optional[torch.Tensor],
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
+        return flashinfer_sample(logits.contiguous(), k, p, generators), None
+"""
+
+    patched = module.patch_topk_topp_sampler(topk_source)
+
+    assert "maybe_l20_topk_topp_sample" in patched
+    assert "**_: object" in patched
+    assert "l20_expanded_idx_mapping: Optional[torch.Tensor] = None" in patched
+    assert "l20_repetition_penalties: Optional[torch.Tensor] = None" in patched
+    assert "contiguous_logits = logits.contiguous()" in patched
+    assert "return l20_sampled, None" in patched
+
+
+def test_l20_topk_topp_installer_forces_forward_cuda_without_flashinfer():
+    module = load_installer()
+    topk_source = """
+from typing import Optional
+
+import torch
+from vllm.platforms import current_platform
+class TopKTopPSampler:
+    def __init__(self, logprobs_mode):
+        self.logprobs_mode = logprobs_mode
+        # flashinfer optimization does not apply if intermediate
+        # logprobs/logits after top_k/top_p need to be returned
+        if logprobs_mode not in (LogprobsMode.PROCESSED_LOGITS,
+                                 LogprobsMode.PROCESSED_LOGPROBS
+                                 ) and current_platform.is_cuda():
+            self.forward = self.forward_cuda
+    def forward_native(self, logits, generators, k, p):
+        return logits, None
+    def forward_cuda(
+        self,
+        logits: torch.Tensor,
+        generators: dict[int, torch.Generator],
+        k: Optional[torch.Tensor],
+        p: Optional[torch.Tensor],
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
+        return flashinfer_sample(logits.contiguous(), k, p, generators), None
+"""
+
+    patched = module.patch_topk_topp_sampler(topk_source)
+
+    assert "VLLM_L20_TOPK_TOPP_SAMPLER" in patched
+    assert "self.forward = self.forward_cuda" in patched
+    assert '"is_flashinfer_available" in globals()' in patched
+    assert "return self.forward_native(logits, generators, k, p)" in patched
+
+
+def test_l20_topk_topp_installer_patches_v010_gpu_input_batch_shape():
+    module = load_installer()
+    gpu_input_batch_source = """
+import numpy as np
+import torch
+        self.top_k_reqs: set[str] = set()
+
+        # IDs of requests which do not support spec decoding
+            self.top_k_cpu[req_index] = top_k
+            self.frequency_penalties_cpu[
+                req_index] = sampling_params.frequency_penalty
+        if not self.no_top_k:
+            copy_slice(self.top_k_cpu_tensor, self.top_k, num_reqs)
+
+        if not self.no_penalties:
+            pass
+            generators=self.generators,
+            max_num_logprobs=self.max_num_logprobs,
+        return SamplingMetadata(
+            temperature=temperature,
+"""
+
+    patched = module.patch_gpu_input_batch(gpu_input_batch_source)
+
+    assert "import os" in patched
+    assert "self.l20_sampler_seeds" in patched
+    assert "self.l20_sampler_indices" in patched
+    assert "self.l20_sampler_positions_cpu_tensor" in patched
+    assert "self.l20_sampler_seeds_cpu[req_index] = l20_seed" in patched
+    assert "l20_history_tokens=l20_history_tokens" in patched
+    assert "l20_defer_penalties=l20_defer_penalties" in patched

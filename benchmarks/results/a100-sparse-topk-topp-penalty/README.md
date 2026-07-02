@@ -37,9 +37,13 @@ while staying faster than a separate penalty-then-sampling path. The remaining
 gap to dense-count fused is expected: sparse v1 adds a copy kernel and a scatter
 kernel before top-k/top-p reduction.
 
-The next step is not to claim serving speedup. It is to wire this path into
-vLLM with an explicit opt-in gate and run paired ITL A/B on requests that use
-top-k/top-p plus penalties.
+The next step was to wire this path into vLLM with an explicit opt-in gate and
+run paired ITL A/B on requests that use top-k/top-p plus penalties. That serving
+artifact now lives in:
+
+```text
+benchmarks/results/a100-vllm-sparse-penalty-sampling/
+```
 
 The current vLLM installer now carries that opt-in boundary:
 
