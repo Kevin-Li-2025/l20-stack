@@ -1,0 +1,146 @@
+{
+  "artifact": "20260702-051317",
+  "baseline": {
+    "mode": "vllm_flashinfer_sampling_native_logprobs",
+    "ok_runs": 2,
+    "summary": {
+      "itl_ms": {
+        "max": 13.38002597913146,
+        "mean": 13.375806476688012,
+        "median": 13.375806476688012,
+        "min": 13.371586974244565
+      },
+      "ms_per_output_token": {
+        "max": 14.111633434367832,
+        "mean": 13.96325674795662,
+        "median": 13.96325674795662,
+        "min": 13.81488006154541
+      },
+      "total_ms": {
+        "max": 225.7861349498853,
+        "mean": 223.41210796730593,
+        "median": 223.41210796730593,
+        "min": 221.03808098472655
+      },
+      "ttft_ms": {
+        "max": 21.322520973626524,
+        "mean": 20.522719976725057,
+        "median": 20.522719976725057,
+        "min": 19.72291897982359
+      }
+    }
+  },
+  "candidate": {
+    "mode": "opt_in_fused_top_logprobs",
+    "ok_runs": 2,
+    "summary": {
+      "itl_ms": {
+        "max": 12.638117012102157,
+        "mean": 12.485321523854509,
+        "median": 12.485321523854509,
+        "min": 12.332526035606861
+      },
+      "ms_per_output_token": {
+        "max": 13.592760562460171,
+        "mean": 13.195671313951607,
+        "median": 13.195671313951607,
+        "min": 12.798582065443043
+      },
+      "total_ms": {
+        "max": 217.48416899936274,
+        "mean": 211.1307410232257,
+        "median": 211.1307410232257,
+        "min": 204.77731304708868
+      },
+      "ttft_ms": {
+        "max": 21.675619995221496,
+        "mean": 18.908858997747302,
+        "median": 18.908858997747302,
+        "min": 16.14209800027311
+      }
+    }
+  },
+  "case": {
+    "description": "Stochastic top-k/top-p sampling with penalties and token logprobs.",
+    "name": "sample_topk_topp_penalty_logprobs",
+    "sampling": {
+      "frequency_penalty": 0.1,
+      "logprobs": 5,
+      "presence_penalty": 0.1,
+      "repetition_penalty": 1.05,
+      "temperature": 0.8,
+      "top_k": 50,
+      "top_p": 0.9
+    }
+  },
+  "claim_boundary": [
+    "This is a real vLLM HTTP serving A/B for token logprobs.",
+    "Both paths keep FlashInfer top-k/top-p sampling enabled; the candidate only changes top-logprobs gathering.",
+    "The candidate is opt-in and falls back to native vLLM when the fused logprobs gate rejects a request.",
+    "The separate trace run proves custom hook coverage but is not used for latency."
+  ],
+  "config": {
+    "gpu": "NVIDIA A100-SXM4-80GB",
+    "kv_cache_memory_bytes": null,
+    "max_tokens": 16,
+    "model": "Qwen/Qwen2.5-0.5B-Instruct",
+    "nvcc": "Build cuda_13.0.r13.0/compiler.36424714_0",
+    "runs": 2,
+    "sampling": {
+      "frequency_penalty": 0.1,
+      "logprobs": 5,
+      "presence_penalty": 0.1,
+      "repetition_penalty": 1.05,
+      "temperature": 0.8,
+      "top_k": 50,
+      "top_p": 0.9
+    },
+    "schema_version": 1,
+    "served_model": "qwen25-05b",
+    "torch_cuda_version": "12.8",
+    "torch_version": "2.8.0+cu128",
+    "trace_max_tokens": 8,
+    "trace_runs": 1,
+    "trace_warmup": 0,
+    "vllm_version": "0.10.2",
+    "warmup": 1
+  },
+  "delta": {
+    "itl_ms": {
+      "baseline_median": 13.375806476688012,
+      "candidate_median": 12.485321523854509,
+      "delta_percent": -6.6574299978508416,
+      "speedup": 1.0713225487330975
+    },
+    "ms_per_output_token": {
+      "baseline_median": 13.96325674795662,
+      "candidate_median": 13.195671313951607,
+      "delta_percent": -5.497180549353875,
+      "speedup": 1.0581694872312752
+    },
+    "total_ms": {
+      "baseline_median": 223.41210796730593,
+      "candidate_median": 211.1307410232257,
+      "delta_percent": -5.497180549353875,
+      "speedup": 1.0581694872312752
+    },
+    "ttft_ms": {
+      "baseline_median": 20.522719976725057,
+      "candidate_median": 18.908858997747302,
+      "delta_percent": -7.863777222551613,
+      "speedup": 1.0853494639295804
+    }
+  },
+  "schema_version": 1,
+  "trace_proof": {
+    "eligible_events": 8,
+    "eligible_fraction": 1.0,
+    "fallback_events": 0,
+    "logits_shape_counts": {
+      "1x151936": 8
+    },
+    "reason_counts": {},
+    "total_events": 8,
+    "trace": "/root/sgi-toplogprobs-smoke/20260702-051317/candidate-trace/l20-top-logprobs-trace.jsonl"
+  }
+}

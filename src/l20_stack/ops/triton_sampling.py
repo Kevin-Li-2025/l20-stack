@@ -453,6 +453,125 @@ if triton is not None:  # pragma: no cover - requires CUDA
             values = tl.where(tokens == token, -float("inf"), values)
 
     @triton.jit
+    def _vllm_top_logprobs_partial_kernel(
+        logits,
+        token_ids,
+        partial_values,
+        partial_tokens,
+        partial_max,
+        partial_sum_exp,
+        partial_ranks,
+        VOCAB: tl.constexpr,
+        TOP_N: tl.constexpr,
+        BLOCK_VOCAB: tl.constexpr,
+        BLOCKS_PER_ROW: tl.constexpr,
+        TEMPERATURE: tl.constexpr,
+    ):
+        row = tl.program_id(0)
+        block = tl.program_id(1)
+        offsets = block * BLOCK_VOCAB + tl.arange(0, BLOCK_VOCAB)
+        mask = offsets < VOCAB
+        values = tl.load(logits + row * VOCAB + offsets, mask=mask, other=-float("inf"))
+        values = values.to(tl.float32)
+        if TEMPERATURE != 1.0:
+            values = values / TEMPERATURE
+
+        selected_token = tl.load(token_ids + row).to(tl.int64)
+        selected_value = tl.load(logits + row * VOCAB + selected_token).to(tl.float32)
+        if TEMPERATURE != 1.0:
+            selected_value = selected_value / TEMPERATURE
+        rank_count = tl.sum(tl.where((values >= selected_value) & mask, 1, 0), axis=0)
+
+        block_max = tl.max(values, axis=0)
+        block_sum = tl.sum(tl.exp(values - block_max), axis=0)
+        block_offset = row * BLOCKS_PER_ROW + block
+        tl.store(partial_max + block_offset, block_max)
+        tl.store(partial_sum_exp + block_offset, block_sum)
+        tl.store(partial_ranks + block_offset, rank_count)
+
+        base = block_offset * TOP_N
+        for rank in tl.static_range(0, TOP_N):
+            max_value = tl.max(values, axis=0)
+            is_max = (values == max_value) & mask
+            token_values = tl.where(is_max, offsets, VOCAB)
+            token = tl.min(token_values, axis=0)
+            tl.store(partial_values + base + rank, max_value)
+            tl.store(partial_tokens + base + rank, token)
+            values = tl.where(offsets == token, -float("inf"), values)
+
+    @triton.jit
+    def _vllm_top_logprobs_reduce_kernel(
+        logits,
+        token_ids,
+        partial_values,
+        partial_tokens,
+        partial_max,
+        partial_sum_exp,
+        partial_ranks,
+        output_token_ids,
+        output_logprobs,
+        output_ranks,
+        VOCAB: tl.constexpr,
+        TOP_N: tl.constexpr,
+        BLOCKS_PER_ROW: tl.constexpr,
+        CANDIDATE_BLOCK: tl.constexpr,
+        TEMPERATURE: tl.constexpr,
+    ):
+        row = tl.program_id(0)
+        offsets = tl.arange(0, CANDIDATE_BLOCK)
+        block_mask = offsets < BLOCKS_PER_ROW
+        block_maxes = tl.load(
+            partial_max + row * BLOCKS_PER_ROW + offsets,
+            mask=block_mask,
+            other=-float("inf"),
+        ).to(tl.float32)
+        global_max = tl.max(block_maxes, axis=0)
+        block_sums = tl.load(
+            partial_sum_exp + row * BLOCKS_PER_ROW + offsets,
+            mask=block_mask,
+            other=0.0,
+        ).to(tl.float32)
+        total_exp = tl.sum(tl.exp(block_maxes - global_max) * block_sums, axis=0)
+        log_denom = global_max + tl.log(total_exp)
+
+        selected_token = tl.load(token_ids + row).to(tl.int64)
+        selected_value = tl.load(logits + row * VOCAB + selected_token).to(tl.float32)
+        if TEMPERATURE != 1.0:
+            selected_value = selected_value / TEMPERATURE
+        rank_parts = tl.load(
+            partial_ranks + row * BLOCKS_PER_ROW + offsets,
+            mask=block_mask,
+            other=0,
+        )
+        selected_rank = tl.sum(rank_parts, axis=0)
+
+        output_base = row * (TOP_N + 1)
+        tl.store(output_token_ids + output_base, selected_token)
+        tl.store(output_logprobs + output_base, selected_value - log_denom)
+        tl.store(output_ranks + row, selected_rank)
+
+        candidate_count = BLOCKS_PER_ROW * TOP_N
+        candidate_mask = offsets < candidate_count
+        values = tl.load(
+            partial_values + row * candidate_count + offsets,
+            mask=candidate_mask,
+            other=-float("inf"),
+        ).to(tl.float32)
+        tokens = tl.load(
+            partial_tokens + row * candidate_count + offsets,
+            mask=candidate_mask,
+            other=VOCAB,
+        )
+
+        for rank in tl.static_range(0, TOP_N):
+            max_value = tl.max(values, axis=0)
+            is_max = (values == max_value) & candidate_mask & (tokens < VOCAB)
+            token = tl.min(tl.where(is_max, tokens, VOCAB), axis=0)
+            tl.store(output_logprobs + output_base + rank + 1, max_value - log_denom)
+            tl.store(output_token_ids + output_base + rank + 1, token)
+            values = tl.where(tokens == token, -float("inf"), values)
+
+    @triton.jit
     def _copy_logits_to_fp32_kernel(
         logits,
         adjusted_logits,
@@ -1520,6 +1639,133 @@ def top_logprobs_out(
     return None
 
 
+def vllm_top_logprobs_out(
+    logits,
+    token_ids,
+    output_token_ids,
+    output_logprobs,
+    output_ranks,
+    *,
+    partial_values,
+    partial_tokens,
+    partial_max,
+    partial_sum_exp,
+    partial_ranks,
+    top_n: int = 5,
+    temperature: float = 1.0,
+    block_vocab_override: Optional[int] = None,
+):
+    """Write vLLM-compatible token logprobs without full log-softmax.
+
+    ``output_token_ids`` and ``output_logprobs`` have shape
+    ``[batch, top_n + 1]``. Column zero is the sampled token requested by vLLM;
+    columns ``1:`` are the top-N token IDs and normalized logprobs. Ranks match
+    vLLM's ``batched_count_greater_than`` convention, which counts logits
+    greater than or equal to the sampled-token logit.
+    """
+
+    if torch is None or triton is None:
+        raise RuntimeError("vllm_top_logprobs_out requires PyTorch and Triton")
+    if logits.ndim != 2:
+        raise ValueError("expected logits with shape [batch, vocab]")
+    if token_ids.ndim != 1 or token_ids.shape[0] != logits.shape[0]:
+        raise ValueError("token_ids must have shape [batch]")
+    if token_ids.dtype != torch.int64:
+        raise ValueError("token_ids must be int64")
+    if temperature <= 0:
+        raise ValueError("temperature must be positive")
+    batch, vocab = logits.shape
+    top_n = int(top_n)
+    if not should_use_l20_logprob_topk(int(batch), int(vocab), top_n):
+        raise ValueError("shape or top_n is outside the logprob top-k gate")
+    expected_output = (batch, top_n + 1)
+    if output_token_ids.shape != expected_output or output_token_ids.dtype != torch.int32:
+        raise ValueError(
+            "output_token_ids must have shape [batch, top_n + 1] and dtype int32"
+        )
+    if output_logprobs.shape != expected_output or output_logprobs.dtype != torch.float32:
+        raise ValueError(
+            "output_logprobs must have shape [batch, top_n + 1] and dtype float32"
+        )
+    if output_ranks.shape != (batch,) or output_ranks.dtype != torch.int32:
+        raise ValueError("output_ranks must have shape [batch] and dtype int32")
+    for name, tensor in (
+        ("logits", logits),
+        ("token_ids", token_ids),
+        ("output_token_ids", output_token_ids),
+        ("output_logprobs", output_logprobs),
+        ("output_ranks", output_ranks),
+    ):
+        if not tensor.is_cuda:
+            raise ValueError(f"{name} must be a CUDA tensor")
+
+    config = logprob_topk_launch_config(
+        int(vocab),
+        top_n,
+        batch=int(batch),
+        block_vocab_override=block_vocab_override,
+    )
+    expected_partial = (batch, config.blocks_per_row, top_n)
+    if partial_values.shape != expected_partial or partial_values.dtype != torch.float32:
+        raise ValueError("partial_values workspace has the wrong shape or dtype")
+    if partial_tokens.shape != expected_partial or partial_tokens.dtype != torch.int64:
+        raise ValueError("partial_tokens workspace has the wrong shape or dtype")
+    expected_block = (batch, config.blocks_per_row)
+    if partial_max.shape != expected_block or partial_max.dtype != torch.float32:
+        raise ValueError("partial_max workspace has the wrong shape or dtype")
+    if partial_sum_exp.shape != expected_block or partial_sum_exp.dtype != torch.float32:
+        raise ValueError("partial_sum_exp workspace has the wrong shape or dtype")
+    if partial_ranks.shape != expected_block or partial_ranks.dtype != torch.int32:
+        raise ValueError("partial_ranks workspace has the wrong shape or dtype")
+    for name, tensor in (
+        ("partial_values", partial_values),
+        ("partial_tokens", partial_tokens),
+        ("partial_max", partial_max),
+        ("partial_sum_exp", partial_sum_exp),
+        ("partial_ranks", partial_ranks),
+    ):
+        if not tensor.is_cuda:
+            raise ValueError(f"{name} must be a CUDA tensor")
+
+    _vllm_top_logprobs_partial_kernel[(batch, config.blocks_per_row)](
+        logits,
+        token_ids,
+        partial_values,
+        partial_tokens,
+        partial_max,
+        partial_sum_exp,
+        partial_ranks,
+        VOCAB=int(vocab),
+        TOP_N=top_n,
+        BLOCK_VOCAB=config.block_vocab,
+        BLOCKS_PER_ROW=config.blocks_per_row,
+        TEMPERATURE=float(temperature),
+        num_warps=config.num_warps,
+        num_stages=config.num_stages,
+    )
+    candidate_count = config.blocks_per_row * top_n
+    _vllm_top_logprobs_reduce_kernel[(batch,)](
+        logits,
+        token_ids,
+        partial_values,
+        partial_tokens,
+        partial_max,
+        partial_sum_exp,
+        partial_ranks,
+        output_token_ids,
+        output_logprobs,
+        output_ranks,
+        VOCAB=int(vocab),
+        TOP_N=top_n,
+        BLOCKS_PER_ROW=config.blocks_per_row,
+        CANDIDATE_BLOCK=next_power_of_2(candidate_count),
+        TEMPERATURE=float(temperature),
+        num_warps=8,
+        num_stages=1,
+    )
+    return None
+
+
 def topk_topp_sample_from_uniform_reference(
     logits,
     uniforms,
@@ -1567,6 +1813,35 @@ def top_logprobs_reference(
     if top_n <= 0 or top_n > logits.shape[1]:
         raise ValueError("top_n must be in [1, vocab]")
     return torch.topk(torch.log_softmax(logits.float() / temperature, dim=-1), top_n, dim=-1)
+
+
+def vllm_top_logprobs_reference(
+    logits,
+    token_ids,
+    *,
+    top_n: int = 5,
+    temperature: float = 1.0,
+):
+    """PyTorch reference for vLLM-compatible generated-token logprobs."""
+
+    if torch is None:
+        raise RuntimeError("vllm_top_logprobs_reference requires PyTorch")
+    if logits.ndim != 2:
+        raise ValueError("expected logits with shape [batch, vocab]")
+    if token_ids.ndim != 1 or token_ids.shape[0] != logits.shape[0]:
+        raise ValueError("token_ids must have shape [batch]")
+    if temperature <= 0:
+        raise ValueError("temperature must be positive")
+    logprobs = torch.log_softmax(logits.float() / temperature, dim=-1)
+    top_values, top_tokens = torch.topk(logprobs, top_n, dim=-1)
+    selected_tokens = token_ids.to(logits.device, dtype=torch.int64).unsqueeze(-1)
+    selected_values = logprobs.gather(-1, selected_tokens)
+    selected_ranks = (logprobs >= selected_values).sum(-1).to(torch.int32)
+    return (
+        torch.cat((selected_tokens.to(torch.int32), top_tokens.to(torch.int32)), dim=1),
+        torch.cat((selected_values, top_values), dim=1),
+        selected_ranks,
+    )
 
 
 def apply_dense_token_penalties_reference(

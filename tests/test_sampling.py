@@ -17,6 +17,7 @@ from l20_stack.ops.triton_sampling import (
     topk_topp_penalty_sample_from_uniform_reference,
     topk_topp_sampling_launch_config,
     topk_topp_sparse_penalty_sample_from_uniform_reference,
+    vllm_top_logprobs_reference,
 )
 
 
@@ -178,8 +179,11 @@ class L20SamplingTest(unittest.TestCase):
         self.assertIsNotNone(spec)
         source = Path(spec.origin).read_text(encoding="utf-8")
         self.assertIn("top_logprobs_out", source)
+        self.assertIn("vllm_top_logprobs_out", source)
         self.assertIn("_top_logprobs_partial_kernel", source)
         self.assertIn("_top_logprobs_reduce_kernel", source)
+        self.assertIn("_vllm_top_logprobs_partial_kernel", source)
+        self.assertIn("_vllm_top_logprobs_reduce_kernel", source)
         self.assertIn("partial_sum_exp", source)
 
     def test_top_logprobs_reference_returns_normalized_values(self):
@@ -194,6 +198,27 @@ class L20SamplingTest(unittest.TestCase):
         expected = torch.topk(torch.log_softmax(logits.float(), dim=-1), 2, dim=-1)
         self.assertTrue(torch.equal(tokens, expected.indices))
         self.assertTrue(torch.allclose(values, expected.values))
+
+    def test_vllm_top_logprobs_reference_includes_selected_token_and_rank(self):
+        try:
+            import torch
+        except ImportError:
+            self.skipTest("torch is not installed")
+        logits = torch.tensor([[1.0, 3.0, -1.0, 2.0], [0.0, 0.5, 4.0, -1.0]])
+        sampled = torch.tensor([0, 2], dtype=torch.int64)
+
+        token_ids, logprobs, ranks = vllm_top_logprobs_reference(
+            logits,
+            sampled,
+            top_n=2,
+            temperature=1.0,
+        )
+
+        expected_logprobs = torch.log_softmax(logits.float(), dim=-1)
+        self.assertTrue(torch.equal(token_ids[:, 0], sampled.to(torch.int32)))
+        self.assertTrue(torch.allclose(logprobs[:, 0], expected_logprobs.gather(1, sampled[:, None])[:, 0]))
+        self.assertEqual(ranks.tolist(), [3, 1])
+        self.assertEqual(token_ids.shape, (2, 3))
 
     def test_dense_penalty_reference_matches_repetition_frequency_presence(self):
         try:

@@ -24,7 +24,7 @@ negative results, and archived experiments so the README can stay small.
 | A100 sampling semantics probe | Direction-setting | `benchmarks/results/a100-vllm-sampling-semantics-qwen25-05b/` | Top-k/top-p, penalties, and logprobs are the next target because they add +37-42% median ITL over greedy/no-penalty control. |
 | Fused top-k/top-p + dense penalties | Positive micro result | `benchmarks/results/a100-fused-topk-topp-penalty/` | Carry forward to sparse vLLM token-history integration; do not claim serving win yet. |
 | Sparse top-k/top-p + penalties | Positive A100 serving A/B | `benchmarks/results/a100-sparse-topk-topp-penalty/`, `benchmarks/results/a100-vllm-sparse-penalty-sampling/`, `benchmarks/results/a100-vllm-flashinfer-sparse-penalty-sampling/` | Sparse history keeps 1.27x-1.31x micro wins. The opt-in vLLM path reduces A100 median ITL 9.544 ms -> 4.093 ms versus native PyTorch sampling, and 4.468 ms -> 4.346 ms versus FlashInfer sampling. `logprobs` requests stay gated out because they need a separate logprob-selection boundary. |
-| Fused top-logprobs selection | Positive A100 micro result | `benchmarks/results/a100-fused-top-logprobs/` | Dedicated two-stage top-logprobs selection avoids full log-softmax materialization and shows 8.04x-9.17x A100 micro wins versus PyTorch baselines. This is not a serving win yet; next proof is vLLM `logprobs` serving integration and paired ITL. |
+| Fused top-logprobs selection | Positive A100 micro result / dirty serving path proof | `benchmarks/results/a100-fused-top-logprobs/`, `benchmarks/results/a100-vllm-top-logprobs-smoke/dirty-qwen25-05b-r2/` | Dedicated two-stage top-logprobs selection avoids full log-softmax materialization and shows 8.04x-9.17x A100 micro wins versus PyTorch baselines. The opt-in vLLM hook reaches generated-token `logprobs` serving with 8/8 trace hits in a dirty A100 smoke. Clean repeated serving ITL is still pending. |
 | RoPE + paged KV append | Confirmed | `docs/l20-serving-case-study.md`, `benchmarks/results/l20-decode-layer-v1/` | Keep as case-study evidence; do not spend the next iteration on tiny append-only gains. |
 | Q/K norm + Q/K RoPE + KV write | Smoke / Amdahl-limited | `benchmarks/results/l20-qk-norm-rope-kv-serving/`, `benchmarks/results/nsys/qk-norm-rope-kv/` | Useful path proof, but not enough for an industry-leading claim by itself. |
 | vLLM native QK norm/RoPE fusion | Confirmed low-single-digit signal | `benchmarks/results/l20-qk-norm-rope-serving/` | Confirms the boundary matters; custom three-way integration still needs a stronger system win. |
@@ -71,8 +71,8 @@ RoPE/KV micro wins -> vLLM serving dilution -> NSYS/Amdahl ceiling ->
 FlashInfer sampling hardening -> logits-boundary trace budget ->
 sampling semantics probe -> fused top-k/top-p + penalty prototype ->
 sparse token-history prototype -> sparse A100 serving A/B -> FlashInfer A100
-serving A/B -> fused top-logprobs micro path -> vLLM logprobs serving A/B ->
-L20/multi-model serving matrix
+serving A/B -> fused top-logprobs micro path -> dirty vLLM logprobs path proof ->
+clean vLLM logprobs serving A/B -> L20/multi-model serving matrix
 ```
 
 That path is stronger than a list of kernels because it shows a complete systems
