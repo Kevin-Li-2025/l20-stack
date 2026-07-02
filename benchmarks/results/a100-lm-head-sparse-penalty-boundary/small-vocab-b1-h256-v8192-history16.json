@@ -1,0 +1,64 @@
+{
+  "baseline_full_logits_sparse_penalty_argmax": {
+    "median_ms": 0.1422719955444336,
+    "p10_ms": 0.13817599415779114,
+    "p90_ms": 0.15052799880504608,
+    "samples_ms": [
+      0.15052799880504608,
+      0.1451839953660965,
+      0.14115199446678162,
+      0.13923199474811554,
+      0.13817599415779114,
+      0.14086399972438812,
+      0.14870400726795197,
+      0.15721599757671356,
+      0.14339199662208557,
+      0.1372160017490387
+    ]
+  },
+  "bytes": {
+    "adjusted_logits_bytes": 32768,
+    "materialized_logits_bytes": 16384,
+    "weight_bytes": 4194304
+  },
+  "hardware": "NVIDIA A100-SXM4-80GB",
+  "launch": {
+    "block_batch": 16,
+    "block_hidden": 64,
+    "block_vocab": 16,
+    "blocks_per_row": 512,
+    "num_stages": 3,
+    "num_warps": 4,
+    "reduce_block": 512,
+    "strategy": "two_stage_lm_head_gumbel_max"
+  },
+  "producer_lm_head_sparse_penalty_argmax": {
+    "median_ms": 0.187888003885746,
+    "p10_ms": 0.1860480010509491,
+    "p90_ms": 0.18873600661754608,
+    "samples_ms": [
+      0.18719999492168427,
+      0.18860800564289093,
+      0.18831999599933624,
+      0.18828800320625305,
+      0.1860480010509491,
+      0.1863359957933426,
+      0.18873600661754608,
+      0.19180800020694733,
+      0.18748800456523895,
+      0.18588800728321075
+    ]
+  },
+  "ratios": {
+    "baseline_over_producer": 0.7572170261117291,
+    "producer_over_baseline": 1.3206253498220306
+  },
+  "schema_version": 1,
+  "shape": {
+    "batch": 1,
+    "dtype": "float16",
+    "hidden": 256,
+    "max_history": 16,
+    "vocab": 8192
+  }
+}

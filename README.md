@@ -190,6 +190,12 @@ See `docs/hardware-scope.md` for the exact claim policy.
 Full status map:
 `docs/experiment-status.md`
 
+Docs:
+
+| Item | Path |
+| --- | --- |
+| Logits-boundary A/B plan | `docs/logits-boundary-ab.md` |
+
 Artifact index:
 `benchmarks/results/README.md`; serving-ceiling analysis:
 `benchmarks/results/l20-serving-optimization-ceiling/README.md`; logits-boundary

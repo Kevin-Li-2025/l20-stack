@@ -19,6 +19,7 @@ of git.
 | `a100-fused-top-logprobs/` | A100 positive micro result | Validates the dedicated top-logprobs primitive that avoids full log-softmax materialization, with 8.04x-9.17x microbenchmark wins versus PyTorch top-logprob baselines. |
 | `a100-vllm-top-logprobs-smoke/` | Dirty A100 serving path proof | Shows the opt-in fused top-logprobs hook reaches real vLLM HTTP serving with 8/8 traced events; latency is dirty because another GPU process was active. |
 | `a100-vllm-top-logprobs-clean/` | Clean A100 serving path proof | Repeats the opt-in fused top-logprobs hook under an idle A100 with FlashInfer sampling enabled: 80/80 traced events hit the fused path and median ITL moves 4.404 ms -> 4.368 ms, but total request time is flat. |
+| `a100-lm-head-sparse-penalty-boundary/` | A100 negative boundary proof | Moves sparse token-history penalties into the LM-head tile path and validates correctness, but the standalone producer-side Triton path is 1.32x-1.39x slower than full logits + sparse penalty + argmax; next step must be a true GEMM epilogue/upstream boundary. |
 | `l20-boundary-impact/` | Paper-summary artifact | Converts the repo's key positive and negative results into one table, JSON, CSV, and SVG graph. |
 | `l20-vllm-logits-boundary-rfc-shadow/` | RFC shadow smoke | Confirms the trace hook emits `metadata.shadow_epilogue` in real vLLM O2 serving without mutating outputs; see the next-stage A/B plan in `docs/logits-boundary-ab.md`. |
 | `l20-logits-boundary-ab-smoke/` | Negative A/B smoke | Runs the first paired logits-boundary baseline vs sampler-boundary candidate; candidate path is traced but currently regresses ITL/throughput. |
@@ -39,6 +40,7 @@ of git.
 | --- | --- |
 | `l20-vllm-sampling-itl/` | Self-written standalone sampler regressed real serving; keep disabled. |
 | `l20-lm-head-topk-boundary/` | Standalone top-k/logits replacement loses; move to epilogue/upstream boundary. |
+| `a100-lm-head-sparse-penalty-boundary/` | Standalone producer-side sparse-penalty LM-head replacement is correct but slower; only a true GEMM epilogue can plausibly win. |
 | `l20-vllm-paged-decode-o2/` | O2 path is not the blocker; the isolated paged-decode boundary is too small. |
 
 ## Artifact Contract

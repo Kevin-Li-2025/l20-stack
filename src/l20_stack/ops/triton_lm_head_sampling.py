@@ -118,12 +118,39 @@ def should_use_l20_lm_head_sampling(
     return top_p == 1.0
 
 
+def should_use_l20_lm_head_sparse_penalty_sampling(
+    batch: int,
+    vocab_size: int,
+    hidden_size: int,
+    max_history: int,
+    *,
+    top_k: int = -1,
+    top_p: float = 1.0,
+) -> bool:
+    """Gate for producer-side LM-head sampling with sparse token penalties."""
+
+    if not should_use_l20_lm_head_sampling(
+        batch,
+        vocab_size,
+        hidden_size,
+        top_k=top_k,
+        top_p=top_p,
+    ):
+        return False
+    return 0 < max_history <= 256
+
+
 if triton is not None:  # pragma: no cover - requires CUDA
 
     @triton.jit
     def _lm_head_sampling_partial_kernel(
         hidden,
         weight,
+        history_tokens,
+        history_lengths,
+        frequency_penalties,
+        presence_penalties,
+        repetition_penalties,
         seeds,
         positions,
         partial_values,
@@ -137,6 +164,8 @@ if triton is not None:  # pragma: no cover - requires CUDA
         BLOCKS_PER_ROW: tl.constexpr,
         USE_GUMBEL: tl.constexpr,
         HAS_POSITIONS: tl.constexpr,
+        HAS_SPARSE_PENALTIES: tl.constexpr,
+        MAX_HISTORY: tl.constexpr,
         TEMPERATURE: tl.constexpr,
     ):
         batch_block = tl.program_id(0)
@@ -161,6 +190,45 @@ if triton is not None:  # pragma: no cover - requires CUDA
             acc += tl.dot(w, h, out_dtype=tl.float32)
 
         valid = (vocab_offsets[:, None] < VOCAB) & (batch_offsets[None, :] < BATCH)
+        if HAS_SPARSE_PENALTIES:
+            lengths = tl.load(
+                history_lengths + batch_offsets,
+                mask=batch_offsets < BATCH,
+                other=0,
+            )
+            counts = tl.zeros((BLOCK_VOCAB, BLOCK_BATCH), dtype=tl.int32)
+            for hist_idx in tl.static_range(0, MAX_HISTORY):
+                hist_active = (hist_idx < lengths) & (batch_offsets < BATCH)
+                hist_tokens = tl.load(
+                    history_tokens + batch_offsets * MAX_HISTORY + hist_idx,
+                    mask=hist_active,
+                    other=-1,
+                )
+                token_valid = (hist_tokens >= 0) & (hist_tokens < VOCAB)
+                same_token = vocab_offsets[:, None] == hist_tokens[None, :]
+                counts += tl.where(same_token & token_valid[None, :], 1, 0)
+
+            present = counts > 0
+            frequency = tl.load(
+                frequency_penalties + batch_offsets,
+                mask=batch_offsets < BATCH,
+                other=0.0,
+            ).to(tl.float32)
+            presence = tl.load(
+                presence_penalties + batch_offsets,
+                mask=batch_offsets < BATCH,
+                other=0.0,
+            ).to(tl.float32)
+            repetition = tl.load(
+                repetition_penalties + batch_offsets,
+                mask=batch_offsets < BATCH,
+                other=1.0,
+            ).to(tl.float32)
+            repeated_acc = tl.where(acc < 0.0, acc * repetition[None, :], acc / repetition[None, :])
+            acc = tl.where(present & (repetition[None, :] != 1.0), repeated_acc, acc)
+            acc -= counts.to(tl.float32) * frequency[None, :]
+            acc -= tl.where(present, presence[None, :], 0.0)
+
         if TEMPERATURE != 1.0:
             acc = acc / TEMPERATURE
         if USE_GUMBEL:
@@ -233,6 +301,11 @@ def lm_head_sample_out(
     *,
     partial_values,
     partial_tokens,
+    history_tokens=None,
+    history_lengths=None,
+    frequency_penalties=None,
+    presence_penalties=None,
+    repetition_penalties=None,
     seeds=None,
     positions=None,
     use_gumbel: bool = True,
@@ -260,7 +333,61 @@ def lm_head_sample_out(
         raise ValueError("output tensors must be float32 and int64")
     if not output_values.is_cuda or not output_tokens.is_cuda:
         raise ValueError("output tensors must be CUDA tensors")
-    if not should_use_l20_lm_head_sampling(int(batch), int(vocab_size), int(hidden_size)):
+
+    sparse_penalty_tensors = (
+        history_tokens,
+        history_lengths,
+        frequency_penalties,
+        presence_penalties,
+        repetition_penalties,
+    )
+    has_sparse_penalties = any(tensor is not None for tensor in sparse_penalty_tensors)
+    if has_sparse_penalties and not all(tensor is not None for tensor in sparse_penalty_tensors):
+        raise ValueError("sparse penalties require history, lengths, and all penalty tensors")
+    max_history = 0
+    if has_sparse_penalties:
+        if history_tokens.ndim != 2 or history_tokens.shape[0] != batch:
+            raise ValueError("history_tokens must have shape [batch, max_history]")
+        if history_lengths.shape != (batch,):
+            raise ValueError("history_lengths must have shape [batch]")
+        max_history = int(history_tokens.shape[1])
+        if max_history <= 0 or max_history > 256:
+            raise ValueError("max_history must be in [1, 256]")
+        for name, tensor in (
+            ("history_tokens", history_tokens),
+            ("history_lengths", history_lengths),
+            ("frequency_penalties", frequency_penalties),
+            ("presence_penalties", presence_penalties),
+            ("repetition_penalties", repetition_penalties),
+        ):
+            if not tensor.is_cuda:
+                raise ValueError(f"{name} must be a CUDA tensor")
+        integer_dtypes = {torch.int64, torch.int32, torch.int16, torch.uint8}
+        if history_tokens.dtype not in integer_dtypes:
+            raise ValueError("history_tokens must use an integer dtype")
+        if history_lengths.dtype not in integer_dtypes:
+            raise ValueError("history_lengths must use an integer dtype")
+        for name, tensor in (
+            ("frequency_penalties", frequency_penalties),
+            ("presence_penalties", presence_penalties),
+            ("repetition_penalties", repetition_penalties),
+        ):
+            if tensor.shape != (batch,):
+                raise ValueError(f"{name} must have shape [batch]")
+        if bool((repetition_penalties <= 0).any().item()):
+            raise ValueError("repetition_penalties must be positive")
+
+    shape_allowed = (
+        should_use_l20_lm_head_sparse_penalty_sampling(
+            int(batch),
+            int(vocab_size),
+            int(hidden_size),
+            max_history,
+        )
+        if has_sparse_penalties
+        else should_use_l20_lm_head_sampling(int(batch), int(vocab_size), int(hidden_size))
+    )
+    if not shape_allowed:
         raise ValueError("shape is outside the L20 LM-head sampling gate")
     if use_gumbel:
         if seeds is None:
@@ -283,6 +410,12 @@ def lm_head_sample_out(
         raise ValueError("positions must use an integer dtype")
     elif not positions.is_cuda:
         raise ValueError("positions must be a CUDA tensor")
+    if history_tokens is None:
+        history_tokens = seeds
+        history_lengths = seeds
+        frequency_penalties = output_values
+        presence_penalties = output_values
+        repetition_penalties = output_values
 
     config = lm_head_sampling_launch_config(
         int(batch),
@@ -303,6 +436,11 @@ def lm_head_sample_out(
     _lm_head_sampling_partial_kernel[grid](
         hidden,
         weight,
+        history_tokens,
+        history_lengths,
+        frequency_penalties,
+        presence_penalties,
+        repetition_penalties,
         seeds,
         positions,
         partial_values,
@@ -316,6 +454,8 @@ def lm_head_sample_out(
         BLOCKS_PER_ROW=config.blocks_per_row,
         USE_GUMBEL=bool(use_gumbel),
         HAS_POSITIONS=bool(has_positions),
+        HAS_SPARSE_PENALTIES=bool(has_sparse_penalties),
+        MAX_HISTORY=max(1, int(max_history)),
         TEMPERATURE=float(temperature),
         num_warps=config.num_warps,
         num_stages=config.num_stages,
@@ -338,6 +478,11 @@ def lm_head_sample(
     hidden,
     weight,
     *,
+    history_tokens=None,
+    history_lengths=None,
+    frequency_penalties=None,
+    presence_penalties=None,
+    repetition_penalties=None,
     seeds=None,
     positions=None,
     use_gumbel: bool = True,
@@ -373,6 +518,11 @@ def lm_head_sample(
         output_tokens,
         partial_values=partial_values,
         partial_tokens=partial_tokens,
+        history_tokens=history_tokens,
+        history_lengths=history_lengths,
+        frequency_penalties=frequency_penalties,
+        presence_penalties=presence_penalties,
+        repetition_penalties=repetition_penalties,
         seeds=seeds,
         positions=positions,
         use_gumbel=use_gumbel,
