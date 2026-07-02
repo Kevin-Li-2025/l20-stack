@@ -35,6 +35,10 @@ speedups, integration behavior, and end-to-end token latency.
 - With FlashInfer sampling enabled and CUDA 13 JIT prewarmed, the same sparse
   path still shows a smaller real-serving win on A100: median ITL 4.468 ms ->
   4.346 ms versus vLLM's FlashInfer sampler path.
+- A dedicated fused top-logprobs primitive avoids full-vocab log-softmax
+  materialization and shows 8.04x-9.17x A100 microbenchmark speedup versus
+  PyTorch top-logprob baselines; it still needs vLLM serving A/B before any ITL
+  claim.
 - Every public claim is tied to hardware, model, command, and a checked-in
   artifact.
 
@@ -114,6 +118,21 @@ for this A100/Qwen2.5-0.5B workload, not a broad production claim.
 Artifact:
 `benchmarks/results/a100-vllm-flashinfer-sparse-penalty-sampling/`
 
+The logprobs follow-up is now a separate operator boundary instead of reusing
+the sparse top-k/top-p sampler path. It selects top-N token IDs and normalized
+logprobs without materializing a full `[batch, vocab]` log-softmax tensor:
+
+| Shape | Fused top-logprobs | `torch.log_softmax` then `topk` | `torch.logsumexp` then `topk` | Speedup vs log-softmax |
+| --- | ---: | ---: | ---: | ---: |
+| batch 1, vocab 151936, top 5 | 0.0192 ms | 0.1642 ms | 0.1543 ms | 8.55x |
+| batch 4, vocab 151936, top 5 | 0.0214 ms | 0.1965 ms | 0.1936 ms | 9.17x |
+
+This is an A100 microbenchmark result only. The next proof must wire this
+boundary into vLLM `logprobs` serving and measure paired ITL.
+
+Artifact:
+`benchmarks/results/a100-fused-top-logprobs/`
+
 ## Boundary Diagram
 
 ```mermaid
@@ -154,6 +173,7 @@ See `docs/hardware-scope.md` for the exact claim policy.
 | Sampling semantics boundary | Active P0 | Top-k/top-p, penalties, and logprobs are the next target. |
 | Fused top-k/top-p + dense penalties | Positive micro result | Carry forward to sparse vLLM token-history integration. |
 | Sparse top-k/top-p + penalties | Positive A100 serving A/B | Real vLLM path wins versus native PyTorch sampler and shows a smaller low-single-digit win versus FlashInfer on A100; logprobs requests are gated out after a negative smoke and need a dedicated fused logprob path. |
+| Fused top-logprobs selection | Positive A100 micro result | Avoids full log-softmax materialization and shows 8.04x-9.17x micro speedups; next step is vLLM logprobs serving integration and paired ITL. |
 | FP8 KV fused attention | Experimental | Keep disabled until repeated serving ITL beats BF16/FlashInfer. |
 | Speculative/tree attention | Experimental | Useful research branch; no stable serving win yet. |
 | Kernel-coding QLoRA | Negative so far | Training stack is healthy, but held-out KernelBench `fast_0` remains zero. |
@@ -170,7 +190,8 @@ Related boundary scripts:
 `integrations/vllm/install_l20_logits_boundary_trace.py`,
 `scripts/summarize_l20_logits_boundary_trace.py`,
 `scripts/run_vllm_l20_logits_boundary_trace_campaign.sh`,
-`scripts/benchmark_l20_topk_topp_sampling.py`
+`scripts/benchmark_l20_topk_topp_sampling.py`,
+`scripts/benchmark_l20_top_logprobs.py`
 
 ## Reproduce
 
@@ -203,6 +224,19 @@ PYTHONPATH=src python scripts/benchmark_l20_topk_topp_penalty_sampling.py \
   --warmup 30 \
   --rounds 60 \
   --output /tmp/fused-topk-topp-penalty-b1.json
+```
+
+Run the fused top-logprobs microbenchmark:
+
+```bash
+PYTHONPATH=src python scripts/benchmark_l20_top_logprobs.py \
+  --batch 1 \
+  --vocab 151936 \
+  --top-n 5 \
+  --temperature 0.8 \
+  --warmup 30 \
+  --rounds 60 \
+  --output /tmp/fused-top-logprobs-b1.json
 ```
 
 Trace the original L20 logits-boundary budget on an L20 host:

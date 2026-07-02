@@ -194,6 +194,26 @@ def test_flashinfer_sparse_ab_runner_supports_logprobs_workload():
     assert "sample_topk_topp_penalty_logprobs" in probe
 
 
+def test_top_logprobs_benchmark_tracks_fused_logprob_boundary():
+    source = Path("scripts/benchmark_l20_top_logprobs.py").read_text()
+    ops = Path("src/l20_stack/ops/triton_sampling.py").read_text()
+    readme = Path("README.md").read_text()
+    status = Path("docs/experiment-status.md").read_text()
+    results_index = Path("benchmarks/results/README.md").read_text()
+    artifact = Path("benchmarks/results/a100-fused-top-logprobs/README.md").read_text()
+    assert "top_logprobs_out" in source
+    assert "torch_logsoftmax_then_topk" in source
+    assert "torch_logsumexp_then_topk" in source
+    assert "max_abs_logprob_error" in source
+    assert "vs_torch_logsoftmax_then_topk" in source
+    assert "two_stage_top_logprobs" in ops
+    assert "logprob_topk_launch_config" in ops
+    assert "Fused top-logprobs selection" in readme
+    assert "a100-fused-top-logprobs" in status
+    assert "a100-fused-top-logprobs" in results_index
+    assert "not a serving ITL claim" in artifact
+
+
 def test_serving_optimization_ceiling_tracks_next_target():
     source = Path("scripts/analyze_serving_optimization_ceiling.py").read_text()
     scout = Path("scripts/scout_vllm_logits_boundary.py").read_text()

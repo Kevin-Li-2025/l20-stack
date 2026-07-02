@@ -7,10 +7,13 @@ from l20_stack.ops.triton_sampling import (
     apply_dense_token_penalties_reference,
     apply_sparse_token_penalties_reference,
     greedy_sampling_launch_config,
+    logprob_topk_launch_config,
     should_prefer_l20_topk_topp_sampling,
+    should_use_l20_logprob_topk,
     should_use_l20_sparse_topk_topp_penalty_sampling,
     should_use_l20_gpu_greedy_sampling,
     should_use_l20_topk_topp_sampling,
+    top_logprobs_reference,
     topk_topp_penalty_sample_from_uniform_reference,
     topk_topp_sampling_launch_config,
     topk_topp_sparse_penalty_sample_from_uniform_reference,
@@ -96,6 +99,17 @@ class L20SamplingTest(unittest.TestCase):
             should_use_l20_sparse_topk_topp_penalty_sampling(8, 151_936, 50, 0.9, 128)
         )
 
+    def test_logprob_topk_policy_targets_qwen_logprobs(self):
+        config = logprob_topk_launch_config(151_936, top_n=5, batch=1)
+        self.assertEqual(config.block_vocab, 2048)
+        self.assertEqual(config.blocks_per_row, 75)
+        self.assertEqual(config.num_warps, 8)
+        self.assertEqual(config.strategy, "two_stage_top_logprobs")
+        self.assertTrue(should_use_l20_logprob_topk(1, 151_936, 5))
+        self.assertTrue(should_use_l20_logprob_topk(64, 151_936, 32))
+        self.assertFalse(should_use_l20_logprob_topk(65, 151_936, 5))
+        self.assertFalse(should_use_l20_logprob_topk(1, 151_936, 33))
+
     def test_operator_planner_prioritizes_gpu_sampling(self):
         plan = plan_operator(
             OperatorTarget(
@@ -158,6 +172,28 @@ class L20SamplingTest(unittest.TestCase):
         self.assertIn("_sparse_token_penalty_scatter_kernel", source)
         self.assertIn("history_tokens", source)
         self.assertIn("history_lengths", source)
+
+    def test_top_logprobs_entrypoint_is_available(self):
+        spec = importlib.util.find_spec("l20_stack.ops.triton_sampling")
+        self.assertIsNotNone(spec)
+        source = Path(spec.origin).read_text(encoding="utf-8")
+        self.assertIn("top_logprobs_out", source)
+        self.assertIn("_top_logprobs_partial_kernel", source)
+        self.assertIn("_top_logprobs_reduce_kernel", source)
+        self.assertIn("partial_sum_exp", source)
+
+    def test_top_logprobs_reference_returns_normalized_values(self):
+        try:
+            import torch
+        except ImportError:
+            self.skipTest("torch is not installed")
+        logits = torch.tensor([[1.0, 3.0, -1.0, 2.0]])
+
+        values, tokens = top_logprobs_reference(logits, top_n=2, temperature=1.0)
+
+        expected = torch.topk(torch.log_softmax(logits.float(), dim=-1), 2, dim=-1)
+        self.assertTrue(torch.equal(tokens, expected.indices))
+        self.assertTrue(torch.allclose(values, expected.values))
 
     def test_dense_penalty_reference_matches_repetition_frequency_presence(self):
         try:

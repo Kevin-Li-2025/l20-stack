@@ -16,6 +16,7 @@ of git.
 | `a100-sparse-topk-topp-penalty/` | A100 serving-shaped micro result | Replaces dense counts with sparse token history and keeps 1.27x-1.31x wins versus apply-then-sample on Qwen-vocab shapes. |
 | `a100-vllm-sparse-penalty-sampling/` | A100 positive serving A/B | Runs the opt-in sparse token-history sampler in real vLLM HTTP serving, reducing median ITL 9.544 ms -> 4.093 ms versus the native PyTorch sampler path; not a FlashInfer comparison. |
 | `a100-vllm-flashinfer-sparse-penalty-sampling/` | A100 FlashInfer serving A/B | Repeats the same real vLLM HTTP serving A/B with FlashInfer sampling enabled and CUDA 13 JIT prewarmed; sparse sampler improves median ITL 4.468 ms -> 4.346 ms on this workload. |
+| `a100-fused-top-logprobs/` | A100 positive micro result | Validates the dedicated top-logprobs primitive that avoids full log-softmax materialization, with 8.04x-9.17x microbenchmark wins versus PyTorch top-logprob baselines. |
 | `l20-boundary-impact/` | Paper-summary artifact | Converts the repo's key positive and negative results into one table, JSON, CSV, and SVG graph. |
 | `l20-vllm-logits-boundary-rfc-shadow/` | RFC shadow smoke | Confirms the trace hook emits `metadata.shadow_epilogue` in real vLLM O2 serving without mutating outputs; see the next-stage A/B plan in `docs/logits-boundary-ab.md`. |
 | `l20-logits-boundary-ab-smoke/` | Negative A/B smoke | Runs the first paired logits-boundary baseline vs sampler-boundary candidate; candidate path is traced but currently regresses ITL/throughput. |

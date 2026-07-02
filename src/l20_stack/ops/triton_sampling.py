@@ -163,6 +163,48 @@ def should_use_l20_sparse_topk_topp_penalty_sampling(
     return 0 < max_history <= 256
 
 
+def logprob_topk_launch_config(
+    vocab_size: int,
+    top_n: int,
+    *,
+    batch: int | None = None,
+    block_vocab_override: Optional[int] = None,
+) -> SamplingLaunchConfig:
+    """Return the launch policy for fused top-logprobs selection.
+
+    The kernel computes top-N token IDs and normalized logprobs without
+    materializing a full ``[batch, vocab]`` log-softmax tensor.
+    """
+
+    if top_n <= 0 or top_n > 32:
+        raise ValueError("top_n must be in [1, 32]")
+    if vocab_size <= 0 or vocab_size > 262_144:
+        raise ValueError("vocab_size must be in [1, 262144]")
+    if top_n > vocab_size:
+        raise ValueError("top_n cannot exceed vocab_size")
+    block_vocab = block_vocab_override or (2048 if batch is not None and batch <= 4 else 1024)
+    if block_vocab not in {512, 1024, 2048, 4096}:
+        raise ValueError("block_vocab_override must be one of 512, 1024, 2048, 4096")
+    blocks_per_row = (vocab_size + block_vocab - 1) // block_vocab
+    return SamplingLaunchConfig(
+        block_vocab=block_vocab,
+        blocks_per_row=blocks_per_row,
+        num_warps=4 if block_vocab <= 1024 else 8,
+        num_stages=1,
+        strategy="two_stage_top_logprobs",
+    )
+
+
+def should_use_l20_logprob_topk(batch: int, vocab_size: int, top_n: int) -> bool:
+    """Conservative gate for the first fused logprob-selection primitive."""
+
+    if batch <= 0 or vocab_size <= 0:
+        return False
+    if batch > 64 or vocab_size > 262_144:
+        return False
+    return 1 <= top_n <= min(32, vocab_size)
+
+
 if triton is not None:  # pragma: no cover - requires CUDA
 
     @triton.jit
@@ -318,6 +360,97 @@ if triton is not None:  # pragma: no cover - requires CUDA
             tl.store(partial_values + base + rank, max_value)
             tl.store(partial_tokens + base + rank, token)
             values = tl.where(offsets == token, -float("inf"), values)
+
+    @triton.jit
+    def _top_logprobs_partial_kernel(
+        logits,
+        partial_values,
+        partial_tokens,
+        partial_max,
+        partial_sum_exp,
+        VOCAB: tl.constexpr,
+        TOP_N: tl.constexpr,
+        BLOCK_VOCAB: tl.constexpr,
+        BLOCKS_PER_ROW: tl.constexpr,
+        TEMPERATURE: tl.constexpr,
+    ):
+        row = tl.program_id(0)
+        block = tl.program_id(1)
+        offsets = block * BLOCK_VOCAB + tl.arange(0, BLOCK_VOCAB)
+        mask = offsets < VOCAB
+        values = tl.load(logits + row * VOCAB + offsets, mask=mask, other=-float("inf"))
+        values = values.to(tl.float32)
+        if TEMPERATURE != 1.0:
+            values = values / TEMPERATURE
+
+        block_max = tl.max(values, axis=0)
+        block_sum = tl.sum(tl.exp(values - block_max), axis=0)
+        block_offset = row * BLOCKS_PER_ROW + block
+        tl.store(partial_max + block_offset, block_max)
+        tl.store(partial_sum_exp + block_offset, block_sum)
+
+        base = block_offset * TOP_N
+        for rank in tl.static_range(0, TOP_N):
+            max_value = tl.max(values, axis=0)
+            is_max = (values == max_value) & mask
+            token_values = tl.where(is_max, offsets, VOCAB)
+            token = tl.min(token_values, axis=0)
+            tl.store(partial_values + base + rank, max_value)
+            tl.store(partial_tokens + base + rank, token)
+            values = tl.where(offsets == token, -float("inf"), values)
+
+    @triton.jit
+    def _top_logprobs_reduce_kernel(
+        partial_values,
+        partial_tokens,
+        partial_max,
+        partial_sum_exp,
+        output_values,
+        output_tokens,
+        VOCAB: tl.constexpr,
+        TOP_N: tl.constexpr,
+        BLOCKS_PER_ROW: tl.constexpr,
+        CANDIDATE_BLOCK: tl.constexpr,
+    ):
+        row = tl.program_id(0)
+        offsets = tl.arange(0, CANDIDATE_BLOCK)
+        block_mask = offsets < BLOCKS_PER_ROW
+        block_maxes = tl.load(
+            partial_max + row * BLOCKS_PER_ROW + offsets,
+            mask=block_mask,
+            other=-float("inf"),
+        ).to(tl.float32)
+        global_max = tl.max(block_maxes, axis=0)
+        block_sums = tl.load(
+            partial_sum_exp + row * BLOCKS_PER_ROW + offsets,
+            mask=block_mask,
+            other=0.0,
+        ).to(tl.float32)
+        total_exp = tl.sum(tl.exp(block_maxes - global_max) * block_sums, axis=0)
+        log_denom = global_max + tl.log(total_exp)
+
+        candidate_count = BLOCKS_PER_ROW * TOP_N
+        candidate_mask = offsets < candidate_count
+        values = tl.load(
+            partial_values + row * candidate_count + offsets,
+            mask=candidate_mask,
+            other=-float("inf"),
+        ).to(tl.float32)
+        tokens = tl.load(
+            partial_tokens + row * candidate_count + offsets,
+            mask=candidate_mask,
+            other=VOCAB,
+        )
+
+        output_base = row * TOP_N
+        for rank in tl.static_range(0, TOP_N):
+            max_value = tl.max(values, axis=0)
+            is_max = (values == max_value) & candidate_mask & (tokens < VOCAB)
+            token_values = tl.where(is_max, tokens, VOCAB)
+            token = tl.min(token_values, axis=0)
+            tl.store(output_values + output_base + rank, max_value - log_denom)
+            tl.store(output_tokens + output_base + rank, token)
+            values = tl.where(tokens == token, -float("inf"), values)
 
     @triton.jit
     def _copy_logits_to_fp32_kernel(
@@ -1249,6 +1382,144 @@ def topk_topp_sample_with_vllm_rng_out(
     return None
 
 
+def top_logprobs(
+    logits,
+    *,
+    top_n: int = 5,
+    temperature: float = 1.0,
+    block_vocab_override: Optional[int] = None,
+):
+    """Return top-N token logprobs without materializing full log-softmax."""
+
+    if torch is None or triton is None:
+        raise RuntimeError("top_logprobs requires PyTorch and Triton")
+    if logits.ndim != 2:
+        raise ValueError("expected logits with shape [batch, vocab]")
+    batch, vocab = logits.shape
+    config = logprob_topk_launch_config(
+        int(vocab),
+        int(top_n),
+        batch=int(batch),
+        block_vocab_override=block_vocab_override,
+    )
+    output_values = torch.empty((batch, int(top_n)), device=logits.device, dtype=torch.float32)
+    output_tokens = torch.empty((batch, int(top_n)), device=logits.device, dtype=torch.int64)
+    partial_shape = (int(batch), config.blocks_per_row, int(top_n))
+    partial_values = torch.empty(partial_shape, device=logits.device, dtype=torch.float32)
+    partial_tokens = torch.empty(partial_shape, device=logits.device, dtype=torch.int64)
+    partial_max = torch.empty((batch, config.blocks_per_row), device=logits.device, dtype=torch.float32)
+    partial_sum_exp = torch.empty(
+        (batch, config.blocks_per_row), device=logits.device, dtype=torch.float32
+    )
+    top_logprobs_out(
+        logits,
+        output_values,
+        output_tokens,
+        partial_values=partial_values,
+        partial_tokens=partial_tokens,
+        partial_max=partial_max,
+        partial_sum_exp=partial_sum_exp,
+        top_n=top_n,
+        temperature=temperature,
+        block_vocab_override=block_vocab_override,
+    )
+    return output_values, output_tokens
+
+
+def top_logprobs_out(
+    logits,
+    output_values,
+    output_tokens,
+    *,
+    partial_values,
+    partial_tokens,
+    partial_max,
+    partial_sum_exp,
+    top_n: int = 5,
+    temperature: float = 1.0,
+    block_vocab_override: Optional[int] = None,
+):
+    """Write top-N normalized logprobs and token IDs into caller-owned tensors."""
+
+    if torch is None or triton is None:
+        raise RuntimeError("top_logprobs_out requires PyTorch and Triton")
+    if logits.ndim != 2:
+        raise ValueError("expected logits with shape [batch, vocab]")
+    if temperature <= 0:
+        raise ValueError("temperature must be positive")
+    batch, vocab = logits.shape
+    top_n = int(top_n)
+    if not should_use_l20_logprob_topk(int(batch), int(vocab), top_n):
+        raise ValueError("shape or top_n is outside the logprob top-k gate")
+    expected_output = (batch, top_n)
+    if output_values.shape != expected_output or output_values.dtype != torch.float32:
+        raise ValueError("output_values must have shape [batch, top_n] and dtype float32")
+    if output_tokens.shape != expected_output or output_tokens.dtype != torch.int64:
+        raise ValueError("output_tokens must have shape [batch, top_n] and dtype int64")
+    for name, tensor in (
+        ("logits", logits),
+        ("output_values", output_values),
+        ("output_tokens", output_tokens),
+    ):
+        if not tensor.is_cuda:
+            raise ValueError(f"{name} must be a CUDA tensor")
+    config = logprob_topk_launch_config(
+        int(vocab),
+        top_n,
+        batch=int(batch),
+        block_vocab_override=block_vocab_override,
+    )
+    expected_partial = (batch, config.blocks_per_row, top_n)
+    if partial_values.shape != expected_partial or partial_values.dtype != torch.float32:
+        raise ValueError("partial_values workspace has the wrong shape or dtype")
+    if partial_tokens.shape != expected_partial or partial_tokens.dtype != torch.int64:
+        raise ValueError("partial_tokens workspace has the wrong shape or dtype")
+    expected_block = (batch, config.blocks_per_row)
+    if partial_max.shape != expected_block or partial_max.dtype != torch.float32:
+        raise ValueError("partial_max workspace has the wrong shape or dtype")
+    if partial_sum_exp.shape != expected_block or partial_sum_exp.dtype != torch.float32:
+        raise ValueError("partial_sum_exp workspace has the wrong shape or dtype")
+    for name, tensor in (
+        ("partial_values", partial_values),
+        ("partial_tokens", partial_tokens),
+        ("partial_max", partial_max),
+        ("partial_sum_exp", partial_sum_exp),
+    ):
+        if not tensor.is_cuda:
+            raise ValueError(f"{name} must be a CUDA tensor")
+
+    _top_logprobs_partial_kernel[(batch, config.blocks_per_row)](
+        logits,
+        partial_values,
+        partial_tokens,
+        partial_max,
+        partial_sum_exp,
+        VOCAB=int(vocab),
+        TOP_N=top_n,
+        BLOCK_VOCAB=config.block_vocab,
+        BLOCKS_PER_ROW=config.blocks_per_row,
+        TEMPERATURE=float(temperature),
+        num_warps=config.num_warps,
+        num_stages=config.num_stages,
+    )
+    candidate_count = config.blocks_per_row * top_n
+    _top_logprobs_reduce_kernel[(batch,)](
+        partial_values,
+        partial_tokens,
+        partial_max,
+        partial_sum_exp,
+        output_values,
+        output_tokens,
+        VOCAB=int(vocab),
+        TOP_N=top_n,
+        BLOCKS_PER_ROW=config.blocks_per_row,
+        CANDIDATE_BLOCK=next_power_of_2(candidate_count),
+        num_warps=8,
+        num_stages=1,
+    )
+    return None
+
+
 def topk_topp_sample_from_uniform_reference(
     logits,
     uniforms,
@@ -1277,6 +1548,25 @@ def topk_topp_sample_from_uniform_reference(
     cumulative_kept = torch.cumsum(filtered, dim=-1)
     choice = torch.argmax((cumulative_kept >= target[:, None]).to(torch.int32), dim=-1)
     return torch.gather(indices, dim=-1, index=choice[:, None]).squeeze(-1).to(torch.int64)
+
+
+def top_logprobs_reference(
+    logits,
+    *,
+    top_n: int = 5,
+    temperature: float = 1.0,
+):
+    """PyTorch reference for top-N normalized token logprobs."""
+
+    if torch is None:
+        raise RuntimeError("top_logprobs_reference requires PyTorch")
+    if logits.ndim != 2:
+        raise ValueError("expected logits with shape [batch, vocab]")
+    if temperature <= 0:
+        raise ValueError("temperature must be positive")
+    if top_n <= 0 or top_n > logits.shape[1]:
+        raise ValueError("top_n must be in [1, vocab]")
+    return torch.topk(torch.log_softmax(logits.float() / temperature, dim=-1), top_n, dim=-1)
 
 
 def apply_dense_token_penalties_reference(
