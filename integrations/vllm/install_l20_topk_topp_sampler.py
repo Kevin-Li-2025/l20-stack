@@ -461,7 +461,9 @@ def replace_once(source: str, old: str, new: str, label: str) -> str:
 
 
 def patch_topk_topp_sampler(source: str) -> str:
-    if TOPK_IMPORT_MARKER in source or IMPORT_LINE in source:
+    if IMPORT_LINE in source:
+        pass
+    elif TOPK_IMPORT_MARKER in source:
         source = replace_once(
             source,
             TOPK_IMPORT_MARKER,

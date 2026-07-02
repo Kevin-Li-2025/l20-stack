@@ -228,6 +228,38 @@ class TopKTopPSampler:
     assert "return l20_sampled, None" in patched
 
 
+def test_l20_topk_topp_installer_is_idempotent_for_v010_topk_sampler():
+    module = load_installer()
+    topk_source = """
+from typing import Optional
+
+import torch
+from vllm.platforms import current_platform
+class TopKTopPSampler:
+    def forward_native(
+        self,
+        logits: torch.Tensor,
+        generators: dict[int, torch.Generator],
+        k: Optional[torch.Tensor],
+        p: Optional[torch.Tensor],
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
+        return logits, None
+    def forward_cuda(
+        self,
+        logits: torch.Tensor,
+        generators: dict[int, torch.Generator],
+        k: Optional[torch.Tensor],
+        p: Optional[torch.Tensor],
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
+        return flashinfer_sample(logits.contiguous(), k, p, generators), None
+"""
+
+    patched_once = module.patch_topk_topp_sampler(topk_source)
+    patched_twice = module.patch_topk_topp_sampler(patched_once)
+
+    assert patched_twice == patched_once
+
+
 def test_l20_topk_topp_installer_forces_forward_cuda_without_flashinfer():
     module = load_installer()
     topk_source = """

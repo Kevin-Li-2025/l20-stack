@@ -1,0 +1,55 @@
+{
+  "cpu_fallback_suspected": true,
+  "line_count": 99,
+  "log": "/root/sgi-flashinfer-sparse-ab/candidate-sparse/server.log",
+  "match_counts": {
+    "cpu": 1,
+    "cuda13": 0,
+    "fallback": 1,
+    "flashinfer": 0,
+    "sampling": 5
+  },
+  "matches": {
+    "cpu": [
+      {
+        "line": 61,
+        "text": "\u001b[1;36m(APIServer pid=3212072)\u001b[0;0m INFO 07-02 03:59:02 [async_llm.py:180] Torch profiler disabled. AsyncLLM CPU traces will not be collected."
+      }
+    ],
+    "cuda13": [],
+    "fallback": [
+      {
+        "line": 11,
+        "text": "ized_v2\":false},\"inductor_passes\":{},\"cudagraph_mode\":1,\"use_cudagraph\":true,\"cudagraph_num_of_warmups\":1,\"cudagraph_capture_sizes\":[512,504,496,488,480,472,464,456,448,440,432,424,416,408,400,392,384,376,368,360,352,344,336,328,320,312,304,296,288,280,272,264,256,248,240,232,224,216,208,200,192,184,176,168,160,152,144,136,128,120,112,104,96,88,80,72,64,56,48,40,32,24,16,8,4,2,1],\"cudagraph_copy_inputs\":false,\"full_cuda_graph\":false,\"pass_config\":{},\"max_capture_size\":512,\"local_cache_dir\":null}"
+      }
+    ],
+    "flashinfer": [],
+    "sampling": [
+      {
+        "line": 20,
+        "text": "\u001b[1;36m(EngineCore_DP0 pid=3212505)\u001b[0;0m INFO 07-02 03:58:49 [topk_topp_sampler.py:46] Using experimental L20 top-p & top-k sampler hook."
+      },
+      {
+        "line": 63,
+        "text": "\u001b[1;36m(APIServer pid=3212072)\u001b[0;0m WARNING 07-02 03:59:03 [__init__.py:1695] Default sampling parameters have been overridden by the model's Hugging Face generation config recommended from the model creator. If this is not intended, please relaunch vLLM instance with `--generation-config vllm`."
+      },
+      {
+        "line": 64,
+        "text": "\u001b[1;36m(APIServer pid=3212072)\u001b[0;0m INFO 07-02 03:59:03 [serving_responses.py:130] Using default chat sampling params from model: {'repetition_penalty': 1.1, 'temperature': 0.7, 'top_k': 20, 'top_p': 0.8}"
+      },
+      {
+        "line": 65,
+        "text": "\u001b[1;36m(APIServer pid=3212072)\u001b[0;0m INFO 07-02 03:59:03 [serving_chat.py:137] Using default chat sampling params from model: {'repetition_penalty': 1.1, 'temperature': 0.7, 'top_k': 20, 'top_p': 0.8}"
+      },
+      {
+        "line": 66,
+        "text": "\u001b[1;36m(APIServer pid=3212072)\u001b[0;0m INFO 07-02 03:59:03 [serving_completion.py:76] Using default completion sampling params from model: {'repetition_penalty': 1.1, 'temperature': 0.7, 'top_k': 20, 'top_p': 0.8}"
+      }
+    ]
+  },
+  "notes": [
+    "This is log evidence only. Absence of CPU/fallback strings does not prove that no CPU synchronization happened inside lower-level kernels.",
+    "Use paired stochastic serving latency and FlashInfer prewarm status as the primary service-level signal."
+  ],
+  "schema_version": 1
+}

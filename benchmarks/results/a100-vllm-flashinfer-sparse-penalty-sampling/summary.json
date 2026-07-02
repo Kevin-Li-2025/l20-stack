@@ -1,0 +1,184 @@
+{
+  "artifact": "a100-vllm-flashinfer-sparse-penalty-sampling",
+  "baseline": {
+    "mode": "vllm_flashinfer_topk_topp_penalty",
+    "ok_runs": 20,
+    "path_match_counts": {
+      "cpu": 1,
+      "cuda13": 0,
+      "fallback": 1,
+      "flashinfer": 1,
+      "sampling": 5
+    },
+    "summary": {
+      "itl_ms": {
+        "max": 4.524502961430699,
+        "mean": 4.465471452567726,
+        "median": 4.468297498533502,
+        "min": 4.389851994346827
+      },
+      "ms_per_output_token": {
+        "max": 4.687624229215241,
+        "mean": 4.601684437451089,
+        "median": 4.614975978862882,
+        "min": 4.481982042004044
+      },
+      "total_ms": {
+        "max": 225.00596300233155,
+        "mean": 220.88085299765225,
+        "median": 221.51884698541835,
+        "min": 215.1351380161941
+      },
+      "ttft_ms": {
+        "max": 12.149896996561438,
+        "mean": 10.325677203945816,
+        "median": 10.1480504963547,
+        "min": 9.844594984315336
+      }
+    }
+  },
+  "candidate": {
+    "mode": "opt_in_sparse_token_history_sampler_no_trace",
+    "ok_runs": 20,
+    "path_match_counts": {
+      "cpu": 1,
+      "cuda13": 0,
+      "fallback": 1,
+      "flashinfer": 0,
+      "sampling": 5
+    },
+    "summary": {
+      "itl_ms": {
+        "max": 4.684363026171923,
+        "mean": 4.389907725271769,
+        "median": 4.345882538473234,
+        "min": 4.288401978556067
+      },
+      "ms_per_output_token": {
+        "max": 4.818544520579356,
+        "mean": 4.521857227183505,
+        "median": 4.510262479016092,
+        "min": 4.328358000445102
+      },
+      "total_ms": {
+        "max": 231.2901369878091,
+        "mean": 216.819289905834,
+        "median": 216.10710900858976,
+        "min": 207.7611840213649
+      },
+      "ttft_ms": {
+        "max": 11.884355975780636,
+        "mean": 9.89573700062465,
+        "median": 9.710450482089072,
+        "min": 8.92039597965777
+      }
+    }
+  },
+  "claim_boundary": [
+    "This is a real vLLM HTTP serving A/B, not a standalone microbenchmark.",
+    "The baseline uses vLLM's FlashInfer top-k/top-p sampler path.",
+    "The no-trace candidate is compared against the FlashInfer-enabled baseline.",
+    "The separate trace run proves custom hook coverage but is not used for latency.",
+    "Results should only be claimed when the GPU was idle before the run."
+  ],
+  "config": {
+    "gpu": "NVIDIA A100-SXM4-80GB",
+    "max_tokens": 48,
+    "model": "Qwen/Qwen2.5-0.5B-Instruct",
+    "nvcc": "Build cuda_13.0.r13.0/compiler.36424714_0",
+    "runs": 20,
+    "sampling": {
+      "frequency_penalty": 0.1,
+      "presence_penalty": 0.1,
+      "repetition_penalty": 1.05,
+      "temperature": 0.8,
+      "top_k": 50,
+      "top_p": 0.9
+    },
+    "schema_version": 1,
+    "served_model": "qwen25-05b",
+    "torch_cuda_version": "12.8",
+    "torch_version": "2.8.0+cu128",
+    "trace_max_tokens": 16,
+    "trace_runs": 3,
+    "trace_warmup": 1,
+    "vllm_version": "0.10.2",
+    "warmup": 2
+  },
+  "delta": {
+    "itl_ms": {
+      "baseline_median": 4.468297498533502,
+      "candidate_median": 4.345882538473234,
+      "delta_percent": -2.739633162305001,
+      "speedup": 1.0281680323792817
+    },
+    "ms_per_output_token": {
+      "baseline_median": 4.614975978862882,
+      "candidate_median": 4.510262479016092,
+      "delta_percent": -2.2689933886197853,
+      "speedup": 1.0232167197217386
+    },
+    "total_ms": {
+      "baseline_median": 221.51884698541835,
+      "candidate_median": 216.10710900858976,
+      "delta_percent": -2.4430146917407987,
+      "speedup": 1.0250419248198517
+    },
+    "ttft_ms": {
+      "baseline_median": 10.1480504963547,
+      "candidate_median": 9.710450482089072,
+      "delta_percent": -4.312158423165295,
+      "speedup": 1.0450648520449983
+    }
+  },
+  "flashinfer_prewarm": {
+    "flashinfer_cuda_env": {
+      "changed": true,
+      "cuda_home": "/usr/local/cuda-13.0",
+      "nvcc": "/usr/local/cuda-13.0/bin/nvcc",
+      "nvcc_version": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2025 NVIDIA Corporation\nBuilt on Wed_Aug_20_01:58:59_PM_PDT_2025\nCuda compilation tools, release 13.0, V13.0.88\nBuild cuda_13.0.r13.0/compiler.36424714_0"
+    },
+    "flashinfer_version": "0.6.14",
+    "hardware": "NVIDIA A100-SXM4-80GB",
+    "output_dtype": "torch.int32",
+    "output_shape": [
+      4
+    ],
+    "schema_version": 1,
+    "status": "ok"
+  },
+  "schema_version": 1,
+  "stability": {
+    "itl_ms": {
+      "baseline_measured_median": 4.468297498533502,
+      "candidate_measured_median": 4.345882538473234
+    },
+    "ms_per_output_token": {
+      "baseline_measured_median": 4.614975978862882,
+      "candidate_measured_median": 4.510262479016092
+    },
+    "total_ms": {
+      "baseline_measured_median": 221.51884698541835,
+      "candidate_measured_median": 216.10710900858976
+    },
+    "ttft_ms": {
+      "baseline_measured_median": 10.1480504963547,
+      "candidate_measured_median": 9.710450482089072
+    }
+  },
+  "trace_proof": {
+    "eligible_events": 64,
+    "eligible_fraction": 0.9696969696969697,
+    "fallback_events": 2,
+    "logits_shape_counts": {
+      "1x151936": 64,
+      "256x151936": 2
+    },
+    "reason_counts": {
+      "outside_l20_profitability_gate": 2
+    },
+    "schema_version": 1,
+    "total_events": 66,
+    "trace": "benchmarks/results/a100-vllm-flashinfer-sparse-penalty-sampling/candidate-trace/l20-topk-topp-trace.jsonl"
+  }
+}

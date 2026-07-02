@@ -106,6 +106,8 @@ def build_summary(root: Path) -> dict[str, Any]:
         }
     trace_summary = summarize_trace(root / "candidate-trace" / "l20-topk-topp-trace.jsonl")
     prewarm_path = root / "baseline-flashinfer" / "flashinfer-prewarm.json"
+    if not prewarm_path.exists():
+        prewarm_path = root / "flashinfer-prewarm.json"
     baseline_path = root / "baseline-flashinfer" / "sampling-path.json"
     candidate_path = root / "candidate-sparse" / "sampling-path.json"
     result = {

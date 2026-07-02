@@ -26,7 +26,13 @@ max_model_len=${MAX_MODEL_LEN:-1024}
 require_idle=${REQUIRE_IDLE:-1}
 gpu_util_limit=${GPU_UTIL_LIMIT:-20}
 keep_model_cache=${KEEP_MODEL_CACHE:-0}
-hf_home=${HF_HOME:-$output_dir/hf}
+if [[ -n "${HF_HOME:-}" ]]; then
+  hf_home=$HF_HOME
+  cleanup_hf_home=0
+else
+  hf_home=$output_dir/hf
+  cleanup_hf_home=1
+fi
 
 export CUDA_HOME=${CUDA_HOME:-/usr/local/cuda-13.0}
 export PATH="$CUDA_HOME/bin:$PATH"
@@ -79,9 +85,22 @@ stop_server() {
   if [[ -f "$pid_file" ]]; then
     local pid
     pid=$(cat "$pid_file")
-    kill "$pid" >/dev/null 2>&1 || true
+    kill_tree "$pid" TERM
+    sleep 4
+    kill_tree "$pid" KILL
     wait "$pid" >/dev/null 2>&1 || true
   fi
+}
+
+kill_tree() {
+  local pid=$1
+  local signal=$2
+  local children
+  children=$(pgrep -P "$pid" 2>/dev/null || true)
+  for child in $children; do
+    kill_tree "$child" "$signal"
+  done
+  kill "-$signal" "$pid" >/dev/null 2>&1 || true
 }
 
 start_server() {
@@ -239,6 +258,6 @@ cp "$output_dir/flashinfer-prewarm.json" "$baseline_dir/flashinfer-prewarm.json"
   --output-md "$output_dir/README.md"
 
 rm -f "$baseline_dir/server.pid" "$candidate_dir/server.pid" "$trace_dir/server.pid"
-if [[ "$keep_model_cache" != "1" ]]; then
+if [[ "$keep_model_cache" != "1" && "$cleanup_hf_home" == "1" ]]; then
   rm -rf "$hf_home"
 fi

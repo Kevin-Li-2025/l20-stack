@@ -32,6 +32,9 @@ speedups, integration behavior, and end-to-end token latency.
 - A real A100 vLLM serving A/B now shows the opt-in sparse token-history sampler
   reducing median ITL from 9.544 ms to 4.093 ms versus vLLM's native PyTorch
   top-k/top-p + penalty path in a FlashInfer-absent environment.
+- With FlashInfer sampling enabled and CUDA 13 JIT prewarmed, the same sparse
+  path still shows a smaller real-serving win on A100: median ITL 4.468 ms ->
+  4.346 ms versus vLLM's FlashInfer sampler path.
 - Every public claim is tied to hardware, model, command, and a checked-in
   artifact.
 
@@ -96,6 +99,21 @@ sampler path, not a claim against a FlashInfer-enabled production sampler.
 Artifact:
 `benchmarks/results/a100-vllm-sparse-penalty-sampling/`
 
+The FlashInfer-prewarmed follow-up keeps the comparison honest against vLLM's
+production top-k/top-p route:
+
+| Mode | Median ITL | Median ms/output token | Notes |
+| --- | ---: | ---: | --- |
+| vLLM FlashInfer top-k/top-p + penalties | 4.468 ms | 4.615 ms | CUDA 13 JIT prewarmed |
+| Opt-in sparse token-history sampler | 4.346 ms | 4.510 ms | no trace overhead |
+
+Trace proof from a separate run recorded `64 / 66` eligible sampler events
+through the custom path. This is a low-single-digit serving win over FlashInfer
+for this A100/Qwen2.5-0.5B workload, not a broad production claim.
+
+Artifact:
+`benchmarks/results/a100-vllm-flashinfer-sparse-penalty-sampling/`
+
 ## Boundary Diagram
 
 ```mermaid
@@ -135,7 +153,7 @@ See `docs/hardware-scope.md` for the exact claim policy.
 | Greedy LM-head epilogue | Functional proof, no speedup | Real output-changing vLLM path works, but median ITL is equal to baseline. |
 | Sampling semantics boundary | Active P0 | Top-k/top-p, penalties, and logprobs are the next target. |
 | Fused top-k/top-p + dense penalties | Positive micro result | Carry forward to sparse vLLM token-history integration. |
-| Sparse top-k/top-p + penalties | Positive A100 serving A/B | Real vLLM path wins versus native PyTorch sampler; next repeat on L20, larger models, and FlashInfer-prewarmed baselines. |
+| Sparse top-k/top-p + penalties | Positive A100 serving A/B | Real vLLM path wins versus native PyTorch sampler and shows a smaller low-single-digit win versus FlashInfer on A100; next repeat on L20 and larger models. |
 | FP8 KV fused attention | Experimental | Keep disabled until repeated serving ITL beats BF16/FlashInfer. |
 | Speculative/tree attention | Experimental | Useful research branch; no stable serving win yet. |
 | Kernel-coding QLoRA | Negative so far | Training stack is healthy, but held-out KernelBench `fast_0` remains zero. |
