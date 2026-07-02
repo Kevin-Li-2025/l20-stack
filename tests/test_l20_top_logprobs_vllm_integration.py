@@ -34,12 +34,58 @@ class Sampler:
 
     assert patched_twice == patched
     assert "l20_top_logprobs_enabled" in patched
+    assert "l20_raw_logits_borrow_reasons" in patched
     assert "maybe_l20_gather_logprobs" in patched
+    assert "l20_raw_logits_source = \"none\"" in patched
+    assert "l20_raw_logits_source = \"borrowed\"" in patched
+    assert "\"clone:\" + \",\".join(" in patched
     assert "l20_raw_logits_for_logprobs = logits.clone()" in patched
+    assert "raw_logits_source=l20_raw_logits_source" in patched
     assert "raw_logprobs = self.compute_logprobs(" in patched
     assert "l20_raw_logits_for_logprobs" in patched
     assert "self.gather_logprobs(" in patched
     assert "token_ids=sampled" in patched
+
+
+def test_l20_top_logprobs_installer_upgrades_old_patch():
+    module = load_installer()
+    source = (
+        module.IMPORT_PATCHED_V1
+        + "class Sampler:\n"
+        + module.RAW_LOGPROBS_PATCHED_V1
+        + module.GATHER_PATCHED_V1
+    )
+
+    patched = module.patch_sampler(source)
+    patched_twice = module.patch_sampler(patched)
+
+    assert patched_twice == patched
+    assert "l20_raw_logits_borrow_reasons" in patched
+    assert "l20_raw_logits_source = \"borrowed\"" in patched
+    assert "raw_logits_source=l20_raw_logits_source" in patched
+    assert module.IMPORT_PATCHED_V1 not in patched
+    assert module.RAW_LOGPROBS_PATCHED_V1 not in patched
+    assert module.GATHER_PATCHED_V1 not in patched
+
+
+def test_l20_top_logprobs_installer_upgrades_bool_borrow_patch():
+    module = load_installer()
+    source = (
+        module.IMPORT_PATCHED_V2
+        + "class Sampler:\n"
+        + module.RAW_LOGPROBS_PATCHED_V2
+        + module.GATHER_PATCHED
+    )
+
+    patched = module.patch_sampler(source)
+    patched_twice = module.patch_sampler(patched)
+
+    assert patched_twice == patched
+    assert "l20_raw_logits_borrow_reasons" in patched
+    assert "l20_should_borrow_raw_logits" not in patched
+    assert "\"clone:\" + \",\".join(" in patched
+    assert module.IMPORT_PATCHED_V2 not in patched
+    assert module.RAW_LOGPROBS_PATCHED_V2 not in patched
 
 
 def test_l20_top_logprobs_helper_is_guarded_and_vllm_shaped():
@@ -49,6 +95,14 @@ def test_l20_top_logprobs_helper_is_guarded_and_vllm_shaped():
     assert "VLLM_L20_TOP_LOGPROBS" in source
     assert "VLLM_L20_TOP_LOGPROBS_TRACE" in source
     assert "VLLM_L20_TOP_LOGPROBS_ALLOW_NON_L20" in source
+    assert "VLLM_L20_TOP_LOGPROBS_BORROW_RAW" in source
+    assert "l20_raw_logits_borrow_reasons" in source
+    assert "logits_processors:" in source
+    assert "MinTokensLogitsProcessor" in source
+    assert "LogitBiasLogitsProcessor" in source
+    assert "min_toks" in source
+    assert "biases" in source
+    assert "l20_should_borrow_raw_logits" in source
     assert "should_use_l20_logprob_topk" in source
     assert "vllm_top_logprobs_out" in source
     assert "LogprobsTensors" in source
@@ -78,6 +132,11 @@ def test_a100_top_logprobs_ab_runner_targets_real_logprobs_workload():
     assert "install_l20_top_logprobs.py" in source
     assert "sample_topk_topp_penalty_logprobs" in source
     assert "LOGPROBS" in source
+    assert "BORROW_RAW_LOGITS" in source
+    assert "VLLM_L20_TOP_LOGPROBS_BORROW_RAW=1" in source
+    assert "GENERATION_CONFIG" in source
+    assert "--generation-config" in source
+    assert "raw_logits_source_counts" in source
     assert "--logprobs \"$logprobs\"" in source
     assert "VLLM_L20_TOP_LOGPROBS=1" in source
     assert "VLLM_L20_TOP_LOGPROBS_TRACE" in source

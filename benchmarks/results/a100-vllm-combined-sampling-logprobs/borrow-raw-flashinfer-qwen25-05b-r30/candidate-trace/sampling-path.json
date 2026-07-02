@@ -1,0 +1,34 @@
+{
+  "cpu_fallback_suspected": false,
+  "line_count": 77,
+  "log": "/root/sgi-a100-combined-borrow-final/20260702-145628/candidate-trace/server.log",
+  "match_counts": {
+    "cpu": 1,
+    "cuda13": 0,
+    "fallback": 0,
+    "flashinfer": 0,
+    "sampling": 1
+  },
+  "matches": {
+    "cpu": [
+      {
+        "line": 61,
+        "text": "\u001b[1;36m(APIServer pid=74680)\u001b[0;0m INFO 07-02 14:59:16 [async_llm.py:180] Torch profiler disabled. AsyncLLM CPU traces will not be collected."
+      }
+    ],
+    "cuda13": [],
+    "fallback": [],
+    "flashinfer": [],
+    "sampling": [
+      {
+        "line": 19,
+        "text": "\u001b[1;36m(EngineCore_DP0 pid=75109)\u001b[0;0m INFO 07-02 14:59:03 [topk_topp_sampler.py:46] Using experimental L20 top-p & top-k sampler hook."
+      }
+    ]
+  },
+  "notes": [
+    "This is log evidence only. Absence of CPU/fallback strings does not prove that no CPU synchronization happened inside lower-level kernels.",
+    "Use paired stochastic serving latency and FlashInfer prewarm status as the primary service-level signal."
+  ],
+  "schema_version": 1
+}

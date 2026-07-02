@@ -30,6 +30,8 @@ gpu_util_limit=${GPU_UTIL_LIMIT:-20}
 keep_model_cache=${KEEP_MODEL_CACHE:-0}
 enable_sparse_sampler=${ENABLE_SPARSE_SAMPLER:-0}
 baseline_use_flashinfer=${BASELINE_USE_FLASHINFER:-1}
+borrow_raw_logits=${BORROW_RAW_LOGITS:-0}
+generation_config=${GENERATION_CONFIG:-}
 if [[ -n "${HF_HOME:-}" ]]; then
   hf_home=$HF_HOME
   cleanup_hf_home=0
@@ -167,6 +169,9 @@ start_server() {
       "VLLM_L20_TOP_LOGPROBS=1"
       "VLLM_L20_TOP_LOGPROBS_ALLOW_NON_L20=1"
     )
+    if [[ "$borrow_raw_logits" == "1" ]]; then
+      env_args+=("VLLM_L20_TOP_LOGPROBS_BORROW_RAW=1")
+    fi
     if [[ "$enable_sparse_sampler" == "1" ]]; then
       env_args+=(
         "VLLM_L20_TOPK_TOPP_SAMPLER=1"
@@ -193,6 +198,9 @@ start_server() {
     --max-model-len "$max_model_len"
     --disable-log-requests
   )
+  if [[ -n "$generation_config" ]]; then
+    server_args+=(--generation-config "$generation_config")
+  fi
   if [[ -n "$kv_cache_memory_bytes" ]]; then
     server_args+=(--kv-cache-memory-bytes "$kv_cache_memory_bytes")
   fi
@@ -293,6 +301,8 @@ config = {
     "port_base": int(${port_base@Q}),
     "enable_sparse_sampler": ${enable_sparse_sampler@Q} == "1",
     "baseline_use_flashinfer": ${baseline_use_flashinfer@Q} == "1",
+    "borrow_raw_logits": ${borrow_raw_logits@Q} == "1",
+    "generation_config": ${generation_config@Q} or None,
     "ports": {
         "baseline": int(${port_base@Q}),
         "candidate": int(${port_base@Q}) + 1,
@@ -374,6 +384,7 @@ def summarize_trace(path):
     eligible = 0
     reasons = Counter()
     shapes = Counter()
+    raw_sources = Counter()
     if not path.exists():
         return None
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -388,6 +399,9 @@ def summarize_trace(path):
         shape = (event.get("metadata") or {}).get("logits_shape")
         if isinstance(shape, list) and len(shape) == 2:
             shapes[f"{shape[0]}x{shape[1]}"] += 1
+        raw_source = (event.get("metadata") or {}).get("raw_logits_source")
+        if raw_source:
+            raw_sources[str(raw_source)] += 1
     return {
         "trace": str(path),
         "total_events": total,
@@ -396,6 +410,7 @@ def summarize_trace(path):
         "eligible_fraction": eligible / total if total else 0.0,
         "reason_counts": dict(sorted(reasons.items())),
         "logits_shape_counts": dict(sorted(shapes.items())),
+        "raw_logits_source_counts": dict(sorted(raw_sources.items())),
     }
 
 baseline = case_summary("baseline-flashinfer-logprobs")
@@ -489,6 +504,7 @@ lines.extend([
     f"| Total events | {trace.get('total_events', 0)} |",
     f"| Eligible fused events | {trace.get('eligible_events', 0)} |",
     f"| Eligible fraction | {100.0 * trace.get('eligible_fraction', 0.0):.2f}% |",
+    f"| Raw logits source | {trace.get('raw_logits_source_counts', {})} |",
 ])
 if sparse_trace:
     lines.extend([

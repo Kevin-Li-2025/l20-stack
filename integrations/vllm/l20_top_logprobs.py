@@ -26,6 +26,7 @@ from vllm.v1.outputs import LogprobsTensors
 ENABLE_ENV = "VLLM_L20_TOP_LOGPROBS"
 TRACE_ENV = "VLLM_L20_TOP_LOGPROBS_TRACE"
 ALLOW_NON_L20_ENV = "VLLM_L20_TOP_LOGPROBS_ALLOW_NON_L20"
+BORROW_RAW_ENV = "VLLM_L20_TOP_LOGPROBS_BORROW_RAW"
 
 _TRACE_COUNT = 0
 _WORKSPACE_CACHE: dict[tuple[Any, ...], tuple[torch.Tensor, ...]] = {}
@@ -37,6 +38,53 @@ def _env_flag(name: str) -> bool:
 
 def l20_top_logprobs_enabled() -> bool:
     return _env_flag(ENABLE_ENV)
+
+
+def l20_raw_logits_borrow_reasons(sampling_metadata: Any) -> list[str]:
+    """Return reasons that raw logits cannot be borrowed safely.
+
+    vLLM V1 intentionally gathers token logprobs from the original logits,
+    before penalties, temperature, and top-k/top-p masking. Borrowing the tensor
+    is only valid when every later mutator is absent and the L20 sparse sampler
+    defers penalties into its private adjusted-logits workspace.
+    """
+
+    reasons: list[str] = []
+    if not _env_flag(BORROW_RAW_ENV):
+        reasons.append("borrow_raw_env_disabled")
+    if not getattr(sampling_metadata, "l20_defer_penalties", False):
+        reasons.append("penalties_not_deferred")
+    if getattr(sampling_metadata, "allowed_token_ids_mask", None) is not None:
+        reasons.append("allowed_token_ids_mask")
+    if getattr(sampling_metadata, "bad_words_token_ids", None):
+        reasons.append("bad_words")
+    logitsprocs = getattr(sampling_metadata, "logitsprocs", None)
+    processors = getattr(logitsprocs, "non_argmax_invariant", None)
+    unsafe_processor_names: list[str] = []
+    try:
+        processor_iter = list(processors) if processors is not None else []
+    except TypeError:
+        processor_iter = [processors] if processors else []
+    for processor in processor_iter:
+        name = type(processor).__name__
+        if name == "MinTokensLogitsProcessor" and not getattr(
+            processor, "min_toks", None
+        ):
+            continue
+        if name == "LogitBiasLogitsProcessor" and not getattr(
+            processor, "biases", None
+        ):
+            continue
+        unsafe_processor_names.append(name)
+    if unsafe_processor_names:
+        reasons.append(f"logits_processors:{','.join(unsafe_processor_names)}")
+    return reasons
+
+
+def l20_should_borrow_raw_logits(sampling_metadata: Any) -> bool:
+    """Return whether the patched sampler may avoid cloning raw logits."""
+
+    return not l20_raw_logits_borrow_reasons(sampling_metadata)
 
 
 def _trace(event: dict[str, Any]) -> None:
@@ -113,6 +161,7 @@ def maybe_l20_gather_logprobs(
     num_logprobs: int,
     *,
     token_ids: torch.Tensor,
+    raw_logits_source: str = "unknown",
 ) -> LogprobsTensors | None:
     """Return vLLM ``LogprobsTensors`` or ``None`` when ineligible."""
 
@@ -122,6 +171,7 @@ def maybe_l20_gather_logprobs(
         "logits_dtype": str(getattr(logits, "dtype", None)),
         "num_logprobs": int(num_logprobs),
         "token_ids_shape": list(token_ids.shape) if hasattr(token_ids, "shape") else None,
+        "raw_logits_source": raw_logits_source,
     }
     if not _env_flag(ENABLE_ENV):
         reasons.append("disabled")

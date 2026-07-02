@@ -14,8 +14,13 @@ penalties, generated-token `logprobs`, and 48 output tokens.
 
 | Baseline | Candidate | Median ITL | Total request time | Trace proof |
 | --- | --- | ---: | ---: | --- |
+| vLLM FlashInfer sampler + native logprobs | sparse sampler + fused top-logprobs + no-clone raw-logits borrow | 4.388 ms -> 4.227 ms (-3.65%) | 214.5 ms -> 207.6 ms (-3.21%) | top-logprobs 64/64 with `borrowed` raw logits, sparse sampler 64/66 |
 | vLLM FlashInfer sampler + native logprobs | sparse sampler + fused top-logprobs | 4.406 ms -> 4.248 ms (-3.60%) | 217.4 ms -> 208.2 ms (-4.25%) | top-logprobs 60/60, sparse sampler 60/62 |
 | vLLM native PyTorch sampler + native logprobs | sparse sampler + fused top-logprobs | 4.549 ms -> 4.308 ms (-5.28%) | 222.5 ms -> 211.3 ms (-5.04%) | top-logprobs 60/60, sparse sampler 60/62 |
+
+`borrow-raw-flashinfer-qwen25-05b-r30/` is the strongest FlashInfer comparator.
+It keeps vLLM V1's original-logits top-logprobs semantics, but avoids the
+candidate-side raw logits clone when later no-op processors are provably empty.
 
 ## Extra Smoke
 

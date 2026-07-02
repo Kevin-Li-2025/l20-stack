@@ -13,7 +13,21 @@ HELPER_NAME = "l20_top_logprobs.py"
 IMPORT_MARKER = "from vllm.v1.sample.ops.logprobs import batched_count_greater_than\n"
 IMPORT_PATCHED = """from vllm.v1.sample.ops.logprobs import batched_count_greater_than
 from vllm.v1.sample.ops.l20_top_logprobs import (
+    l20_raw_logits_borrow_reasons,
     l20_top_logprobs_enabled,
+    maybe_l20_gather_logprobs,
+)
+"""
+IMPORT_PATCHED_V1 = """from vllm.v1.sample.ops.logprobs import batched_count_greater_than
+from vllm.v1.sample.ops.l20_top_logprobs import (
+    l20_top_logprobs_enabled,
+    maybe_l20_gather_logprobs,
+)
+"""
+IMPORT_PATCHED_V2 = """from vllm.v1.sample.ops.logprobs import batched_count_greater_than
+from vllm.v1.sample.ops.l20_top_logprobs import (
+    l20_top_logprobs_enabled,
+    l20_should_borrow_raw_logits,
     maybe_l20_gather_logprobs,
 )
 """
@@ -27,6 +41,31 @@ RAW_LOGPROBS_MARKER = """        num_logprobs = sampling_metadata.max_num_logpro
 """
 RAW_LOGPROBS_PATCHED = """        num_logprobs = sampling_metadata.max_num_logprobs
         l20_raw_logits_for_logprobs = None
+        l20_raw_logits_source = "none"
+        if num_logprobs is not None:
+            if (
+                self.logprobs_mode == LogprobsMode.RAW_LOGPROBS
+                and l20_top_logprobs_enabled()
+            ):
+                l20_borrow_reasons = l20_raw_logits_borrow_reasons(
+                    sampling_metadata
+                )
+                if not l20_borrow_reasons:
+                    l20_raw_logits_for_logprobs = logits
+                    l20_raw_logits_source = "borrowed"
+                else:
+                    l20_raw_logits_for_logprobs = logits.clone()
+                    l20_raw_logits_source = "clone:" + ",".join(
+                        l20_borrow_reasons
+                    )
+                raw_logprobs = None
+            elif self.logprobs_mode == LogprobsMode.RAW_LOGPROBS:
+                raw_logprobs = self.compute_logprobs(logits)
+            elif self.logprobs_mode == LogprobsMode.RAW_LOGITS:
+                raw_logprobs = logits.clone()
+"""
+RAW_LOGPROBS_PATCHED_V1 = """        num_logprobs = sampling_metadata.max_num_logprobs
+        l20_raw_logits_for_logprobs = None
         if num_logprobs is not None:
             if (
                 self.logprobs_mode == LogprobsMode.RAW_LOGPROBS
@@ -39,11 +78,51 @@ RAW_LOGPROBS_PATCHED = """        num_logprobs = sampling_metadata.max_num_logpr
             elif self.logprobs_mode == LogprobsMode.RAW_LOGITS:
                 raw_logprobs = logits.clone()
 """
+RAW_LOGPROBS_PATCHED_V2 = """        num_logprobs = sampling_metadata.max_num_logprobs
+        l20_raw_logits_for_logprobs = None
+        l20_raw_logits_source = "none"
+        if num_logprobs is not None:
+            if (
+                self.logprobs_mode == LogprobsMode.RAW_LOGPROBS
+                and l20_top_logprobs_enabled()
+            ):
+                if l20_should_borrow_raw_logits(sampling_metadata):
+                    l20_raw_logits_for_logprobs = logits
+                    l20_raw_logits_source = "borrowed"
+                else:
+                    l20_raw_logits_for_logprobs = logits.clone()
+                    l20_raw_logits_source = "clone"
+                raw_logprobs = None
+            elif self.logprobs_mode == LogprobsMode.RAW_LOGPROBS:
+                raw_logprobs = self.compute_logprobs(logits)
+            elif self.logprobs_mode == LogprobsMode.RAW_LOGITS:
+                raw_logprobs = logits.clone()
+"""
 
 GATHER_MARKER = """        logprobs_tensors = None if num_logprobs is None else \\
             self.gather_logprobs(raw_logprobs, num_logprobs, token_ids=sampled)
 """
 GATHER_PATCHED = """        logprobs_tensors = None
+        if num_logprobs is not None:
+            if l20_raw_logits_for_logprobs is not None:
+                logprobs_tensors = maybe_l20_gather_logprobs(
+                    l20_raw_logits_for_logprobs,
+                    num_logprobs,
+                    token_ids=sampled,
+                    raw_logits_source=l20_raw_logits_source,
+                )
+                if logprobs_tensors is None:
+                    raw_logprobs = self.compute_logprobs(
+                        l20_raw_logits_for_logprobs
+                    )
+            if logprobs_tensors is None:
+                logprobs_tensors = self.gather_logprobs(
+                    raw_logprobs,
+                    num_logprobs,
+                    token_ids=sampled,
+                )
+"""
+GATHER_PATCHED_V1 = """        logprobs_tensors = None
         if num_logprobs is not None:
             if l20_raw_logits_for_logprobs is not None:
                 logprobs_tensors = maybe_l20_gather_logprobs(
@@ -92,6 +171,11 @@ def replace_once(source: str, old: str, new: str, label: str) -> str:
 
 
 def patch_sampler(source: str) -> str:
+    source = source.replace(IMPORT_PATCHED_V2, IMPORT_PATCHED, 1)
+    source = source.replace(IMPORT_PATCHED_V1, IMPORT_PATCHED, 1)
+    source = source.replace(RAW_LOGPROBS_PATCHED_V2, RAW_LOGPROBS_PATCHED, 1)
+    source = source.replace(RAW_LOGPROBS_PATCHED_V1, RAW_LOGPROBS_PATCHED, 1)
+    source = source.replace(GATHER_PATCHED_V1, GATHER_PATCHED, 1)
     source = replace_once(source, IMPORT_MARKER, IMPORT_PATCHED, "sampler import")
     source = replace_once(
         source,

@@ -64,7 +64,7 @@ than cuBLAS/full-logits baselines by 1.32x-1.39x on the tested A100 shapes.
 | Sparse sampler vs native PyTorch path | Median ITL 9.544 ms -> 4.093 ms on A100/Qwen2.5-0.5B | `benchmarks/results/a100-vllm-sparse-penalty-sampling/` |
 | Sparse sampler vs FlashInfer path | Median ITL 4.468 ms -> 4.346 ms on the same A100 workload | `benchmarks/results/a100-vllm-flashinfer-sparse-penalty-sampling/` |
 | Fused top-logprobs selection | 8.04x-9.17x A100 microbenchmark speedup; dirty and clean A100 serving artifacts show path validation, while clean request-level total time stayed flat | `benchmarks/results/a100-fused-top-logprobs/`, `benchmarks/results/a100-vllm-top-logprobs-clean/` |
-| Combined sparse sampling + fused top-logprobs | A100 30-run serving win on top-k/top-p + penalties + logprobs: median ITL 4.406 ms -> 4.248 ms versus FlashInfer baseline, and 4.549 ms -> 4.308 ms versus native PyTorch baseline | `benchmarks/results/a100-vllm-combined-sampling-logprobs/` |
+| Combined sparse sampling + fused top-logprobs | A100 30-run serving win on top-k/top-p + penalties + logprobs: median ITL 4.388 ms -> 4.227 ms versus FlashInfer baseline with no-clone raw-logits borrow, and 4.549 ms -> 4.308 ms versus native PyTorch baseline | `benchmarks/results/a100-vllm-combined-sampling-logprobs/` |
 | GEMM epilogue semantic trace | 310/320 decode-safe events; 179.67 MiB FP32 logits budget | `benchmarks/results/a100-vllm-gemm-epilogue-semantic-trace/` |
 | Standalone LM-head sparse penalties | Correct but 1.32x-1.39x slower than cuBLAS/full-logits baselines | `benchmarks/results/a100-lm-head-sparse-penalty-boundary/` |
 
@@ -115,7 +115,7 @@ See `docs/hardware-scope.md` for the full claim policy.
 | FlashInfer sampling route | Production comparator | Prewarm and compare against it when available. |
 | Sparse top-k/top-p + penalties | Active positive path | Continue only through real vLLM serving A/B and upstream-shaped gates. |
 | Fused top-logprobs | Correct standalone path, flat request time | Useful only when folded into a larger sampling/logits boundary. |
-| Combined sparse sampling + fused top-logprobs | Positive A100 serving A/B | First repeated combined-boundary serving win: -3.60% median ITL versus FlashInfer baseline and -5.28% versus native PyTorch baseline on the measured Qwen2.5-0.5B workload. |
+| Combined sparse sampling + fused top-logprobs | Positive A100 serving A/B | First repeated combined-boundary serving win: -3.65% median ITL versus FlashInfer baseline with `borrowed` raw-logits trace proof, and -5.28% versus native PyTorch baseline on the measured Qwen2.5-0.5B workload. |
 | LM-head / GEMM epilogue | Current P0 boundary | Implement producer-side semantics instead of external standalone GEMM. |
 | FP8 KV fused attention | Experimental | Keep disabled until repeated serving ITL beats BF16/FlashInfer. |
 | Speculative/tree attention | Experimental | Research branch, not a stable serving result yet. |
